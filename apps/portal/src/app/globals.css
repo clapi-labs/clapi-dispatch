@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 /*
- * Clapi Dispatch — tema claro.
+ * CLAPI Dispatch — tema claro.
  *
  * Cuatro capas de color, cada una con un solo trabajo:
- * - Clapi (morado + amarillo): el cascarón. Navegación, "en ruta", detalles.
+ * - CLAPI (morado + amarillo): el cascarón. Navegación, "en ruta", detalles.
  * - Cliente (--client, inyectado desde lib/brand.ts): su logo y la acción
  *   principal de cada pantalla. Es lo que hace que el portal se sienta suyo.
  * - Semánticos: verde = entregado/libre, ámbar = esperando, rojo = urgente.
  *   Siempre con texto al lado: el color orienta, nunca es la única señal.
  * - Motorizado (azul): en Conversaciones, lo que separa de un vistazo el chat
- *   de una moto del de un restaurante, que va en el morado de Clapi.
+ *   de una moto del de un restaurante, que va en el morado de CLAPI.
  */
 
 @theme inline {

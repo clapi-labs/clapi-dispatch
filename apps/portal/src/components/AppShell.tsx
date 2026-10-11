@@ -31,7 +31,7 @@ function PoweredBy({ dark }: { dark?: boolean }) {
         <span className="h-1.5 w-1.5 rounded-full bg-clapi" />
         <span className="h-1.5 w-1.5 rounded-full bg-gold" />
       </span>
-      con tecnología <strong className={dark ? "text-white/80" : "text-clapi-ink"}>Clapi</strong>
+      con tecnología <strong className={dark ? "text-white/80" : "text-clapi-ink"}>CLAPI</strong>
     </span>
   );
 }
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-full">
-      {/* Escritorio: riel lateral, el cascarón Clapi. */}
+      {/* Escritorio: riel lateral, el cascarón CLAPI. */}
       <aside className="hidden w-64 shrink-0 flex-col bg-clapi-deep px-4 py-5 text-white lg:flex">
         <div className="flex items-center gap-3 px-1">
           <ClientLogo />

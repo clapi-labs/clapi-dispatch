@@ -60,7 +60,7 @@ quita de la flota vuelve a verse como restaurante.
 - **Chip con ícono y texto** ("Restaurante" / "Motorizado") en cada fila de la
   lista y en el encabezado del chat abierto.
 - **Color por tipo** en avatar, chip, fila seleccionada y burbujas: morado de
-  Clapi para restaurantes, azul para motorizados.
+  CLAPI para restaurantes, azul para motorizados.
 - **Nombre del motorizado**: se muestra el de Flota, no el de su perfil de
   WhatsApp. El orden es nombre de Flota, nombre de WhatsApp, teléfono.
 - **Mensaje de bandeja vacía** distinto por pestaña.

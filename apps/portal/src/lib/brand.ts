@@ -1,5 +1,5 @@
 /**
- * Marca mixta: el cascarón es Clapi (morado + amarillo) y el cliente pone su
+ * Marca mixta: el cascarón es CLAPI (morado + amarillo) y el cliente pone su
  * color y su nombre encima — el logo y los botones principales.
  *
  * Para otro cliente no se toca código: se cambian las tres variables
@@ -8,7 +8,7 @@
  */
 export const BRAND = {
   platform: {
-    name: "Clapi",
+    name: "CLAPI",
     product: "Dispatch",
   },
   client: {
