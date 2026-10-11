@@ -42,9 +42,9 @@ const KINDS = {
 type Tab = ConversationKind | "all";
 
 const TABS: { key: Tab; label: string; empty: string }[] = [
+  { key: "all", label: "Todos", empty: "Cuando alguien escriba por WhatsApp, el chat aparece acá." },
   { key: "restaurant", label: "Restaurantes", empty: "Cuando un restaurante escriba por WhatsApp, el chat aparece acá." },
   { key: "courier", label: "Motorizados", empty: "Cuando un motorizado escriba por WhatsApp, el chat aparece acá." },
-  { key: "all", label: "Todos", empty: "Cuando alguien escriba por WhatsApp, el chat aparece acá." },
 ];
 
 function inTab(c: ConversationSummary, tab: Tab) {
@@ -140,10 +140,10 @@ export default function ConversacionesPage() {
   const [thread, setThread] = useState<ChatMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
-  const [tab, setTab] = useState<Tab>("restaurant");
+  const [tab, setTab] = useState<Tab>("all");
   // La pestaña va también en un ref: `loadList` la lee al volver del servidor,
   // y un sondeo que ya iba en camino no debe abrir un chat de la pestaña anterior.
-  const tabRef = useRef<Tab>("restaurant");
+  const tabRef = useRef<Tab>("all");
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
