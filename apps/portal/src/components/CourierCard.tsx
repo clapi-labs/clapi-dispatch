@@ -1,7 +1,9 @@
 "use client";
 
-import { MapPin, MessageCircle, Pause, Play, Power, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, MessageCircle, Pause, Play, Power, Trash2 } from "lucide-react";
+import { useState } from "react";
 
+import { CourierDetails } from "@/components/CourierDetails";
 import { PhoneLink } from "@/components/PhoneLink";
 import { initials } from "@/lib/format";
 import { nearestZone } from "@/lib/geo";
@@ -28,6 +30,8 @@ export function CourierCard({
 }) {
   const status = STATUS[courier.status];
   const zone = courier.lat && courier.lng ? nearestZone(courier.lat, courier.lng) : null;
+  // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <article className="card flex flex-col gap-4 p-4">
@@ -115,6 +119,18 @@ export function CourierCard({
           <Trash2 size={15} />
         </button>
       </div>
+
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+        className="ease-ui -my-1 flex h-9 items-center justify-center gap-1 rounded-lg text-xs font-semibold text-ink-3 can-hover:hover:bg-sunken can-hover:hover:text-ink-2"
+      >
+        {expanded ? "Ver menos" : "Ver más"}
+        <ChevronDown size={14} className={`ease-ui ${expanded ? "rotate-180" : ""}`} />
+      </button>
+
+      {expanded && <CourierDetails courier={courier} />}
     </article>
   );
 }

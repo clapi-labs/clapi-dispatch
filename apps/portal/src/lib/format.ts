@@ -22,14 +22,19 @@ export function formatPhone(phone: string): string {
   return phone;
 }
 
-/** "hace 2 min", "hace 1 h" — para el indicador de espera de la comanda. */
-export function elapsedLabel(since: Date, now: Date = new Date()): string {
-  const seconds = Math.max(0, Math.floor((now.getTime() - since.getTime()) / 1000));
+/** "45s", "2 min", "1 h 5 min" — una duración en palabras. */
+export function durationLabel(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   return `${hours} h ${minutes % 60} min`;
+}
+
+/** "hace 2 min", "hace 1 h" — para el indicador de espera de la comanda. */
+export function elapsedLabel(since: Date, now: Date = new Date()): string {
+  return durationLabel((now.getTime() - since.getTime()) / 1000);
 }
 
 export function initials(name: string): string {

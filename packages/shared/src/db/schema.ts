@@ -202,6 +202,23 @@ export const couriers = pgTable("couriers", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** La ficha del motorizado: su vehículo y sus datos personales. Tabla aparte
+ *  y no columnas en `couriers` a propósito: esa fila la leen el bot y la cola
+ *  en cada mensaje con `select()`, así que una columna nueva sin aplicar en
+ *  la base tumbaría el bot. Esto solo se consulta al abrir "Ver más" en
+ *  Flota. */
+export const courierProfiles = pgTable("courier_profiles", {
+  courierId: integer("courier_id")
+    .primaryKey()
+    .references(() => couriers.id, { onDelete: "cascade" }),
+  vehiclePlate: text("vehicle_plate"),
+  vehicleType: text("vehicle_type"),
+  documentId: text("document_id"),
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** La asignación vigente de un viaje — una fila por viaje, igual que
  *  `deliveries` en CLAPI y por la misma razón: reasignar sustituye, no
  *  acumula. */

@@ -39,6 +39,14 @@ export type Courier = {
   createdAt: string;
 };
 
+export type CourierProfile = {
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+  documentId: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+};
+
 export type SettlementRow = {
   courierId: number;
   courierName: string;

@@ -36,6 +36,32 @@ export async function updateCourierStatus(id: number, status: schema.CourierStat
   return courier;
 }
 
+export type CourierProfile = Pick<
+  typeof schema.courierProfiles.$inferSelect,
+  "vehiclePlate" | "vehicleType" | "documentId" | "emergencyContactName" | "emergencyContactPhone"
+>;
+
+/** La ficha de "Ver más": vehículo y datos personales. Un motorizado al que
+ *  todavía no se le ha llenado no tiene fila, y sale con todo vacío. */
+export async function getCourierProfile(courierId: number): Promise<CourierProfile> {
+  const [row] = await db.select().from(schema.courierProfiles).where(eq(schema.courierProfiles.courierId, courierId)).limit(1);
+  return {
+    vehiclePlate: row?.vehiclePlate ?? null,
+    vehicleType: row?.vehicleType ?? null,
+    documentId: row?.documentId ?? null,
+    emergencyContactName: row?.emergencyContactName ?? null,
+    emergencyContactPhone: row?.emergencyContactPhone ?? null,
+  };
+}
+
+export async function saveCourierProfile(courierId: number, profile: CourierProfile): Promise<CourierProfile> {
+  await db
+    .insert(schema.courierProfiles)
+    .values({ courierId, ...profile })
+    .onConflictDoUpdate({ target: schema.courierProfiles.courierId, set: { ...profile, updatedAt: new Date() } });
+  return profile;
+}
+
 /** Quitar de la flota sin borrar: su nombre sigue en el arqueo de los viajes
  *  que ya hizo. Un motorizado en un viaje no se puede quitar. */
 export async function removeCourier(id: number) {
