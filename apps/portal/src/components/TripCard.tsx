@@ -1,9 +1,10 @@
 "use client";
 
-import { Banknote, Check, CheckCircle2, CreditCard, Phone } from "lucide-react";
+import { Banknote, Check, CheckCircle2, CreditCard } from "lucide-react";
 import { motion } from "motion/react";
 
-import { formatCOP, formatPhone, initials } from "@/lib/format";
+import { PhoneLink } from "@/components/PhoneLink";
+import { formatCOP, initials } from "@/lib/format";
 import type { Trip } from "@/lib/types";
 import { clock, useNow } from "@/lib/use-now";
 
@@ -100,13 +101,7 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
             Pre-pagado · {formatCOP(trip.valueToCollect)}
           </span>
         )}
-        <a
-          href={`tel:+${trip.customerPhone.replace(/\D/g, "").length === 10 ? "57" : ""}${trip.customerPhone.replace(/\D/g, "")}`}
-          className="flex items-center gap-1 text-xs text-ink-3 can-hover:hover:text-ink"
-        >
-          <Phone size={12} />
-          {formatPhone(trip.customerPhone)}
-        </a>
+        <PhoneLink phone={trip.customerPhone} name="Cliente" className="text-xs text-ink-3" />
       </div>
 
       <footer className="flex items-center gap-2.5 border-t border-line pt-3">
@@ -117,7 +112,10 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
             </span>
             <div className="min-w-0 flex-1 leading-tight">
               <p className="truncate text-sm font-medium">{trip.courierName}</p>
-              <p className="text-[11px] text-ink-3">{trip.status === "delivered" ? "Entregó" : "En camino"}</p>
+              <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-ink-3">
+                {trip.status === "delivered" ? "Entregó" : "En camino"}
+                {trip.courierPhone && <PhoneLink phone={trip.courierPhone} name={trip.courierName} />}
+              </div>
             </div>
           </>
         ) : (

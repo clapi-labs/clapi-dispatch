@@ -6,8 +6,16 @@ export function formatCOP(value: number): string {
   }).format(value);
 }
 
-export function formatPhone(phone: string): string {
+/** Solo dígitos y siempre con indicativo: a un celular guardado como
+ *  "300 123 4567" se le pone el 57 de Colombia. Es lo que esperan los enlaces
+ *  de WhatsApp y `tel:`. */
+export function phoneDigits(phone: string): string {
   const digits = phone.replace(/\D/g, "");
+  return digits.length <= 10 ? `57${digits}` : digits;
+}
+
+export function formatPhone(phone: string): string {
+  const digits = phoneDigits(phone);
   if (digits.length === 12 && digits.startsWith("57")) {
     return `+57 ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
   }

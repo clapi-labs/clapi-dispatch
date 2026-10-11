@@ -1,8 +1,9 @@
 "use client";
 
-import { MapPin, MessageCircle, Pause, Phone, Play, Power, Trash2 } from "lucide-react";
+import { MapPin, MessageCircle, Pause, Play, Power, Trash2 } from "lucide-react";
 
-import { formatPhone, initials } from "@/lib/format";
+import { PhoneLink } from "@/components/PhoneLink";
+import { initials } from "@/lib/format";
 import { nearestZone } from "@/lib/geo";
 import type { Courier } from "@/lib/types";
 
@@ -70,7 +71,7 @@ export function CourierCard({
       </dl>
 
       <div className="flex items-center gap-1.5 text-xs text-ink-3">
-        <Phone size={12} /> {formatPhone(courier.phone)}
+        <PhoneLink phone={courier.phone} name={courier.name} />
         <span className="ml-auto flex items-center gap-1 font-medium text-ok">
           <MessageCircle size={12} /> Recibe viajes por WhatsApp
         </span>

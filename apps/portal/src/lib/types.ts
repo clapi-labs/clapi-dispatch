@@ -20,6 +20,7 @@ export type Trip = {
   updatedAt: string;
   courierName: string | null;
   courierId: number | null;
+  courierPhone: string | null;
   assignedAt: string | null;
   deliveredAt: string | null;
 };
