@@ -2,8 +2,9 @@
 
 > Todo lo que cambió desde que la rama salió de `main`. Punto de partida:
 > `adf6c60` (2026-10-06, "Distingue en el portal un secreto incorrecto de otros
-> errores del bot"). Desde ahí son 4 commits, todos del 2026-10-11:
-> 14 archivos, 638 líneas agregadas y 47 quitadas.
+> errores del bot"). Desde ahí son 4 commits de código, todos del 2026-10-11:
+> 14 archivos, 638 líneas agregadas y 47 quitadas. Los commits de este
+> documento van aparte.
 
 ## 0. Resumen
 
@@ -15,9 +16,11 @@
 | Flota | "Ver más" en cada tarjeta: viaje en curso, ritmo, vehículo y datos personales editables | `187f53a` |
 | Base de datos | Tabla nueva `courier_profiles` | `187f53a` |
 
-**Requiere una acción al desplegar:** `npm run db:push` para crear
-`courier_profiles` (ver §4). Sin eso, "Ver más" en Flota muestra "No se pudo
-cargar la ficha"; el resto del portal y el bot no se ven afectados.
+**Base de datos al día:** `courier_profiles` ya quedó creada en la base de
+Neon el 2026-10-11 (ver §4), así que no hay pasos pendientes para esa base. En
+una base nueva hay que correr `npm run db:push`: sin la tabla, "Ver más" en
+Flota muestra "No se pudo cargar la ficha"; el resto del portal y el bot no se
+ven afectados.
 
 Todo el cambio vive en `apps/portal` salvo el esquema, que está en
 `packages/shared`. El bot (`apps/bot`) no se tocó.
@@ -216,14 +219,43 @@ sin aplicar en la base tumbaría el bot. `courier_profiles` solo se consulta al
 abrir "Ver más" en Flota, así que desplegar el código antes de aplicar el
 esquema no rompe nada más que esa ficha.
 
-Para aplicarla:
+No hay más cambios de esquema en la rama. La separación de Conversaciones
+(§1) y los teléfonos (§2) no tocan la base.
+
+### 4.1 Estado: aplicada
+
+La tabla se creó en la base de Neon el 2026-10-11. Antes de aplicarla, el
+esquema del repo y la base coincidían en todo salvo en `courier_profiles`, que
+no existía. Se corrieron en una sola transacción las dos sentencias que Drizzle
+genera para este esquema:
+
+```sql
+CREATE TABLE "courier_profiles" (
+	"courier_id" integer PRIMARY KEY NOT NULL,
+	"vehicle_plate" text,
+	"vehicle_type" text,
+	"document_id" text,
+	"emergency_contact_name" text,
+	"emergency_contact_phone" text,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE "courier_profiles" ADD CONSTRAINT "courier_profiles_courier_id_couriers_id_fk" FOREIGN KEY ("courier_id") REFERENCES "public"."couriers"("id") ON DELETE cascade ON UPDATE no action;
+```
+
+Después de aplicarlas el esquema y la base coinciden: 12 tablas, sin
+diferencias de tablas ni de columnas. `couriers` no se tocó y la tabla nueva
+arranca vacía.
+
+### 4.2 En otra base
+
+Para una base nueva u otro entorno, el camino es el de siempre:
 
 ```
 npm run db:push
 ```
 
-No hay más cambios de esquema en la rama. La separación de Conversaciones
-(§1) y los teléfonos (§2) no tocan la base.
+Lee `DATABASE_URL` del `.env.local` de la raíz del repo, que no se versiona.
 
 ---
 
