@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowLeft, Bot, Check, Hand, Headset, MessagesSquare, RotateCcw, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Bike, Bot, Check, Hand, Headset, MessagesSquare, RotateCcw, SendHorizontal, Store } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { formatCOP, formatPhone, initials } from "@/lib/format";
-import type { ChatMessage, ConversationSummary, DraftFields } from "@/lib/types";
+import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
 import { usePolling } from "@/lib/use-polling";
 
 function timeLabel(iso: string) {
@@ -15,8 +15,53 @@ function timeLabel(iso: string) {
     : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }
 
+/** Al motorizado se le ve con su nombre de Flota, no con el de su WhatsApp. */
 function name(c: ConversationSummary) {
-  return c.displayName || formatPhone(c.phone);
+  return c.courierName || c.displayName || formatPhone(c.phone);
+}
+
+/** Un restaurante y un motorizado nunca se ven igual: cada uno con su ícono,
+ *  su texto y su color, en la lista, en el encabezado y en las burbujas. */
+const KINDS = {
+  restaurant: {
+    label: "Restaurante",
+    Icon: Store,
+    tint: "bg-clapi/15 text-clapi-ink",
+    selected: "bg-clapi-soft/70",
+    bubble: "bg-surface",
+  },
+  courier: {
+    label: "Motorizado",
+    Icon: Bike,
+    tint: "bg-courier/15 text-courier-ink",
+    selected: "bg-courier-soft/70",
+    bubble: "bg-courier-soft",
+  },
+};
+
+type Tab = ConversationKind | "all";
+
+const TABS: { key: Tab; label: string; empty: string }[] = [
+  { key: "restaurant", label: "Restaurantes", empty: "Cuando un restaurante escriba por WhatsApp, el chat aparece acá." },
+  { key: "courier", label: "Motorizados", empty: "Cuando un motorizado escriba por WhatsApp, el chat aparece acá." },
+  { key: "all", label: "Todos", empty: "Cuando alguien escriba por WhatsApp, el chat aparece acá." },
+];
+
+function inTab(c: ConversationSummary, tab: Tab) {
+  return tab === "all" || c.kind === tab;
+}
+
+function isDesktop() {
+  return window.matchMedia("(min-width: 1024px)").matches;
+}
+
+function KindChip({ kind }: { kind: ConversationKind }) {
+  const { label, Icon, tint } = KINDS[kind];
+  return (
+    <span className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tint}`}>
+      <Icon size={11} /> {label}
+    </span>
+  );
 }
 
 const DRAFT_FIELDS: { key: keyof DraftFields; label: string }[] = [
@@ -59,14 +104,16 @@ function DraftPanel({ draft }: { draft: DraftFields }) {
   );
 }
 
-function Bubble({ message }: { message: ChatMessage }) {
+/** `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
+ *  escribe un motorizado: de quién es el chat lo dice `kind`. */
+function Bubble({ message, kind }: { message: ChatMessage; kind: ConversationKind }) {
   const mine = message.role !== "restaurant";
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
           message.role === "restaurant"
-            ? "rounded-bl-md bg-surface text-ink"
+            ? `rounded-bl-md text-ink ${KINDS[kind].bubble}`
             : message.role === "bot"
               ? "rounded-br-md bg-clapi text-white"
               : "rounded-br-md bg-gold text-clapi-deep"
@@ -93,6 +140,10 @@ export default function ConversacionesPage() {
   const [thread, setThread] = useState<ChatMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
+  const [tab, setTab] = useState<Tab>("restaurant");
+  // La pestaña va también en un ref: `loadList` la lee al volver del servidor,
+  // y un sondeo que ya iba en camino no debe abrir un chat de la pestaña anterior.
+  const tabRef = useRef<Tab>("restaurant");
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
@@ -100,9 +151,10 @@ export default function ConversacionesPage() {
     const data: ConversationSummary[] = await res.json();
     setList(data);
     setLoaded(true);
-    // En escritorio, abrir la conversación más reciente de entrada.
-    if (data.length > 0 && window.matchMedia("(min-width: 1024px)").matches) {
-      setSelectedId((current) => current ?? data[0].id);
+    // En escritorio, abrir de entrada la conversación más reciente de la pestaña.
+    const first = data.find((c) => inTab(c, tabRef.current));
+    if (first && isDesktop()) {
+      setSelectedId((current) => current ?? first.id);
     }
   }, []);
 
@@ -127,6 +179,7 @@ export default function ConversacionesPage() {
 
 
   const selected = list.find((c) => c.id === selectedId) ?? null;
+  const visible = list.filter((c) => inTab(c, tab));
 
   const [draftText, setDraftText] = useState("");
   const [sending, setSending] = useState(false);
@@ -162,10 +215,19 @@ export default function ConversacionesPage() {
     }
   }
 
-  function open(id: number) {
+  function open(id: number | null) {
     lastCount.current = 0;
     setThread([]);
     setSelectedId(id);
+  }
+
+  function switchTab(next: Tab) {
+    tabRef.current = next;
+    setTab(next);
+    if (selected && inTab(selected, next)) return;
+    // El chat abierto no es de esta pestaña: en escritorio pasa al primero que sí.
+    const first = isDesktop() ? list.find((c) => inTab(c, next)) : undefined;
+    open(first?.id ?? null);
   }
 
   return (
@@ -176,24 +238,55 @@ export default function ConversacionesPage() {
           <div className="border-b border-line px-4 py-4">
             <h1 className="text-xl font-bold tracking-tight">Conversaciones</h1>
             <p className="text-sm text-ink-3">El bot atendiendo en vivo</p>
+            <div role="tablist" aria-label="Tipo de contacto" className="mt-3 flex gap-1 rounded-xl bg-sunken p-1">
+              {TABS.map((t) => {
+                const chats = list.filter((c) => inTab(c, t.key));
+                // El punto avisa que en ese grupo hay chats esperando a una persona,
+                // aunque se esté mirando la otra pestaña. En "Todos" sobraría.
+                const waiting = t.key === "all" ? 0 : chats.filter((c) => c.botPaused).length;
+                const active = t.key === tab;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    title={waiting > 0 ? `${waiting} esperando un asesor` : undefined}
+                    onClick={() => switchTab(t.key)}
+                    className={`ease-ui relative flex h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-semibold ${
+                      active ? "bg-surface text-ink shadow-sm" : "text-ink-2 can-hover:hover:text-ink"
+                    }`}
+                  >
+                    {t.label}
+                    <span className="font-medium tabular-nums text-ink-3">{chats.length}</span>
+                    {waiting > 0 && (
+                      <>
+                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-gold" />
+                        <span className="sr-only">, {waiting} esperando un asesor</span>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="no-scrollbar flex-1 overflow-y-auto">
-            {loaded && list.length === 0 && (
+            {loaded && visible.length === 0 && (
               <div className="flex flex-col items-center gap-2 px-6 py-16 text-center text-sm text-ink-3">
                 <MessagesSquare size={22} className="opacity-60" />
-                Cuando un restaurante escriba por WhatsApp, el chat aparece acá.
+                {TABS.find((t) => t.key === tab)?.empty}
               </div>
             )}
-            {list.map((c) => (
+            {visible.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => open(c.id)}
                 className={`ease-ui flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
-                  c.id === selectedId ? "bg-clapi-soft/70" : "can-hover:hover:bg-sunken"
+                  c.id === selectedId ? KINDS[c.kind].selected : "can-hover:hover:bg-sunken"
                 }`}
               >
-                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sunken text-sm font-bold text-ink-2">
+                <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
                   {initials(name(c)) || "#"}
                   {c.botPaused && (
                     <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
@@ -206,15 +299,18 @@ export default function ConversacionesPage() {
                     <span className="truncate text-sm font-semibold">{name(c)}</span>
                     <span className="shrink-0 text-[11px] text-ink-3">{timeLabel(c.lastMessageAt)}</span>
                   </span>
-                  <span className="mt-0.5 block truncate text-xs text-ink-3">
-                    {c.botPaused ? (
-                      <span className="font-semibold text-gold-ink">Esperando un asesor</span>
-                    ) : (
-                      <>
-                        {c.lastRole === "bot" && "Bot: "}
-                        {c.lastText}
-                      </>
-                    )}
+                  <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
+                    <KindChip kind={c.kind} />
+                    <span className="min-w-0 truncate">
+                      {c.botPaused ? (
+                        <span className="font-semibold text-gold-ink">Esperando un asesor</span>
+                      ) : (
+                        <>
+                          {c.lastRole === "bot" && "Bot: "}
+                          {c.lastText}
+                        </>
+                      )}
+                    </span>
                   </span>
                 </span>
               </button>
@@ -242,7 +338,10 @@ export default function ConversacionesPage() {
                 </button>
                 <div className="min-w-0 flex-1 leading-tight">
                   <p className="truncate font-semibold">{name(selected)}</p>
-                  <p className="text-xs text-ink-3">{formatPhone(selected.phone)}</p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
+                    <KindChip kind={selected.kind} />
+                    <span className="min-w-0 truncate">{formatPhone(selected.phone)}</span>
+                  </p>
                 </div>
                 {selected.botPaused ? (
                   <span className="flex items-center gap-1.5 rounded-lg bg-gold-soft px-2.5 py-1.5 text-xs font-semibold text-gold-ink">
@@ -279,7 +378,7 @@ export default function ConversacionesPage() {
 
               <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-4 lg:px-6">
                 {thread.map((m) => (
-                  <Bubble key={m.id} message={m} />
+                  <Bubble key={m.id} message={m} kind={selected.kind} />
                 ))}
                 <div ref={bottomRef} />
               </div>

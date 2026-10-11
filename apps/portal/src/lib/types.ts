@@ -72,10 +72,14 @@ export type DraftFields = {
   metodoPago: PaymentMethod | null;
 };
 
+export type ConversationKind = "restaurant" | "courier";
+
 export type ConversationSummary = {
   id: number;
   phone: string;
   displayName: string | null;
+  kind: ConversationKind;
+  courierName: string | null;
   botPaused: boolean;
   escalationReason: string | null;
   draft: DraftFields | null;
