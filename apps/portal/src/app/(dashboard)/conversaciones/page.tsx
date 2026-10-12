@@ -23,6 +23,14 @@ function timeLabel(iso: string) {
     : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }
 
+/** En cada mensaje van el día y la hora: un chat también se revisa días después. */
+function messageTime(iso: string) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
+  const time = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
 type Tab = ConversationKind | "all";
 
 const TABS: { key: Tab; label: string; empty: string }[] = [
@@ -129,7 +137,7 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
           </p>
         )}
         {message.text}
-        <p className={`mt-1 text-right text-[10px] ${mine ? "text-ink-2/80" : "text-ink-3"}`}>{timeLabel(message.createdAt)}</p>
+        <p className={`mt-1 whitespace-nowrap text-right text-[10px] ${mine ? "text-ink-2/80" : "text-ink-3"}`}>{messageTime(message.createdAt)}</p>
       </div>
       <button
         type="button"
