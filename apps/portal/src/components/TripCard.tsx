@@ -102,7 +102,8 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
             Pre-pagado · {formatCOP(trip.valueToCollect)}
           </span>
         )}
-        <PhoneLink phone={trip.customerPhone} name="Cliente" pill />
+        {/* El cliente final no tiene chat con el bot: su número solo llama. */}
+        <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />
       </div>
 
       {/* Rejilla y no fila: el contacto baja a su propia línea y pasa por debajo del
@@ -116,7 +117,13 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
             <p className={`truncate text-sm font-medium leading-tight ${trip.status === "en_route" ? "" : "col-span-2"}`}>{trip.courierName}</p>
             <div className="col-span-2 col-start-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3">
               {trip.status === "delivered" ? "Entregó" : "En camino"}
-              {trip.courierPhone && <PhoneLink phone={trip.courierPhone} name={trip.courierName} pill />}
+              {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
+              {trip.courierPhone && (
+                <>
+                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
+                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
+                </>
+              )}
             </div>
           </>
         ) : (
