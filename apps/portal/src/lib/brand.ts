@@ -1,6 +1,6 @@
 /**
- * Marca mixta: el cascarón es Clapi (morado + amarillo) y el cliente pone su
- * color y su nombre encima — el logo y los botones principales.
+ * Marca mixta: el producto va en la paleta de CLAPI (azul noche, violeta,
+ * lavanda y amarillo) y el cliente pone su nombre y su insignia en el cascarón.
  *
  * Para otro cliente no se toca código: se cambian las tres variables
  * NEXT_PUBLIC_CLIENT_* en Vercel y se redespliega. `NEXT_PUBLIC_` porque las
@@ -8,13 +8,13 @@
  */
 export const BRAND = {
   platform: {
-    name: "Clapi",
+    name: "CLAPI",
     product: "Dispatch",
   },
   client: {
     name: process.env.NEXT_PUBLIC_CLIENT_NAME || "Express Cali",
     initials: process.env.NEXT_PUBLIC_CLIENT_INITIALS || "EC",
-    /** Rojo de Express Cali. Cualquier color que se lea con texto blanco. */
+    /** Rojo de Express Cali, solo para su insignia. Cualquier color que se lea con texto blanco. */
     primary: process.env.NEXT_PUBLIC_CLIENT_COLOR || "#E11D48",
   },
 };

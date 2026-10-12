@@ -105,7 +105,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl bg-clapi-deep px-4 py-3 text-white shadow-xl shadow-clapi/20"
+            className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl bg-clapi-deep px-4 py-3 text-white shadow-xl shadow-clapi/20 ring-1 ring-white/15"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-clapi-deep">
               <Bike size={18} strokeWidth={2.4} />

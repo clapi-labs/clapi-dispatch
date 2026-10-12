@@ -20,6 +20,7 @@ export type Trip = {
   updatedAt: string;
   courierName: string | null;
   courierId: number | null;
+  courierPhone: string | null;
   assignedAt: string | null;
   deliveredAt: string | null;
 };
@@ -36,6 +37,14 @@ export type Courier = {
   lastAssignedAt: string | null;
   active: boolean;
   createdAt: string;
+};
+
+export type CourierProfile = {
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+  documentId: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
 };
 
 export type SettlementRow = {
@@ -72,10 +81,14 @@ export type DraftFields = {
   metodoPago: PaymentMethod | null;
 };
 
+export type ConversationKind = "restaurant" | "courier";
+
 export type ConversationSummary = {
   id: number;
   phone: string;
   displayName: string | null;
+  kind: ConversationKind;
+  courierName: string | null;
   botPaused: boolean;
   escalationReason: string | null;
   draft: DraftFields | null;

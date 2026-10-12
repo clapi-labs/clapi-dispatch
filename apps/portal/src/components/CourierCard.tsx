@@ -1,8 +1,11 @@
 "use client";
 
-import { MapPin, MessageCircle, Pause, Phone, Play, Power, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, MessageCircle, Pause, Play, Power, Trash2 } from "lucide-react";
+import { useState } from "react";
 
-import { formatPhone, initials } from "@/lib/format";
+import { CourierDetails } from "@/components/CourierDetails";
+import { PhoneLink } from "@/components/PhoneLink";
+import { initials } from "@/lib/format";
 import { nearestZone } from "@/lib/geo";
 import type { Courier } from "@/lib/types";
 
@@ -27,6 +30,8 @@ export function CourierCard({
 }) {
   const status = STATUS[courier.status];
   const zone = courier.lat && courier.lng ? nearestZone(courier.lat, courier.lng) : null;
+  // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <article className="card flex flex-col gap-4 p-4">
@@ -46,7 +51,7 @@ export function CourierCard({
         {queuePosition !== null && (
           <span
             className={`flex h-10 min-w-10 flex-col items-center justify-center rounded-xl px-2 leading-none ${
-              queuePosition === 1 ? "bg-client text-white" : "bg-sunken text-ink-2"
+              queuePosition === 1 ? "bg-clapi text-white" : "bg-sunken text-ink-2"
             }`}
             title="Turno en la cola"
           >
@@ -63,14 +68,14 @@ export function CourierCard({
         </div>
         <div className="rounded-xl bg-sunken px-3 py-2">
           <dt className="flex items-center gap-1 text-ink-3">
-            <MapPin size={11} className={courier.status !== "offline" ? "text-client" : ""} /> Última zona
+            <MapPin size={11} className={courier.status !== "offline" ? "text-clapi" : ""} /> Última zona
           </dt>
           <dd className="truncate text-sm font-semibold">{zone ?? "Sin GPS"}</dd>
         </div>
       </dl>
 
       <div className="flex items-center gap-1.5 text-xs text-ink-3">
-        <Phone size={12} /> {formatPhone(courier.phone)}
+        <PhoneLink phone={courier.phone} name={courier.name} />
         <span className="ml-auto flex items-center gap-1 font-medium text-ok">
           <MessageCircle size={12} /> Recibe viajes por WhatsApp
         </span>
@@ -114,6 +119,18 @@ export function CourierCard({
           <Trash2 size={15} />
         </button>
       </div>
+
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+        className="ease-ui -my-1 flex h-9 items-center justify-center gap-1 rounded-lg text-xs font-semibold text-ink-3 can-hover:hover:bg-sunken can-hover:hover:text-ink-2"
+      >
+        {expanded ? "Ver menos" : "Ver más"}
+        <ChevronDown size={14} className={`ease-ui ${expanded ? "rotate-180" : ""}`} />
+      </button>
+
+      {expanded && <CourierDetails courier={courier} />}
     </article>
   );
 }
