@@ -137,7 +137,10 @@ export function MessageMenu({
         className="w-full max-w-md rounded-t-3xl bg-surface px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-xl outline-none"
       >
         <span className="mx-auto mb-3 block h-1 w-9 rounded-full bg-line" />
-        <p className="mb-2 line-clamp-2 whitespace-pre-wrap rounded-xl bg-sunken px-3 py-2 text-xs text-ink-2">{message.text}</p>
+        {/* El relleno va en la caja y el recorte en el texto: si no, la línea que sigue asoma por abajo. */}
+        <div className="mb-2 rounded-xl bg-sunken px-3 py-2 text-xs text-ink-2">
+          <p className="line-clamp-2 whitespace-pre-wrap wrap-anywhere">{message.text}</p>
+        </div>
         {items}
         <button type="button" onClick={onClose} className="mt-1 h-12 w-full rounded-2xl text-sm font-semibold text-ink-3">
           Cancelar

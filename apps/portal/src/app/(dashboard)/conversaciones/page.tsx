@@ -86,6 +86,8 @@ function DraftPanel({ draft }: { draft: DraftFields }) {
  * `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
  * escribe un motorizado. Colores de WhatsApp: lo que llega va en blanco y lo
  * que sale en verde; quién lo mandó, el bot o un asesor, lo dice la etiqueta.
+ * `wrap-anywhere`: un enlace o una palabra más largos que la burbuja se parten
+ * en vez de salirse de ella y ensanchar el hilo.
  *
  * Las opciones del mensaje se abren con los tres puntos, que solo existen
  * donde hay cursor y aparecen al pasarlo por encima. En pantalla táctil no
@@ -116,7 +118,7 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
         onContextMenu={(e) => {
           if (touched.current) e.preventDefault();
         }}
-        className={`max-w-[85%] select-none whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
+        className={`max-w-[85%] min-w-0 select-none whitespace-pre-wrap wrap-anywhere rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
           mine ? "rounded-br-md bg-chat-out" : "rounded-bl-md bg-surface"
         }`}
       >
@@ -429,7 +431,8 @@ export default function ConversacionesPage() {
 
               {!selected.botPaused && selected.draft && <DraftPanel draft={selected.draft} />}
 
-              <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-4 lg:px-6">
+              {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
+              <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 py-4 lg:px-6">
                 {thread.map((m) => (
                   <Bubble
                     key={m.id}

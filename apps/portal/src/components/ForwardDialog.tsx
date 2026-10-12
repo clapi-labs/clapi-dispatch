@@ -77,7 +77,9 @@ export function ForwardDialog({
           </button>
         </div>
 
-        <p className="mx-4 line-clamp-3 whitespace-pre-wrap rounded-xl bg-clapi-soft px-3 py-2 text-sm text-ink">{text}</p>
+        <div className="mx-4 shrink-0 rounded-xl bg-clapi-soft px-3 py-2 text-sm text-ink">
+          <p className="line-clamp-3 whitespace-pre-wrap wrap-anywhere">{text}</p>
+        </div>
 
         <label className="mx-4 mt-3 flex h-11 items-center gap-2 rounded-xl bg-sunken px-3 focus-within:ring-2 focus-within:ring-clapi/30">
           <Search size={16} className="shrink-0 text-ink-3" />
