@@ -14,6 +14,12 @@ export function phoneDigits(phone: string): string {
   return digits.length <= 10 ? `57${digits}` : digits;
 }
 
+/** Dos teléfonos son el mismo si coinciden sus últimos diez dígitos: con o sin el 57. */
+export function samePhone(a: string, b: string): boolean {
+  const tail = (phone: string) => phone.replace(/\D/g, "").slice(-10);
+  return tail(a) === tail(b);
+}
+
 export function formatPhone(phone: string): string {
   const digits = phoneDigits(phone);
   if (digits.length === 12 && digits.startsWith("57")) {

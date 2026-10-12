@@ -9,9 +9,9 @@ import { ForwardDialog } from "@/components/ForwardDialog";
 import { KINDS, KindChip } from "@/components/KindChip";
 import { MessageMenu } from "@/components/MessageMenu";
 import { QuickReplies } from "@/components/QuickReplies";
-import { conversationName as name, sendErrorText } from "@/lib/chat";
+import { conversationName as name, phoneFromHash, sendErrorText } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
-import { formatCOP, formatPhone, initials } from "@/lib/format";
+import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
 import { usePolling } from "@/lib/use-polling";
 
@@ -153,6 +153,19 @@ export default function ConversacionesPage() {
   // La pestaña va también en un ref: `loadList` la lee al volver del servidor,
   // y un sondeo que ya iba en camino no debe abrir un chat de la pestaña anterior.
   const tabRef = useRef<Tab>("all");
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Al llegar desde un teléfono de otra pantalla (#tel=57300…) se abre ese chat
+  // en cuanto carga la lista. El número no se queda en la barra de direcciones.
+  const wanted = useRef<string | null>(null);
+  useEffect(() => {
+    // Solo se anota si viene uno: en desarrollo React corre el efecto dos veces,
+    // y la segunda ya no encuentra el número en la dirección.
+    const phone = phoneFromHash(window.location.hash);
+    if (!phone) return;
+    wanted.current = phone;
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
@@ -160,6 +173,20 @@ export default function ConversacionesPage() {
     const data: ConversationSummary[] = await res.json();
     setList(data);
     setLoaded(true);
+    if (wanted.current) {
+      const phone = wanted.current;
+      wanted.current = null;
+      const target = data.find((c) => samePhone(c.phone, phone));
+      if (target) {
+        tabRef.current = "all";
+        setTab("all");
+        lastCount.current = 0;
+        setThread([]);
+        setSelectedId(target.id);
+      } else {
+        setNotice(`Todavía no hay conversación con ${formatPhone(phone)}`);
+      }
+    }
     // En escritorio, abrir de entrada la conversación más reciente de la pestaña.
     const first = data.find((c) => inTab(c, tabRef.current));
     if (first && isDesktop()) {
@@ -205,7 +232,6 @@ export default function ConversacionesPage() {
 
   const [menu, setMenu] = useState<{ message: ChatMessage; anchor: DOMRect | null } | null>(null);
   const [forwarding, setForwarding] = useState<ChatMessage | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!notice) return;
