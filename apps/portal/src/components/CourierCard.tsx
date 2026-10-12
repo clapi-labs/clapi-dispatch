@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, MapPin, MessageCircle, Power, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, MessageCircle, Power, PowerOff, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
@@ -30,6 +30,8 @@ export function CourierCard({
 }) {
   const status = STATUS[courier.status];
   const zone = courier.lat && courier.lng ? nearestZone(courier.lat, courier.lng) : null;
+  // Fuera de turno, sea desconectado o en pausa: el botón de encendido lo vuelve a conectar.
+  const off = courier.status === "offline" || courier.status === "paused";
   // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
   const [expanded, setExpanded] = useState(false);
 
@@ -85,14 +87,21 @@ export function CourierCard({
         {/* Donde estaba Activar / Pausar: abrir su chat en el portal o llamarlo. */}
         <PhoneLink phone={courier.phone} name={courier.name} iconOnly wide />
         <PhoneLink phone={courier.phone} name={courier.name} call iconOnly wide />
+        {/* Encendido de ida y vuelta: verde si está conectado (tocar lo desconecta), apagado
+            si no (tocar lo conecta). En un viaje no se puede desconectar. */}
         <button
           type="button"
-          disabled={courier.status === "busy" || courier.status === "offline"}
-          onClick={() => onChange("offline")}
-          aria-label="Desconectar"
-          className="ease-ui flex h-10 w-10 items-center justify-center rounded-xl bg-sunken text-ink-3 disabled:opacity-40 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+          disabled={courier.status === "busy"}
+          onClick={() => onChange(off ? "available" : "offline")}
+          aria-label={off ? "Conectar" : "Desconectar"}
+          title={off ? "Conectar" : "Desconectar"}
+          className={`ease-ui flex h-10 w-10 items-center justify-center rounded-xl disabled:opacity-40 ${
+            off
+              ? "bg-sunken text-ink-3 can-hover:hover:bg-ok-soft can-hover:hover:text-ok"
+              : "bg-ok-soft text-ok can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+          }`}
         >
-          <Power size={15} />
+          {off ? <PowerOff size={15} /> : <Power size={15} />}
         </button>
         <button
           type="button"
