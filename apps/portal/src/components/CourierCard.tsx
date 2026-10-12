@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, MapPin, MessageCircle, Pause, Play, Power, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, MessageCircle, Power, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
@@ -82,24 +82,9 @@ export function CourierCard({
       </div>
 
       <div className="flex gap-2">
-        {courier.status === "paused" || courier.status === "offline" ? (
-          <button
-            type="button"
-            onClick={() => onChange("available")}
-            className="ease-ui flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-ok-soft text-sm font-semibold text-ok"
-          >
-            <Play size={14} /> Activar
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={courier.status === "busy"}
-            onClick={() => onChange("paused")}
-            className="ease-ui flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-sunken text-sm font-semibold text-ink-2 disabled:opacity-40"
-          >
-            <Pause size={14} /> Pausar
-          </button>
-        )}
+        {/* Donde estaba Activar / Pausar: abrir su chat en el portal o llamarlo. */}
+        <PhoneLink phone={courier.phone} name={courier.name} iconOnly wide />
+        <PhoneLink phone={courier.phone} name={courier.name} call iconOnly wide />
         <button
           type="button"
           disabled={courier.status === "busy" || courier.status === "offline"}
