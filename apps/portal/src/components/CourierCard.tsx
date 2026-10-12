@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, MapPin, MessageCircle, Power, PowerOff, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, Power, PowerOff, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
@@ -78,9 +78,6 @@ export function CourierCard({
 
       <div className="flex items-center gap-1.5 text-xs text-ink-3">
         <PhoneLink phone={courier.phone} name={courier.name} />
-        <span className="ml-auto flex items-center gap-1 font-medium text-ok">
-          <MessageCircle size={12} /> Recibe viajes por WhatsApp
-        </span>
       </div>
 
       <div className="flex gap-2">
