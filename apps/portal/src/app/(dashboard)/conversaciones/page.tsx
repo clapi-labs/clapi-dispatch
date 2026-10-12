@@ -1,8 +1,16 @@
 "use client";
 
-import { ArrowLeft, Bike, Bot, Check, Hand, Headset, MessagesSquare, RotateCcw, SendHorizontal, Store } from "lucide-react";
+import { ArrowLeft, Bot, Check, Hand, Headset, MessagesSquare, MoreVertical, RotateCcw, SendHorizontal } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ChatContactActions } from "@/components/ChatContactActions";
+import { ForwardDialog } from "@/components/ForwardDialog";
+import { KINDS, KindChip } from "@/components/KindChip";
+import { MessageMenu } from "@/components/MessageMenu";
+import { QuickReplies } from "@/components/QuickReplies";
+import { conversationName as name, sendErrorText } from "@/lib/chat";
+import { copyText } from "@/lib/clipboard";
 import { formatCOP, formatPhone, initials } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
 import { usePolling } from "@/lib/use-polling";
@@ -14,30 +22,6 @@ function timeLabel(iso: string) {
     ? d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })
     : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }
-
-/** Al motorizado se le ve con su nombre de Flota, no con el de su WhatsApp. */
-function name(c: ConversationSummary) {
-  return c.courierName || c.displayName || formatPhone(c.phone);
-}
-
-/** Un restaurante y un motorizado nunca se ven igual: cada uno con su ícono,
- *  su texto y su color, en la lista, en el encabezado y en las burbujas. */
-const KINDS = {
-  restaurant: {
-    label: "Restaurante",
-    Icon: Store,
-    tint: "bg-clapi/15 text-clapi-ink",
-    selected: "bg-clapi-soft/70",
-    bubble: "bg-surface",
-  },
-  courier: {
-    label: "Motorizado",
-    Icon: Bike,
-    tint: "bg-courier/15 text-courier-ink",
-    selected: "bg-courier-soft/70",
-    bubble: "bg-courier-soft",
-  },
-};
 
 type Tab = ConversationKind | "all";
 
@@ -55,14 +39,8 @@ function isDesktop() {
   return window.matchMedia("(min-width: 1024px)").matches;
 }
 
-function KindChip({ kind }: { kind: ConversationKind }) {
-  const { label, Icon, tint } = KINDS[kind];
-  return (
-    <span className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tint}`}>
-      <Icon size={11} /> {label}
-    </span>
-  );
-}
+const INTERVENE =
+  "ease-ui h-9 shrink-0 items-center gap-1.5 rounded-lg bg-clapi px-3 text-xs font-semibold text-white shadow-sm can-hover:hover:brightness-110";
 
 const DRAFT_FIELDS: { key: keyof DraftFields; label: string }[] = [
   { key: "origenRestaurante", label: "Restaurante" },
@@ -104,31 +82,62 @@ function DraftPanel({ draft }: { draft: DraftFields }) {
   );
 }
 
-/** `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
- *  escribe un motorizado: de quién es el chat lo dice `kind`. */
-function Bubble({ message, kind }: { message: ChatMessage; kind: ConversationKind }) {
+/**
+ * `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
+ * escribe un motorizado. Colores de WhatsApp: lo que llega va en blanco y lo
+ * que sale en verde; quién lo mandó, el bot o un asesor, lo dice la etiqueta.
+ *
+ * Las opciones del mensaje se abren con los tres puntos, que solo existen
+ * donde hay cursor y aparecen al pasarlo por encima. En pantalla táctil no
+ * hay botón: se mantiene presionada la burbuja. `onMenu` recibe el botón para
+ * anclar el menú, o nada.
+ */
+function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: ChatMessage, anchor: DOMRect | null) => void }) {
   const mine = message.role !== "restaurant";
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touched = useRef(false);
+
+  function cancelHold() {
+    if (hold.current) clearTimeout(hold.current);
+    hold.current = null;
+  }
+
   return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+    <div className={`group flex items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
       <div
-        className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
-          message.role === "restaurant"
-            ? `rounded-bl-md text-ink ${KINDS[kind].bubble}`
-            : message.role === "bot"
-              ? "rounded-br-md bg-clapi text-white"
-              : "rounded-br-md bg-gold text-clapi-deep"
+        onPointerDown={(e) => {
+          touched.current = e.pointerType === "touch";
+          if (touched.current) hold.current = setTimeout(() => onMenu(message, null), 450);
+        }}
+        onPointerUp={cancelHold}
+        onPointerCancel={cancelHold}
+        onPointerLeave={cancelHold}
+        // En táctil, el menú del navegador saldría encima del nuestro.
+        onContextMenu={(e) => {
+          if (touched.current) e.preventDefault();
+        }}
+        className={`max-w-[85%] select-none whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
+          mine ? "rounded-br-md bg-chat-out" : "rounded-bl-md bg-surface"
         }`}
       >
-        {message.role !== "restaurant" && (
-          <p className={`mb-0.5 text-[11px] font-semibold ${message.role === "bot" ? "text-white/70" : "text-clapi-deep/70"}`}>
+        {mine && (
+          <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${message.role === "bot" ? "text-clapi-ink" : "text-ink"}`}>
+            {message.role === "bot" ? <Bot size={12} /> : <Headset size={12} />}
             {message.role === "bot" ? "Bot" : "Asesor"}
           </p>
         )}
         {message.text}
-        <p className={`mt-1 text-right text-[10px] ${message.role === "restaurant" ? "text-ink-3" : "opacity-70"}`}>
-          {timeLabel(message.createdAt)}
-        </p>
+        <p className={`mt-1 text-right text-[10px] ${mine ? "text-ink-2/80" : "text-ink-3"}`}>{timeLabel(message.createdAt)}</p>
       </div>
+      <button
+        type="button"
+        aria-label="Opciones del mensaje"
+        aria-haspopup="menu"
+        onClick={(e) => onMenu(message, e.currentTarget.getBoundingClientRect())}
+        className="ease-ui hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-2 opacity-0 hover:bg-surface/70 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 can-hover:flex"
+      >
+        <MoreVertical size={16} />
+      </button>
     </div>
   );
 }
@@ -184,6 +193,29 @@ export default function ConversacionesPage() {
   const [draftText, setDraftText] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // La caja crece con lo que se escribe o se pega (un pedido de varias líneas), hasta su tope.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draftText]);
+
+  const [menu, setMenu] = useState<{ message: ChatMessage; anchor: DOMRect | null } | null>(null);
+  const [forwarding, setForwarding] = useState<ChatMessage | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 2200);
+    return () => clearTimeout(id);
+  }, [notice]);
+
+  async function copy(text: string, done: string) {
+    setNotice((await copyText(text)) ? done : "No se pudo copiar");
+  }
 
   async function act(action: "pause" | "resume") {
     if (!selected) return;
@@ -206,11 +238,7 @@ export default function ConversacionesPage() {
       loadThread(selected.id);
     } else {
       const data = await res.json().catch(() => ({}));
-      setSendError(
-        data.reason === "no_bot" || data.reason === "bad_secret"
-          ? "El portal no está bien conectado con el bot (BOT_URL / INTERNAL_SECRET)."
-          : "WhatsApp rechazó el mensaje. Si este número no escribe hace más de 24 h, Meta no deja escribirle primero.",
-      );
+      setSendError(sendErrorText(data.reason));
       loadThread(selected.id);
     }
   }
@@ -318,8 +346,8 @@ export default function ConversacionesPage() {
           </div>
         </aside>
 
-        {/* Hilo */}
-        <section className={`min-h-0 flex-1 flex-col bg-canvas ${selected ? "flex" : "hidden lg:flex"}`}>
+        {/* Hilo. `min-w-0`: en celular no puede ensancharse por un nombre o un teléfono largos. */}
+        <section className={`min-h-0 min-w-0 flex-1 flex-col bg-chat ${selected ? "flex" : "hidden lg:flex"}`}>
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-ink-3">
               <MessagesSquare size={26} className="opacity-50" />
@@ -327,11 +355,11 @@ export default function ConversacionesPage() {
             </div>
           ) : (
             <>
-              <header className="flex items-center gap-3 border-b border-line bg-surface px-3 py-3 lg:px-5">
+              <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-3 sm:gap-3 lg:px-5">
                 <button
                   type="button"
                   onClick={() => setSelectedId(null)}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-2 lg:hidden"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-2 lg:hidden"
                   aria-label="Volver"
                 >
                   <ArrowLeft size={20} />
@@ -343,16 +371,15 @@ export default function ConversacionesPage() {
                     <span className="min-w-0 truncate">{formatPhone(selected.phone)}</span>
                   </p>
                 </div>
+                <ChatContactActions phone={selected.phone} onCopy={(text) => copy(text, "Número copiado")} />
+                {/* En celular el encabezado es del contacto: "Intervenir" baja a la barra del pie,
+                    y "Tú atiendes" ya lo dice la franja amarilla. */}
                 {selected.botPaused ? (
-                  <span className="flex items-center gap-1.5 rounded-lg bg-gold-soft px-2.5 py-1.5 text-xs font-semibold text-gold-ink">
+                  <span className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-gold-soft px-2.5 py-1.5 text-xs font-semibold text-gold-ink sm:flex">
                     <Headset size={13} /> Tú atiendes
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => act("pause")}
-                    className="ease-ui flex h-9 items-center gap-1.5 rounded-lg bg-client px-3 text-xs font-semibold text-white shadow-sm can-hover:hover:brightness-110"
-                  >
+                  <button type="button" onClick={() => act("pause")} className={`hidden sm:flex ${INTERVENE}`}>
                     <Hand size={14} /> Intervenir
                   </button>
                 )}
@@ -378,7 +405,12 @@ export default function ConversacionesPage() {
 
               <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-4 lg:px-6">
                 {thread.map((m) => (
-                  <Bubble key={m.id} message={m} kind={selected.kind} />
+                  <Bubble
+                    key={m.id}
+                    message={m}
+                    // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
+                    onMenu={(message, anchor) => setMenu({ message, anchor: isDesktop() ? anchor : null })}
+                  />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -387,7 +419,15 @@ export default function ConversacionesPage() {
                 <form onSubmit={send} className="border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
                   {sendError && <p className="mb-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{sendError}</p>}
                   <div className="flex items-end gap-2">
+                    <QuickReplies
+                      kind={selected.kind}
+                      onPick={(text) => {
+                        setDraftText((prev) => (prev.trim() ? `${prev.trimEnd()}\n${text}` : text));
+                        inputRef.current?.focus();
+                      }}
+                    />
                     <textarea
+                      ref={inputRef}
                       value={draftText}
                       onChange={(e) => setDraftText(e.target.value)}
                       onKeyDown={(e) => {
@@ -404,7 +444,7 @@ export default function ConversacionesPage() {
                       type="submit"
                       disabled={sending || !draftText.trim()}
                       aria-label="Enviar"
-                      className="ease-ui flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-client text-white disabled:opacity-40"
+                      className="ease-ui flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-clapi text-white disabled:opacity-40"
                     >
                       <SendHorizontal size={18} />
                     </button>
@@ -412,13 +452,61 @@ export default function ConversacionesPage() {
                 </form>
               ) : (
                 <div className="flex items-center justify-center gap-2 border-t border-line bg-surface px-4 py-3 text-xs text-ink-3">
-                  <Bot size={14} className="text-clapi" /> El bot está atendiendo. Toca <strong className="text-ink-2">Intervenir</strong> para escribir tú.
+                  <Bot size={14} className="shrink-0 text-clapi" />
+                  <span className="sm:hidden">El bot está atendiendo.</span>
+                  <span className="hidden sm:inline">
+                    El bot está atendiendo. Toca <strong className="text-ink-2">Intervenir</strong> para escribir tú.
+                  </span>
+                  <button type="button" onClick={() => act("pause")} className={`ml-auto flex sm:hidden ${INTERVENE}`}>
+                    <Hand size={14} /> Intervenir
+                  </button>
                 </div>
               )}
             </>
           )}
         </section>
       </div>
+
+      {menu && (
+        <MessageMenu
+          message={menu.message}
+          anchor={menu.anchor}
+          onCopy={copy}
+          onForward={() => {
+            setForwarding(menu.message);
+            setMenu(null);
+          }}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      {forwarding && (
+        <ForwardDialog
+          text={forwarding.text}
+          chats={list.filter((c) => c.id !== selectedId)}
+          onDone={(to) => {
+            setForwarding(null);
+            setNotice(`Reenviado a ${to}`);
+            loadList();
+          }}
+          onClose={() => setForwarding(null)}
+        />
+      )}
+
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            role="status"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-70 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-clapi-deep px-4 py-2.5 text-sm font-medium text-white shadow-xl lg:bottom-10"
+          >
+            <Check size={15} className="text-gold" /> {notice}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

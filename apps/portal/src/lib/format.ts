@@ -22,6 +22,16 @@ export function formatPhone(phone: string): string {
   return phone;
 }
 
+/**
+ * Los teléfonos que aparecen dentro de un texto libre ("Numero cliente: 300 123 4567"),
+ * sin repetir y ya como los deja `phoneDigits`. Celulares (3xx) y fijos (60x)
+ * de Colombia: diez dígitos, con o sin el 57 delante.
+ */
+export function findPhones(text: string): string[] {
+  const found = text.matchAll(/(?:^|\D)((?:\+?57[\s.-]?)?(?:3\d{2}|60\d)[\s.-]?\d{3}[\s.-]?\d{4})(?!\d)/g);
+  return [...new Set([...found].map((match) => phoneDigits(match[1])))];
+}
+
 /** "45s", "2 min", "1 h 5 min" — una duración en palabras. */
 export function durationLabel(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
