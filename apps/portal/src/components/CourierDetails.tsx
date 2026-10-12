@@ -68,7 +68,7 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: CourierProfile; o
       </div>
       {failed && <p className="rounded-lg bg-danger-soft px-3 py-2 text-danger">No se pudo guardar. Intenta de nuevo.</p>}
       <div className="flex gap-2">
-        <button type="submit" disabled={busy} className="ease-ui h-10 flex-1 rounded-xl bg-client text-sm font-semibold text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="ease-ui h-10 flex-1 rounded-xl bg-clapi text-sm font-semibold text-white disabled:opacity-50">
           Guardar
         </button>
         <button type="button" onClick={onCancel} className="ease-ui h-10 rounded-xl bg-sunken px-4 text-sm font-semibold text-ink-2">

@@ -65,7 +65,7 @@ export default function TarifasPage() {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-client px-5 text-sm font-semibold text-white shadow-sm disabled:opacity-40"
+          className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-clapi px-5 text-sm font-semibold text-white shadow-sm disabled:opacity-40"
         >
           {saved ? <Check size={17} /> : null}
           {saving ? "Guardando…" : saved ? "Guardado" : "Guardar cambios"}
@@ -73,7 +73,7 @@ export default function TarifasPage() {
       </div>
 
       <div className="flex gap-3 rounded-2xl bg-clapi-soft p-4 text-sm text-clapi-ink">
-        <Sparkles size={18} className="mt-0.5 shrink-0 fill-gold text-gold" />
+        <Sparkles size={18} className="mt-0.5 shrink-0 fill-clapi text-clapi" />
         <p>
           <strong>El bot reconoce el barrio solo.</strong> Cuando un restaurante escribe <em>“recoger cra 119, Caney — entregar calle 18,
           Valle del Lili”</em>, el sistema identifica las dos zonas y cobra el precio de esta tabla — sin que nadie lo calcule a mano.
@@ -82,7 +82,7 @@ export default function TarifasPage() {
 
       <section className="card overflow-hidden">
         <div className="flex items-center gap-2 border-b border-line px-5 py-4 text-sm font-semibold">
-          <MapPinned size={16} className="text-client" /> Matriz de precios
+          <MapPinned size={16} className="text-clapi" /> Matriz de precios
           <span className="ml-auto text-xs font-normal text-ink-3">Filas: recoge · Columnas: entrega</span>
         </div>
 

@@ -1,20 +1,29 @@
 @import "tailwindcss";
 
 /*
- * CLAPI Dispatch — tema claro.
+ * CLAPI Dispatch — tema claro, con la paleta de la guía de marca de CLAPI.
  *
- * Cuatro capas de color, cada una con un solo trabajo:
- * - CLAPI (morado + amarillo): el cascarón. Navegación, "en ruta", detalles.
- * - Cliente (--client, inyectado desde lib/brand.ts): su logo y la acción
- *   principal de cada pantalla. Es lo que hace que el portal se sienta suyo.
+ * Cinco capas de color, cada una con un solo trabajo:
+ * - CLAPI: el producto entero. Azul noche (#0D0B14) en el cascarón, violeta
+ *   (#532CE1) en acciones y estados activos, lavanda (#EDE6FF) en chips y
+ *   hovers, amarillo (#FFD500) en cobros y avisos que no pueden pasar de largo.
+ * - Cliente (--client, inyectado desde lib/brand.ts): solo su insignia en el
+ *   cascarón. Las acciones principales van en el violeta de CLAPI.
  * - Semánticos: verde = entregado/libre, ámbar = esperando, rojo = urgente.
  *   Siempre con texto al lado: el color orienta, nunca es la única señal.
  * - Motorizado (azul): en Conversaciones, lo que separa de un vistazo el chat
- *   de una moto del de un restaurante, que va en el morado de CLAPI.
+ *   de una moto del de un restaurante, que va en el violeta de CLAPI.
+ * - Chat (beige y verde): solo el hilo de Conversaciones, con los colores de
+ *   WhatsApp, que el operador ya conoce: fondo beige, lo que llega en blanco y
+ *   lo que sale en verde. Ni el violeta ni el amarillo son burbujas.
  */
 
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-sora), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* 380px. Por debajo (celulares de 320 a 375) la cabecera y las pestañas del
+     tablero van en su versión compacta. */
+  --breakpoint-xs: 23.75rem;
 
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -33,11 +42,13 @@
   --color-gold-soft: var(--gold-soft);
 
   --color-client: var(--client);
-  --color-client-soft: var(--client-soft);
 
   --color-courier: var(--courier);
   --color-courier-ink: var(--courier-ink);
   --color-courier-soft: var(--courier-soft);
+
+  --color-chat: var(--chat);
+  --color-chat-out: var(--chat-out);
 
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
@@ -48,28 +59,30 @@
 }
 
 :root {
-  --canvas: #f6f5fa;
+  --canvas: #f7f7f7;
   --surface: #ffffff;
   --sunken: #f1eff7;
-  --ink: #1a1530;
+  --ink: #0d0b14;
   --ink-2: #57526b;
   --ink-3: #8b869c;
   --line: #e9e6f1;
 
-  --clapi: #7c3aed;
-  --clapi-ink: #5b21b6;
-  --clapi-soft: #f3eeff;
-  --clapi-deep: #1e0b47;
-  --gold: #f5b700;
+  --clapi: #532ce1;
+  --clapi-ink: #532ce1;
+  --clapi-soft: #ede6ff;
+  --clapi-deep: #0d0b14;
+  --gold: #ffd500;
   --gold-ink: #8a5a00;
   --gold-soft: #fff6d6;
 
   --client: #e11d48;
-  --client-soft: color-mix(in srgb, var(--client) 10%, white);
 
   --courier: #0369a1;
   --courier-ink: #075985;
   --courier-soft: #e8f4fb;
+
+  --chat: #efeae2;
+  --chat-out: #d9fdd3;
 
   --ok: #059669;
   --ok-soft: #e9f9f2;
@@ -129,10 +142,10 @@
 
 @utility card {
   background-color: var(--color-surface);
-  border-radius: 14px;
+  border-radius: 1rem;
   box-shadow:
-    0 1px 2px 0 rgb(26 21 48 / 0.04),
-    0 0 0 1px var(--color-line);
+    0 1px 2px 0 rgb(13 11 20 / 0.04),
+    0 0 0 1px var(--color-clapi-soft);
 }
 
 @utility ease-ui {
@@ -184,17 +197,17 @@
   animation: urgent-ring 1.8s ease-in-out infinite;
 }
 
-/* El destello de "moto asignada": un pulso morado una sola vez. */
+/* El destello de "moto asignada": un pulso violeta una sola vez. */
 @keyframes assigned-pulse {
   0% {
     box-shadow:
       0 0 0 1px var(--color-clapi),
-      0 0 0 0 rgb(124 58 237 / 0.45);
+      0 0 0 0 rgb(83 44 225 / 0.45);
   }
   100% {
     box-shadow:
-      0 0 0 1px var(--color-line),
-      0 0 0 14px rgb(124 58 237 / 0);
+      0 0 0 1px var(--color-clapi-soft),
+      0 0 0 14px rgb(83 44 225 / 0);
   }
 }
 @utility animate-assigned {

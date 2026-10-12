@@ -41,8 +41,8 @@ export default function ArqueoPage() {
         <p className="text-sm text-ink-3">Cierre del día, al minuto · {new Date().toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" })}</p>
       </div>
 
-      {/* La cifra que importa, grande y en el color del cliente. */}
-      <section className="relative overflow-hidden rounded-2xl bg-client p-5 text-white shadow-sm lg:p-6">
+      {/* La cifra que importa, grande y en el violeta de CLAPI. */}
+      <section className="relative overflow-hidden rounded-2xl bg-clapi p-5 text-white shadow-sm lg:p-6">
         <span className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
         <span className="absolute -bottom-16 right-16 h-32 w-32 rounded-full bg-white/5" />
         <p className="flex items-center gap-2 text-sm font-medium text-white/80">

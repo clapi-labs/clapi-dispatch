@@ -51,7 +51,7 @@ export function CourierCard({
         {queuePosition !== null && (
           <span
             className={`flex h-10 min-w-10 flex-col items-center justify-center rounded-xl px-2 leading-none ${
-              queuePosition === 1 ? "bg-client text-white" : "bg-sunken text-ink-2"
+              queuePosition === 1 ? "bg-clapi text-white" : "bg-sunken text-ink-2"
             }`}
             title="Turno en la cola"
           >
@@ -68,7 +68,7 @@ export function CourierCard({
         </div>
         <div className="rounded-xl bg-sunken px-3 py-2">
           <dt className="flex items-center gap-1 text-ink-3">
-            <MapPin size={11} className={courier.status !== "offline" ? "text-client" : ""} /> Última zona
+            <MapPin size={11} className={courier.status !== "offline" ? "text-clapi" : ""} /> Última zona
           </dt>
           <dd className="truncate text-sm font-semibold">{zone ?? "Sin GPS"}</dd>
         </div>

@@ -34,7 +34,7 @@ export function AddCourierForm({ onCreated }: { onCreated: () => void }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-client px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
+        className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
       >
         <UserPlus size={17} /> Agregar motorizado
       </button>
@@ -61,7 +61,7 @@ export function AddCourierForm({ onCreated }: { onCreated: () => void }) {
         <button
           type="submit"
           disabled={busy || !name.trim() || !phone.trim()}
-          className="ease-ui h-11 flex-1 rounded-xl bg-client px-5 text-sm font-semibold text-white disabled:opacity-50 sm:flex-none"
+          className="ease-ui h-11 flex-1 rounded-xl bg-clapi px-5 text-sm font-semibold text-white disabled:opacity-50 sm:flex-none"
         >
           Guardar
         </button>

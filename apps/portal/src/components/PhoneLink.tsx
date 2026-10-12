@@ -5,14 +5,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { isMobileDevice } from "@/lib/device";
 import { formatPhone, phoneDigits } from "@/lib/format";
-
-/** Celular o tableta: ahí está la app de WhatsApp y se puede llamar. El iPad
- *  se presenta como Mac, por eso también se mira si la pantalla es táctil. */
-function isMobileDevice() {
-  const ua = navigator.userAgent;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
-}
 
 /** El menú del celular: WhatsApp o llamada. Va en un portal porque las
  *  tarjetas se animan con `transform`, y eso encierra a un `fixed` adentro. */
@@ -103,9 +97,23 @@ function ContactSheet({ phone, name, onClose }: { phone: string; name?: string; 
  * el servidor y el navegador renderizan lo mismo, y en computador sigue
  * sirviendo el clic del medio o "abrir en pestaña nueva".
  */
-export function PhoneLink({ phone, name, className = "" }: { phone: string; name?: string; className?: string }) {
+export function PhoneLink({
+  phone,
+  name,
+  pill,
+  className = "",
+}: {
+  phone: string;
+  name?: string;
+  /** Cápsula lavanda que se llena de violeta al pasar el cursor, en vez de un enlace de texto. */
+  pill?: boolean;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  const look = pill
+    ? "whitespace-nowrap rounded-full bg-clapi-soft px-2.5 py-1 text-[11px] font-semibold text-clapi-ink active:bg-clapi active:text-white can-hover:hover:bg-clapi can-hover:hover:text-white"
+    : "underline-offset-2 decoration-clapi/40 can-hover:hover:text-clapi-ink can-hover:hover:underline";
 
   return (
     <>
@@ -120,7 +128,7 @@ export function PhoneLink({ phone, name, className = "" }: { phone: string; name
           setOpen(true);
         }}
         // El `after` agranda la zona que responde al dedo sin mover nada de sitio.
-        className={`ease-ui relative inline-flex cursor-pointer items-center gap-1 underline-offset-2 decoration-clapi/40 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] can-hover:hover:text-clapi-ink can-hover:hover:underline ${className}`}
+        className={`ease-ui relative inline-flex cursor-pointer items-center gap-1 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] ${look} ${className}`}
       >
         <Phone size={12} className="shrink-0" />
         {formatPhone(phone)}
