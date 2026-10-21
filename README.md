@@ -1,4 +1,4 @@
-# demo-delivery-agency
+# Clapi Dispatch
 
 MVP de CLAPI Dispatch: automatización de domicilios para una agencia de logística B2B (fork de arquitectura desde `demo-delivery-system`, el sistema B2C de CLAPI).
 
