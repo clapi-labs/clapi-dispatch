@@ -72,6 +72,7 @@ services:
       DATABASE_URL: postgres://dispatch:${POSTGRES_PASSWORD:-dispatch}@postgres:5432/dispatch
       PORT: 3002
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-solo-para-local-no-usar-en-prod}
       BOT_URL: http://bot:3001
     depends_on:
       migrate: { condition: service_completed_successfully }

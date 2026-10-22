@@ -317,3 +317,15 @@ export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
 });
+
+/** Quienes entran al portal (despachadores y administradores). Sin registro
+ *  público: los usuarios los crea el equipo con `npm run user:create`. */
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  /** `scrypt$sal$hash`, ver `auth/password.ts`. */
+  passwordHash: text("password_hash").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

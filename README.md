@@ -18,3 +18,14 @@ DATABASE_URL=postgres://dispatch:dispatch@localhost:5432/dispatch npm run db:see
 ```
 
 Cambios de esquema: editar `packages/shared/src/db/schema.ts`, correr `npm run db:generate` y commitear la migración nueva en `packages/shared/drizzle/`. Se aplican con `npm run db:migrate` (en Docker corre solo antes de las apps).
+
+## Usuarios del portal
+
+El portal exige login. No hay registro público: los usuarios se crean desde la terminal (la contraseña va por variable para que no quede en el historial; mínimo 10 caracteres). Con el compose local levantado:
+
+```bash
+DATABASE_URL=postgres://dispatch:dispatch@localhost:5432/dispatch \
+USER_PASSWORD='una-clave-larga' npm run user:create -- ana@agencia.com "Ana"
+```
+
+Repetir el comando con el mismo correo cambia su contraseña. `SESSION_SECRET` (mínimo 32 caracteres) firma las sesiones; cambiarlo las cierra todas.

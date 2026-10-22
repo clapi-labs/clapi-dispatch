@@ -1,9 +1,9 @@
 "use client";
 
-import { Bell, BellOff, LayoutGrid, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, LayoutGrid, LogOut, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import logotipo from "@/assets/logotipo-clapi.svg";
 import { useTrips } from "@/components/TripsProvider";
@@ -61,6 +61,28 @@ function SoundButton({ compact }: { compact?: boolean }) {
   );
 }
 
+function LogoutButton({ compact }: { compact?: boolean }) {
+  const router = useRouter();
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    router.replace("/login");
+    router.refresh();
+  }
+  return (
+    <button
+      type="button"
+      onClick={logout}
+      aria-label="Cerrar sesión"
+      className={`ease-ui flex shrink-0 items-center gap-2 rounded-xl text-xs font-medium text-white/50 hover:bg-white/5 hover:text-white focus-visible:outline-gold ${
+        compact ? "h-10 w-10 justify-center" : "h-10 px-3"
+      }`}
+    >
+      <LogOut size={16} />
+      {!compact && "Cerrar sesión"}
+    </button>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { trips } = useTrips();
@@ -98,6 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Abajo: las alertas y, al pie, de quién es la central. */}
         <div className="mt-auto flex flex-col gap-3">
           <SoundButton />
+          <LogoutButton />
           <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-2.5">
             <ClientLogo />
             <div className="min-w-0 leading-tight">
@@ -115,6 +138,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <PlatformLogo size="sm" />
           <div className="flex min-w-0 items-center gap-2">
             <SoundButton compact />
+            <LogoutButton compact />
             {/* En celular solo va la insignia: el nombre se lee desde tableta. */}
             <p className="sr-only truncate text-sm font-semibold md:not-sr-only">{BRAND.client.name}</p>
             <ClientLogo round />

@@ -15,7 +15,8 @@
     "db:studio": "npm run db:studio --workspace=@dispatch/shared",
     "db:generate": "npm run db:generate --workspace=@dispatch/shared",
     "db:migrate": "npm run db:migrate --workspace=@dispatch/shared",
-    "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared"
+    "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared",
+    "user:create": "npm run user:create --workspace=@dispatch/shared --"
   },
   "devDependencies": {
     "@types/node": "^20",

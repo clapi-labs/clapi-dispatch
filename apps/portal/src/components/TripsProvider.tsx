@@ -2,6 +2,7 @@
 
 import { Bike } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { playChime, unlockAudio } from "@/lib/sound";
@@ -28,6 +29,7 @@ const TripsContext = createContext<TripsState | null>(null);
 const POLL_MS = 3000;
 
 export function TripsProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(true);
@@ -43,7 +45,12 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       // Si se liberó una moto (entregó desde su app), los pendientes la toman.
-      await fetch("/api/dispatch/auto-assign", { method: "POST" });
+      const kick = await fetch("/api/dispatch/auto-assign", { method: "POST" });
+      // La sesión venció: de vuelta al login en vez de quedarse "sin conexión".
+      if (kick.status === 401) {
+        router.replace("/login");
+        return;
+      }
       const res = await fetch("/api/trips", { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const data: Trip[] = await res.json();
@@ -65,7 +72,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setOnline(false);
     }
-  }, []);
+  }, [router]);
 
   usePolling(refresh, POLL_MS);
 
