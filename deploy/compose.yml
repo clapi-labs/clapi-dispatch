@@ -16,12 +16,20 @@ services:
       BOT_HOST: ${BOT_HOST:?falta BOT_HOST en .env}
       ACME_EMAIL: ${ACME_EMAIL:?falta ACME_EMAIL en .env}
     volumes:
-      - ./caddy:/etc/caddy:ro
+      # :z = etiqueta SELinux. Sin efecto en Ubuntu; necesario en Fedora/RHEL.
+      - ./caddy:/etc/caddy:ro,z
       - caddy_data:/data # certificados: si se pierde, se piden de nuevo
       - caddy_config:/config
     depends_on:
       bot: { condition: service_healthy }
       portal: { condition: service_healthy }
+    # Sin healthcheck, `up --wait` da por bueno un Caddy que se reinicia en bucle.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     mem_limit: 128m
 
   postgres:
@@ -101,6 +109,12 @@ services:
       INTERNAL_SECRET: ${INTERNAL_SECRET}
     depends_on:
       bot: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pidof node >/dev/null"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     mem_limit: 128m
 
 volumes:
