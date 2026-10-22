@@ -44,14 +44,12 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      // Si se liberó una moto (entregó desde su app), los pendientes la toman.
-      const kick = await fetch("/api/dispatch/auto-assign", { method: "POST" });
+      const res = await fetch("/api/trips", { cache: "no-store" });
       // La sesión venció: de vuelta al login en vez de quedarse "sin conexión".
-      if (kick.status === 401) {
+      if (res.status === 401) {
         router.replace("/login");
         return;
       }
-      const res = await fetch("/api/trips", { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const data: Trip[] = await res.json();
 

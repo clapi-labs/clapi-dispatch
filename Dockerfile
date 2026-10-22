@@ -30,6 +30,14 @@ RUN npm run build --workspace=@dispatch/${APP}
 FROM build AS migrate
 CMD ["npm", "run", "db:migrate", "--workspace=@dispatch/shared"]
 
+# --- Worker: tareas periódicas, llama al bot (sin dependencias) ---
+FROM node:${NODE_VERSION}-alpine AS worker
+ENV NODE_ENV=production
+WORKDIR /app
+COPY scripts/worker.mjs ./scripts/worker.mjs
+USER node
+CMD ["node", "scripts/worker.mjs"]
+
 # --- Imagen final: solo lo que necesita para correr ---
 FROM node:${NODE_VERSION}-alpine AS runtime
 ARG APP

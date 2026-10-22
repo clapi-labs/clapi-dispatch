@@ -60,6 +60,17 @@ services:
       retries: 5
     restart: unless-stopped
 
+  worker:
+    build:
+      <<: *build
+      target: worker
+    environment:
+      BOT_URL: http://bot:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
+    depends_on:
+      bot: { condition: service_healthy }
+    restart: unless-stopped
+
   portal:
     build:
       <<: *build
