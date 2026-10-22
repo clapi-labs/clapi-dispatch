@@ -73,7 +73,13 @@ rollback() {
 
 # 3) Base de datos y migraciones. Si fallan, las apps no se tocan.
 compose "$TAG" up -d --wait postgres
-compose "$TAG" run --rm migrate || { echo "!! Las migraciones fallaron: no se cambió nada." >&2; exit 1; }
+if ! compose "$TAG" run --rm migrate; then
+  echo "!! Las migraciones fallaron: no se cambió nada." >&2
+  # Las apps siguen en la versión anterior: sus archivos también.
+  [ -f backup/compose.yml ] && cp backup/compose.yml compose.yml
+  [ -f backup/Caddyfile ] && cp backup/Caddyfile caddy/Caddyfile
+  exit 1
+fi
 
 # 4) Cambio de versión y espera a que estén sanas.
 compose "$TAG" up -d --wait --wait-timeout 180 --remove-orphans || rollback

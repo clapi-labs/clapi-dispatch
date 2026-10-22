@@ -69,8 +69,11 @@ El restaurante y el motorizado solo hablan con WhatsApp. El motor (`engine`) no 
 
 ### Hosting
 - **Todo en un VPS de Hetzner**, fuera de Vercel. Motivo principal: el receptor de GPS necesita un proceso siempre encendido, y los pendientes no pueden depender de una pestaña abierta del portal.
-- **Tamaño inicial: CX23** (2 vCPU, 4 GB). Sin OSRM alcanza. Se puede subir de plan sin reinstalar.
-- **Región:** por confirmar. Ashburn (EE. UU.) queda más cerca de Colombia; verificar que el CX23 esté disponible allí.
+- **Tamaño inicial: CX23** (2 vCPU, 4 GB, ~6,49 €/mes). Sin OSRM alcanza. Se puede subir de plan sin reinstalar (CX33: 4 vCPU, 8 GB).
+- **Región: Núremberg (`nbg1`).** El CX23 solo existe en Europa; en Ashburn solo hay planes CPX, mucho más caros. La latencia extra no importa: cada mensaje espera a Meta y OpenAI.
+- **Dominio:** `clapi.solutions`. Staging: `staging.dispatch.clapi.solutions` (portal) y `bot.staging.dispatch.clapi.solutions` (bot). Prod: `dispatch.clapi.solutions` y `bot.dispatch.clapi.solutions`.
+- **Infraestructura solo la toca una persona** (token de Hetzner y estado de OpenTofu locales). El resto del equipo cambia el repo (despliega con el botón de Actions) y entra al servidor por SSH con su propia llave; los administradores se gestionan en `infra/access/admins.json` con `infra/scripts/sync-admins.sh`.
+- **Node 22.23.4** fijado (parche del 21 de oct. de 2026) y **Next 16.4.2**; ver `.nvmrc`.
 - Backups de Hetzner activados, además del `pg_dump` diario.
 
 ### Entornos
@@ -112,7 +115,8 @@ El restaurante y el motorizado solo hablan con WhatsApp. El motor (`engine`) no 
 - **CI** en cada PR y push a `main`: lint, typecheck, build, casos del algoritmo con `assert`, migraciones sobre base vacía. Rama protegida.
 - **CD a staging**: automático al hacer merge. Construye imágenes, las sube a GHCR y ejecuta `deploy.sh staging <hash>` por SSH.
 - **CD a prod**: botón (`workflow_dispatch`) con un hash ya probado en staging. No reconstruye: usa la misma imagen.
-- `deploy.sh` vive en el servidor: trae secretos, descarga la imagen, migra, levanta la versión nueva junto a la vieja, espera `/api/health`, cambia el tráfico en Caddy y apaga la vieja. Si falla, prod sigue con la anterior.
+- `deploy/deploy.sh` vive en el servidor y lo ejecuta GitHub Actions con una llave restringida (solo acepta `deploy <sha>`). Descarga el compose y el Caddyfile de ese commit, baja las imágenes, aplica las migraciones **antes** de tocar las apps (si fallan, no cambia nada), cambia las apps y espera sus healthchecks. Si algo falla, vuelve a la versión anterior y termina con error.
+- **Staging usa este despliegue simple** (las apps se recrean en unos segundos). El azul/verde sin corte queda para prod.
 - Volver atrás es el mismo botón con la versión anterior.
 
 ### Secretos y claves
@@ -133,7 +137,7 @@ El restaurante y el motorizado solo hablan con WhatsApp. El motor (`engine`) no 
 ### Acceso y seguridad
 - SSH solo con llave, un usuario por persona, sin `root` ni contraseña. Grupo `docker` solo a quien lo necesite.
 - Las llaves públicas del equipo van versionadas en OpenTofu; revocar es borrar la línea y aplicar.
-- Firewall de Hetzner y `ufw`; base de datos, motor y puertos internos sin exposición.
+- Firewall de Hetzner (no `ufw`: Docker escribe sus propias reglas por encima y se salta `ufw`); base de datos, motor y puertos internos sin exposición. En Caddy, el bot solo expone `/api/webhook/whatsapp` y `/api/health`; `/api/internal/*` queda en la red interna.
 - Login en el portal (hoy no existe) antes de exponerlo.
 - Traccar: identificadores aleatorios (`moto-7f3k9q`); el receptor descarta los no registrados.
 - Webhook de WhatsApp con verificación de firma (ya implementada).
