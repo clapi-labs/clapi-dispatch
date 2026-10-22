@@ -8,10 +8,6 @@ variable "server_type" {
   default = "cx23"
 }
 
-variable "admins" {
-  type = map(string)
-}
-
 variable "deploy_public_key" {
   type = string
 }

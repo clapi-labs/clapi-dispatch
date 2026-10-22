@@ -13,13 +13,19 @@ terraform {
 # entorno HCLOUD_TOKEN.
 provider "hcloud" {}
 
+locals {
+  # La lista de administradores vive en un JSON aparte: la leen OpenTofu (para
+  # crear el servidor) y infra/scripts/sync-admins.sh (para mantenerlo).
+  admins = jsondecode(file("${path.module}/../access/admins.json"))
+}
+
 module "server" {
   source = "../modules/server"
 
   name              = "dispatch-staging"
   location          = var.location
   server_type       = var.server_type
-  admins            = var.admins
+  admins            = local.admins
   deploy_public_key = var.deploy_public_key
 }
 

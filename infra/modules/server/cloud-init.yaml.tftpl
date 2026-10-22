@@ -18,15 +18,19 @@ swap:
   size: 2G
   maxsize: 2G
 
+# Mismo modelo que infra/scripts/remote-sync-admins.sh: los administradores
+# son el grupo dispatch-admins, con sudo sin contraseña (no tienen ninguna).
+groups:
+  - dispatch-admins
+
 # Un usuario por persona. Sin contraseña: solo entran con su llave.
 # Sin "default", cloud-init no crea el usuario ubuntu.
 users:
 %{ for name, key in admins ~}
   - name: ${name}
-    groups: [sudo, docker]
+    groups: [dispatch-admins, docker]
     shell: /bin/bash
     lock_passwd: true
-    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - ${key}
 %{ endfor ~}
@@ -41,6 +45,10 @@ users:
       - 'command="/opt/dispatch/deploy.sh",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ${deploy_public_key}'
 
 write_files:
+  - path: /etc/sudoers.d/90-dispatch-admins
+    permissions: "0440"
+    content: |
+      %dispatch-admins ALL=(ALL) NOPASSWD:ALL
   # Sin esto los logs de los contenedores crecen sin límite y llenan el disco.
   - path: /etc/docker/daemon.json
     content: |

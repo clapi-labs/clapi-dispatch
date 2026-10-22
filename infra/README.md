@@ -26,3 +26,15 @@ tofu apply                     # lo aplica (pide confirmación)
 - `terraform.tfvars` solo lleva llaves públicas.
 - `.terraform.lock.hcl` sí se sube: fija la versión exacta del proveedor.
 - `cloud-init` solo corre al primer arranque. Cambiarlo no modifica un servidor que ya existe.
+
+## Acceso al servidor del equipo
+
+Los administradores se definen en **`infra/access/admins.json`** (nombre de usuario => llave pública). Lo lee OpenTofu al crear el servidor y lo usa el script de sincronización para mantenerlo después:
+
+```bash
+# dar acceso: agregar la línea de la persona a admins.json, commitear y correr
+infra/scripts/sync-admins.sh tu_usuario@IP
+# quitar acceso: borrar su línea y correr lo mismo
+```
+
+El script crea las cuentas que falten, actualiza las llaves, elimina las que ya no estén y reescribe `AllowUsers`. Se niega a correr con una lista vacía o inválida, y no elimina a quien lo ejecuta.
