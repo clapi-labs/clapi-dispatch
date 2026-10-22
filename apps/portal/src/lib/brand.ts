@@ -3,7 +3,7 @@
  * lavanda y amarillo) y el cliente pone su nombre y su insignia en el cascarón.
  *
  * Para otro cliente no se toca código: se cambian las tres variables
- * NEXT_PUBLIC_CLIENT_* en Vercel y se redespliega. `NEXT_PUBLIC_` porque las
+ * NEXT_PUBLIC_CLIENT_* al construir la imagen y se redespliega. `NEXT_PUBLIC_` porque las
  * lee el navegador.
  */
 export const BRAND = {

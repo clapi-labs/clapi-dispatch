@@ -3,5 +3,4 @@ node_modules/
 .env.local
 *.tsbuildinfo
 dist/
-.vercel/
 infisical-upload/
