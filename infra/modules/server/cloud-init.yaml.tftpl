@@ -1,0 +1,67 @@
+#cloud-config
+# Primer arranque del servidor. Se ejecuta una sola vez. Si esto cambia, no
+# afecta a un servidor que ya existe (ver ignore_changes en main.tf).
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - fail2ban
+  - unattended-upgrades
+  - curl
+  - ca-certificates
+
+# 2 GB de swap: un respaldo para los picos de memoria (por ejemplo al migrar).
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+# Un usuario por persona. Sin contraseña: solo entran con su llave.
+# Sin "default", cloud-init no crea el usuario ubuntu.
+users:
+%{ for name, key in admins ~}
+  - name: ${name}
+    groups: [sudo, docker]
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${key}
+%{ endfor ~}
+  # GitHub Actions. Su llave solo puede ejecutar deploy.sh: no abre una
+  # terminal, ni reenvía puertos. El grupo docker equivale a root, por eso la
+  # restricción es lo que importa.
+  - name: deploy
+    groups: [docker]
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - 'command="/opt/dispatch/deploy.sh",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ${deploy_public_key}'
+
+write_files:
+  # Sin esto los logs de los contenedores crecen sin límite y llenan el disco.
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+  # Endurecimiento de SSH: sin root, sin contraseñas, solo estos usuarios.
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AllowUsers deploy%{ for name, key in admins } ${name}%{ endfor }
+  # Parches de seguridad automáticos.
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+runcmd:
+  - install -d -o deploy -g docker -m 2770 /opt/dispatch
+  - systemctl enable --now docker fail2ban
+  - systemctl restart ssh

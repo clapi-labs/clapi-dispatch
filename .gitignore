@@ -7,3 +7,10 @@ infisical-upload/
 .env
 .env.*
 !.env.example
+
+# OpenTofu: el estado puede tener datos sensibles; nunca al repo.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
