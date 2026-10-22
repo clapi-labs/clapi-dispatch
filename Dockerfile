@@ -2,7 +2,8 @@
 #   docker build --build-arg APP=bot    -t dispatch-bot .
 #   docker build --build-arg APP=portal -t dispatch-portal .
 
-ARG NODE_VERSION=22
+# Versión exacta de Node (parchada el 21 de oct. de 2026). Mantener igual a .nvmrc.
+ARG NODE_VERSION=22.23.4
 
 # --- Dependencias: solo se reconstruye si cambian los package.json ---
 FROM node:${NODE_VERSION}-alpine AS deps

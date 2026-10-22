@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    # No adoptar versiones recién publicadas: los paquetes comprometidos en
+    # ataques a npm suelen detectarse y retirarse en pocos días.
+    cooldown:
+      default-days: 7
     groups:
       next-react:
         patterns: ["next", "react", "react-dom", "eslint-config-next"]
