@@ -27,6 +27,8 @@ module "server" {
   server_type       = var.server_type
   admins            = local.admins
   deploy_public_key = var.deploy_public_key
+  # Sin backups de Hetzner por ahora; se activan más adelante.
+  backups = false
 }
 
 output "ipv4" {
