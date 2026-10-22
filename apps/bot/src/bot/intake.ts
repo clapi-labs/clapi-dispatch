@@ -39,6 +39,9 @@ const FIELD_LABEL: Record<string, string> = {
 const TEMPLATE =
   "¡Hola! 🛵 Para pedir una moto envíame:\n\n• Dónde se recoge (dirección y barrio)\n• Dirección de entrega (con barrio)\n• Teléfono del cliente\n• Valor a cobrar\n• Efectivo o transferencia\n\nPuede ser en un solo mensaje o por partes.";
 
+const TECHNICAL_ERROR_MESSAGE =
+  "Tuve un problema técnico leyendo tu mensaje 🙏 No se perdió nada de lo que ya me diste. ¿Me lo reenvías en un momento?";
+
 function joinLabels(labels: string[]) {
   if (labels.length <= 1) return labels.join("");
   return `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`;
@@ -127,6 +130,14 @@ export async function handleIncoming(message: IncomingMessage) {
     known,
     zones.map((z) => z.name),
   );
+
+  // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
+  // escala y el borrador queda como estaba. Solo se le pide reenviar.
+  if (extraction.failed) {
+    await reply(conversation, message.phone, TECHNICAL_ERROR_MESSAGE);
+    return;
+  }
+
   const merged = mergeTripFields(known, extraction.fields);
 
   if (extraction.confused) {

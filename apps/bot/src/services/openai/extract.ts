@@ -4,6 +4,15 @@ import { env } from "@/env";
 
 export type ExtractionOutcome = { fields: ExtractedTripFields; confused: boolean; failed: boolean };
 
+const TIMEOUT_MS = 15_000;
+const RETRY_DELAY_MS = 800;
+
+/** Fallos que valen un segundo intento: red, tiempo agotado, 429 y 5xx. Un 4xx
+ *  (llave mala, petición inválida) se repetiría igual. */
+function isTransient(status: number) {
+  return status === 429 || status >= 500;
+}
+
 /**
  * Una sola llamada con salida JSON forzada. Recibe lo ya capturado para que
  * el modelo sepa a qué campo pertenece un dato suelto ("3001234567" → el
@@ -15,25 +24,42 @@ export async function extractTripFields(
   known: ExtractedTripFields,
   zoneNames: string[],
 ): Promise<ExtractionOutcome> {
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const body = JSON.stringify({
+    model: env.openai.chatModel,
+    response_format: { type: "json_object" },
+    temperature: 0,
+    messages: [
+      { role: "system", content: buildExtractionPrompt(zoneNames) },
+      {
+        role: "user",
+        content: `Datos ya capturados:\n${JSON.stringify(known)}\n\nMensaje nuevo del restaurante:\n${messageText}`,
+      },
+    ],
+  });
+
+  const call = () =>
+    fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.openai.apiKey}` },
-      body: JSON.stringify({
-        model: env.openai.chatModel,
-        response_format: { type: "json_object" },
-        temperature: 0,
-        messages: [
-          { role: "system", content: buildExtractionPrompt(zoneNames) },
-          {
-            role: "user",
-            content: `Datos ya capturados:\n${JSON.stringify(known)}\n\nMensaje nuevo del restaurante:\n${messageText}`,
-          },
-        ],
-      }),
+      body,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
-    if (!response.ok) return { fields: EMPTY_TRIP_FIELDS, confused: false, failed: true };
+  try {
+    let response: Response;
+    try {
+      response = await call();
+      if (isTransient(response.status)) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      console.warn("[openai] falló, reintentando una vez:", error instanceof Error ? error.message : error);
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      response = await call();
+    }
+
+    if (!response.ok) {
+      console.error(`[openai] error ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      return { fields: EMPTY_TRIP_FIELDS, confused: false, failed: true };
+    }
 
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const raw = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
@@ -58,7 +84,8 @@ export async function extractTripFields(
       confused: raw.confuso === true,
       failed: false,
     };
-  } catch {
+  } catch (error) {
+    console.error("[openai] no se pudo extraer el pedido:", error instanceof Error ? error.message : error);
     return { fields: EMPTY_TRIP_FIELDS, confused: false, failed: true };
   }
 }
