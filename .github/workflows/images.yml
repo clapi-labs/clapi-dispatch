@@ -1,11 +1,11 @@
 name: Imágenes
 
-# Construye y publica las imágenes en GHCR al hacer merge a main. Cada imagen
-# lleva el hash del commit como etiqueta (nunca se despliega "latest"): la
-# misma imagen que se prueba en staging es la que sube a producción.
+# Construye y publica las imágenes en GHCR al hacer push a dev (staging) o a
+# main. Cada imagen lleva el hash del commit como etiqueta (nunca se despliega
+# "latest").
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
@@ -52,6 +52,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/dispatch-${{ matrix.name }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/dispatch-${{ matrix.name }}:main
+            ${{ env.REGISTRY }}/dispatch-${{ matrix.name }}:${{ github.ref_name }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
