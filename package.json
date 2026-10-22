@@ -9,12 +9,13 @@
   "scripts": {
     "dev:bot": "npm run dev --workspace=@dispatch/bot",
     "dev:portal": "npm run dev --workspace=@dispatch/portal",
-    "dev:rider": "npm run dev --workspace=@dispatch/rider",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "tsc --build --verbose",
-    "db:push": "npm run db:push --workspace=@dispatch/shared",
-    "db:studio": "npm run db:studio --workspace=@dispatch/shared"
+    "db:studio": "npm run db:studio --workspace=@dispatch/shared",
+    "db:generate": "npm run db:generate --workspace=@dispatch/shared",
+    "db:migrate": "npm run db:migrate --workspace=@dispatch/shared",
+    "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared"
   },
   "devDependencies": {
     "@types/node": "^20",
