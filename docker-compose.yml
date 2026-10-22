@@ -1,0 +1,89 @@
+# Entorno local completo: Postgres + migraciones + bot + portal.
+#   cp .env.example .env   (y llenar los valores)
+#   docker compose up --build
+# Bot en http://localhost:3001, portal en http://localhost:3002.
+name: dispatch
+
+x-build: &build
+  context: .
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dispatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dispatch}
+      POSTGRES_DB: dispatch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispatch -d dispatch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  migrate:
+    build:
+      <<: *build
+      target: migrate
+      args: { APP: bot }
+    environment:
+      DATABASE_URL: postgres://dispatch:${POSTGRES_PASSWORD:-dispatch}@postgres:5432/dispatch
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  bot:
+    build:
+      <<: *build
+      args: { APP: bot }
+    environment:
+      DATABASE_URL: postgres://dispatch:${POSTGRES_PASSWORD:-dispatch}@postgres:5432/dispatch
+      PORT: 3001
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
+      BOT_ACTIVE: ${BOT_ACTIVE:-false}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  portal:
+    build:
+      <<: *build
+      args:
+        APP: portal
+        NEXT_PUBLIC_CLIENT_NAME: ${NEXT_PUBLIC_CLIENT_NAME:-}
+        NEXT_PUBLIC_CLIENT_INITIALS: ${NEXT_PUBLIC_CLIENT_INITIALS:-}
+        NEXT_PUBLIC_CLIENT_COLOR: ${NEXT_PUBLIC_CLIENT_COLOR:-}
+    environment:
+      DATABASE_URL: postgres://dispatch:${POSTGRES_PASSWORD:-dispatch}@postgres:5432/dispatch
+      PORT: 3002
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
+      BOT_URL: http://bot:3001
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      bot: { condition: service_started }
+    ports:
+      - "127.0.0.1:3002:3002"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/viajes"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

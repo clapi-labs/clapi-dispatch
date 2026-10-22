@@ -4,3 +4,6 @@ node_modules/
 *.tsbuildinfo
 dist/
 infisical-upload/
+.env
+.env.*
+!.env.example
