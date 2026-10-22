@@ -1,0 +1,36 @@
+{
+	# Correo para los avisos de Let's Encrypt (vencimiento, problemas).
+	email {$ACME_EMAIL}
+}
+
+# Cabeceras de seguridad comunes. Caddy obtiene y renueva los certificados solo.
+(seguridad) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# Portal de despachos (con login).
+{$PORTAL_HOST} {
+	import seguridad
+	header X-Frame-Options "DENY"
+	encode zstd gzip
+	reverse_proxy portal:3002
+}
+
+# Bot de WhatsApp. Desde internet solo se ven el webhook (Meta) y la salud.
+# /api/internal/* queda sin exponer: lo usan el portal y el worker por la red
+# interna de Docker.
+{$BOT_HOST} {
+	import seguridad
+	@publico path /api/webhook/whatsapp /api/health
+	handle @publico {
+		reverse_proxy bot:3001
+	}
+	handle {
+		respond "No encontrado" 404
+	}
+}
