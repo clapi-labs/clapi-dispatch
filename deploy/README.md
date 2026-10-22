@@ -18,7 +18,7 @@ Ya con el servidor creado por `infra/` y los registros DNS apuntando a su IP:
 scp deploy/deploy.sh deploy/env.example TU_USUARIO@IP:/opt/dispatch/
 # 2. En el servidor: crear el .env con permisos estrictos y llenarlo
 ssh TU_USUARIO@IP
-cd /opt/dispatch && mv env.example .env && chmod 600 .env
+cd /opt/dispatch && mv env.example .env && sudo chown deploy:docker .env && chmod 660 .env
 openssl rand -base64 36   # una vez por cada secreto (POSTGRES_PASSWORD, INTERNAL_SECRET, SESSION_SECRET)
 nano .env
 # 3. Primer despliegue (el sha de un commit cuyas imágenes ya estén publicadas)

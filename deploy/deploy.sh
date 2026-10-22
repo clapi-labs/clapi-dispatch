@@ -11,6 +11,9 @@
 # migraciones, cambia las apps y espera a que estén sanas. Si algo falla,
 # vuelve a la versión anterior.
 set -euo pipefail
+# Lo ejecutan personas (administradores) y el usuario deploy: lo que uno cree, el
+# otro tiene que poder sobrescribirlo.
+umask 002
 
 DIR="${DEPLOY_DIR:-/opt/dispatch}"
 REPO="${DEPLOY_REPO:-clapi-labs/clapi-dispatch}"
