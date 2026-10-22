@@ -107,6 +107,8 @@ El restaurante y el motorizado solo hablan con WhatsApp. El motor (`engine`) no 
 - *Por verificar antes de construir:* si Google ofrece modo moto (`TWO_WHEELER`) en Colombia, el costo con volumen real y los límites de caché de sus términos.
 
 ### CI/CD (GitHub Actions)
+- **Hecho:** `.github/workflows/ci.yml` (lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, verificación de que `schema.ts` no tiene cambios sin migración, seed de demo y construcción de las imágenes), `images.yml` (publica en GHCR al hacer merge a `main`, etiquetadas con el hash del commit) y Dependabot. **Falta:** los workflows de despliegue (fase 4) y los casos del algoritmo.
+- Imágenes: `ghcr.io/clapi-labs/dispatch-{bot,portal,migrate,worker}:<hash>`. La marca del portal se incrusta al construir, desde las variables del repositorio `CLIENT_NAME`, `CLIENT_INITIALS` y `CLIENT_COLOR`.
 - **CI** en cada PR y push a `main`: lint, typecheck, build, casos del algoritmo con `assert`, migraciones sobre base vacía. Rama protegida.
 - **CD a staging**: automático al hacer merge. Construye imágenes, las sube a GHCR y ejecuta `deploy.sh staging <hash>` por SSH.
 - **CD a prod**: botón (`workflow_dispatch`) con un hash ya probado en staging. No reconstruye: usa la misma imagen.
