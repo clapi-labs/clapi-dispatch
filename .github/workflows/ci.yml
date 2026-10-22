@@ -1,9 +1,12 @@
 name: CI
 
+# Solo en PRs hacia main y en main: mientras se trabaja directo en dev no hay
+# espera. Las imágenes se construyen al hacer merge (images.yml).
 on:
   pull_request:
+    branches: [main]
   push:
-    branches: [main, dev]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -67,28 +70,3 @@ jobs:
           fi
       - name: Datos de demo
         run: npm run db:seed:demo
-
-  images:
-    name: Imagen ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: bot, target: runtime, app: bot }
-          - { name: portal, target: runtime, app: portal }
-          - { name: worker, target: worker, app: bot }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      # Solo comprueba que la imagen construye; las que se publican salen de
-      # images.yml al hacer merge a main.
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: ${{ matrix.target }}
-          build-args: APP=${{ matrix.app }}
-          push: false
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
