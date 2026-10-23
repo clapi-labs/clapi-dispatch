@@ -12,8 +12,9 @@
 # vuelve a la versión anterior.
 set -euo pipefail
 # Lo ejecutan personas (administradores) y el usuario deploy: lo que uno cree, el
-# otro tiene que poder sobrescribirlo.
-umask 002
+# otro tiene que poder sobrescribirlo (grupo docker), pero nadie más debe leerlo:
+# hay archivos con secretos.
+umask 007
 
 DIR="${DEPLOY_DIR:-/opt/dispatch}"
 REPO="${DEPLOY_REPO:-clapi-labs/clapi-dispatch}"
@@ -32,14 +33,52 @@ cd "$DIR"
 exec 9> .deploy.lock
 flock -n 9 || { echo "Ya hay un despliegue en curso." >&2; exit 1; }
 
+# .env = lo del servidor (dominios, claves generadas, credencial de Infisical).
+# .env.infisical = secretos que se bajan de Infisical en cada despliegue; va
+# después, así que sus valores ganan si una variable está en los dos.
+ENV_ARGS=(--env-file .env)
 compose() { # compose <tag> <args...>
   local tag="$1"; shift
-  IMAGE_TAG="$tag" docker compose --env-file .env -f compose.yml "$@"
+  IMAGE_TAG="$tag" docker compose "${ENV_ARGS[@]}" -f compose.yml "$@"
 }
 env_value() { grep -E "^$1=" .env | head -n1 | cut -d= -f2- || true; }
 
+# Baja los secretos del entorno de Infisical a .env.infisical. Si Infisical no
+# responde pero ya hay una copia de un despliegue anterior, usa esa; si no hay
+# ninguna, aborta: no se despliega con secretos faltantes sin avisar.
+fetch_secrets() {
+  local id secret project name domain token out
+  id="$(env_value INFISICAL_CLIENT_ID)"
+  if [ -z "$id" ]; then
+    echo "==> Infisical no está configurado: se usa solo .env"
+    return 0
+  fi
+  secret="$(env_value INFISICAL_CLIENT_SECRET)"
+  project="$(env_value INFISICAL_PROJECT_ID)"
+  name="$(env_value INFISICAL_ENV)"; name="${name:-staging}"
+  domain="$(env_value INFISICAL_DOMAIN)"; domain="${domain:-https://app.infisical.com/api}"
+  command -v infisical >/dev/null || { echo "!! Falta la CLI de Infisical (ver install-infisical.sh)." >&2; return 1; }
+
+  if token="$(infisical login --method=universal-auth --client-id "$id" --client-secret "$secret" --plain --silent --domain "$domain" 2>/dev/null)" \
+     && [ -n "$token" ] \
+     && out="$(infisical export --token "$token" --projectId "$project" --env "$name" --format dotenv --silent --domain "$domain" 2>/dev/null)" \
+     && [ -n "$out" ]; then
+    printf '%s\n' "$out" > .env.infisical
+    echo "==> Secretos de Infisical ($name): $(printf '%s\n' "$out" | grep -c .) variables"
+  elif [ -s .env.infisical ]; then
+    echo "!! No se pudo contactar a Infisical: se usa la última copia guardada." >&2
+  else
+    echo "!! No se pudieron obtener los secretos de Infisical y no hay copia previa." >&2
+    return 1
+  fi
+}
+
 PREVIOUS="$(cat .tag 2>/dev/null || true)"
 echo "==> Desplegando ${TAG:0:12} (antes: ${PREVIOUS:0:12})"
+
+# 0) Secretos (antes de tocar nada: si faltan, se aborta sin cambiar el servidor).
+fetch_secrets
+[ -s .env.infisical ] && ENV_ARGS+=(--env-file .env.infisical)
 
 # 1) Archivos de ESE commit, validados antes de reemplazar nada.
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
@@ -48,7 +87,7 @@ for file in compose.yml caddy/Caddyfile; do
   curl -fsSL --retry 3 "https://raw.githubusercontent.com/$REPO/$TAG/deploy/$file" -o "$STAGE/$file"
   [ -s "$STAGE/$file" ] || { echo "No se pudo descargar $file." >&2; exit 1; }
 done
-IMAGE_TAG="$TAG" docker compose --env-file .env -f "$STAGE/compose.yml" config -q
+IMAGE_TAG="$TAG" docker compose "${ENV_ARGS[@]}" -f "$STAGE/compose.yml" config -q
 
 mkdir -p caddy backup
 cp -f compose.yml backup/compose.yml 2>/dev/null || true

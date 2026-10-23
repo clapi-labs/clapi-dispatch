@@ -8,7 +8,7 @@
 # Después hay que volver a desplegar para que las apps lean el valor nuevo:
 #   ssh TU_USUARIO@IP 'cd /opt/dispatch && ./deploy.sh deploy $(cat .tag)'
 set -euo pipefail
-umask 002
+umask 007
 
 KEY="${1:?Uso: set-secret.sh NOMBRE_DE_LA_VARIABLE}"
 cd "${DEPLOY_DIR:-/opt/dispatch}"

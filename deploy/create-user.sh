@@ -6,7 +6,7 @@
 # La contraseña se pide por teclado (no se ve ni queda en el historial).
 # Necesita una terminal interactiva (por eso el -t de ssh).
 set -euo pipefail
-umask 002
+umask 007
 
 EMAIL="${1:?Uso: create-user.sh correo@dominio.com \"Nombre\"}"
 NAME="${2:-$EMAIL}"
