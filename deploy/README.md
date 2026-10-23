@@ -25,7 +25,12 @@ nano .env
 ./deploy.sh deploy <sha-de-40-caracteres>
 ```
 
-`deploy.sh` no se actualiza solo: si cambia en el repo, hay que copiarlo de nuevo.
+`deploy.sh` no se actualiza solo: si cambia en el repo, hay que copiarlo de nuevo. Pertenece a **root** (es lo único que la llave de despliegue puede ejecutar, y esa cuenta no debe poder modificarlo):
+
+```bash
+scp deploy/deploy.sh TU_USUARIO@IP:/opt/dispatch/deploy.sh.new
+ssh TU_USUARIO@IP 'cd /opt/dispatch && sudo install -o root -g docker -m 755 deploy.sh.new deploy.sh && rm deploy.sh.new'
+```
 
 ## Cambiar un secreto
 
