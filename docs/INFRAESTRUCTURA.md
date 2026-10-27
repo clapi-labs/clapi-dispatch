@@ -132,6 +132,120 @@ Reglas del flujo:
 
 Todas las imágenes propias son `ghcr.io/clapi-labs/dispatch-*:<hash del commit>` (públicas). Nunca se despliega `latest`. Los contenedores tienen `restart: unless-stopped`, healthchecks y límite de memoria.
 
+## Cómo funciona por dentro
+
+Vistas de cerca de las piezas importantes. Sirven para entender el sistema y para saber dónde mirar cuando algo falla.
+
+### Caddy: la puerta de entrada
+
+Es el único contenedor con puertos abiertos. Decide a dónde va cada petición según el dominio y la ruta, y pone HTTPS (pide y renueva los certificados solo).
+
+```mermaid
+flowchart LR
+    I[Internet] -- ":80 / :443" --> C{Caddy<br/>¿qué dominio?}
+    C -- "staging.dispatch…" --> P[portal :3002]
+    C -- "bot.staging.dispatch…" --> R{¿qué ruta?}
+    R -- "/api/webhook/whatsapp<br/>/api/health" --> B[bot :3001]
+    R -- "cualquier otra,<br/>incluida /api/internal/*" --> X[404 No encontrado]
+    C -. "puerto 80" .-> H[redirige a HTTPS]
+```
+
+- A todas las respuestas les añade cabeceras de seguridad (HSTS, `nosniff`, sin `Server`). Al portal, además, `X-Frame-Options: DENY`.
+- El portal y el bot no publican puertos: solo Caddy los alcanza por la red interna de Docker.
+- La configuración es `deploy/caddy/Caddyfile` y viaja con cada despliegue.
+
+### La API del bot
+
+| Ruta | Quién la llama | Protección | Qué hace |
+|---|---|---|---|
+| `GET /api/webhook/whatsapp` | Meta, al configurar el webhook | `WHATSAPP_VERIFY_TOKEN` | Responde el reto de verificación |
+| `POST /api/webhook/whatsapp` | Meta, con cada mensaje | Firma `x-hub-signature-256` con `WHATSAPP_APP_SECRET` | Recibe mensajes y botones |
+| `GET /api/health` | Cualquiera | Ninguna (no expone datos) | Dice si faltan variables y si el bot está activo |
+| `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Asigna moto a los viajes pendientes y avisa |
+| `POST /api/internal/notify` | portal | `x-internal-secret` + no expuesta | Avisa por WhatsApp cuando el portal asigna o marca entregado |
+| `POST /api/internal/send` | portal | `x-internal-secret` + no expuesta | Un operador escribe en un chat; el bot se pausa en ese chat |
+
+```mermaid
+flowchart TB
+    META[Meta] -- webhook --> W["/api/webhook/whatsapp"]
+    WK[worker] -- cada 5 s --> T["/api/internal/tick"]
+    PO[portal] --> N["/api/internal/notify"]
+    PO --> S["/api/internal/send"]
+
+    subgraph BOT[bot]
+        W --> IN[intake: decide qué hacer]
+        IN --> AI[OpenAI: extrae los datos del pedido]
+        IN --> Q[cola de asignación]
+        T --> Q
+        N --> NT[notify: arma los mensajes]
+        Q --> NT
+        S --> WA[cliente de WhatsApp]
+        NT --> WA
+        IN --> WA
+    end
+
+    IN --> DB[(Postgres)]
+    Q --> DB
+    WA -- "envía, solo si BOT_ACTIVE=true" --> META
+```
+
+### Qué pasa cuando llega un mensaje
+
+```mermaid
+sequenceDiagram
+    participant M as Meta
+    participant B as bot
+    participant DB as Postgres
+    participant AI as OpenAI
+
+    M->>B: POST /api/webhook/whatsapp
+    B->>B: verifica la firma (si falla: 403)
+    B-->>M: 200 OK de inmediato
+    Note over B: lo demás corre después de responder,<br/>así Meta no reintenta
+    B->>DB: ¿ya procesé este mensaje? (processed_messages)
+    alt repetido
+        B->>B: se ignora
+    else nuevo
+        B->>DB: guarda el mensaje en la conversación
+        alt el teléfono es de un motorizado
+            B->>DB: botón «Entregado»: cierra el viaje y libera la moto
+            B->>M: avisa al restaurante (y asigna un pendiente si lo hay)
+        else chat pausado por un operador
+            B->>B: no responde
+        else restaurante
+            B->>AI: extrae dirección, teléfono, valor, pago
+            AI-->>B: campos encontrados
+            alt pedido completo
+                B->>DB: crea el viaje, calcula tarifa por zona, asigna moto
+                B->>M: ficha al motorizado y confirmación al restaurante
+            else faltan datos
+                B->>M: «Solo me falta…»
+            else confuso o 3 intentos sin datos nuevos
+                B->>DB: pausa el chat y lo escala a un operador
+            end
+        end
+    end
+```
+
+Dos reglas que explican mucho del comportamiento:
+- **Siempre responde 200 a Meta**, aunque algo falle por dentro. Un error solo haría que Meta reenvíe el mismo mensaje.
+- **Cada mensaje se procesa una sola vez**, aunque Meta lo mande repetido (tabla `processed_messages`).
+
+### Vida de un viaje y el worker
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: pedido completo, sin moto libre
+    [*] --> en_route: pedido completo, hay moto libre
+    pending --> en_route: el worker (cada 5 s) o una moto que se libera
+    en_route --> delivered: botón «Entregado» del motorizado o el portal
+    delivered --> [*]
+```
+
+- El paso a `en_route` y a `delivered` es un `UPDATE` condicional (solo si el estado es el esperado). Por eso dos procesos a la vez nunca asignan el mismo viaje ni lo cierran dos veces.
+- El **worker** no tiene lógica: solo llama a `/api/internal/tick` cada 5 s, con espera creciente si el bot falla. Así los pendientes se asignan aunque nadie tenga el portal abierto.
+- Hoy la moto se elige con la cola simple de `packages/shared/src/db/dispatch-queue.ts`. El motor de `ALGORITMO.md` la reemplazará en ese mismo punto.
+
 ## Decisiones
 
 ### Hosting
