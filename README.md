@@ -7,6 +7,7 @@ Documentación:
 - [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md): arquitectura, decisiones y estado.
 - [`docs/OPERACION.md`](docs/OPERACION.md): entrar al servidor, desplegar, secretos, usuarios, diagnóstico.
 - [`docs/ALGORITMO.md`](docs/ALGORITMO.md): cómo se conecta y se prueba el algoritmo de asignación.
+- [`docs/PLAN.md`](docs/PLAN.md): próximos pasos, simulador de flota y reparto del equipo.
 
 ## Correr en local
 
