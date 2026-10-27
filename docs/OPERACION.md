@@ -25,6 +25,8 @@ Salud del bot: `https://bot.staging.dispatch.clapi.solutions/api/health` → `{"
 ```bash
 ssh -i ~/.ssh/clapi_ed25519 tu_usuario@staging.dispatch.clapi.solutions
 ```
+La primera vez SSH pregunta si confías en la huella del servidor: responde `yes`. Sin terminal interactiva (scripts, `BatchMode`) falla con «Host key verification failed» hasta que la huella esté guardada; se resuelve conectando una vez a mano o con `-o StrictHostKeyChecking=accept-new`.
+
 Solo hay acceso por llave: sin `root` y sin contraseña. Tu usuario está en los grupos `dispatch-admins` y `docker`. Todo vive en `/opt/dispatch`.
 
 ### Quitar o dar acceso (administrador de infraestructura)
@@ -124,6 +126,7 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 | `deploy.sh` dice «Ya hay un despliegue en curso» | Otro despliegue activo; esperar |
 | `deploy.sh` falla bajando imágenes | `images.yml` aún no terminó para ese hash, o el hash está mal |
 | Meta no verifica el webhook | `WHATSAPP_VERIFY_TOKEN` distinto al de Meta, o URL equivocada |
+| En los registros del bot: `envío rechazado 400 ... (#133010) Account not registered` | Los mensajes llegan, pero Meta rechaza el envío. Con el ID y el token correctos, mandar un mensaje de prueba desde *API Setup* en Meta reactiva el número de pruebas |
 | El bot no responde | `BOT_ACTIVE` en `false`, token de WhatsApp vencido (el temporal dura ~24 h) o falla de OpenAI |
 | Certificado no emitido | DNS aún sin propagar o puertos 80/443 cerrados |
 
