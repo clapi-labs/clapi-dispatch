@@ -13,11 +13,13 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | CI (lint, tipos, build, migraciones) | Hecho, corre en PR hacia `main` |
 | Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
 | Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
-| Servidor de prod | Pendiente |
+| Servidor de producción (separado de staging) | Pendiente |
 | Backups | Pendiente (desactivados a propósito por ahora) |
 | Motor de asignación (`engine`) y GPS | Pendiente |
 
-## Arquitectura
+## Arquitectura de un entorno
+
+Staging y producción tienen **esta misma estructura**, cada uno en su propio servidor. Por eso se dibuja una sola vez; más abajo se ve cómo se relacionan los dos.
 
 ```mermaid
 flowchart TB
@@ -36,18 +38,16 @@ flowchart TB
         GHCR[GHCR - imágenes]
     end
 
-    subgraph VPS[VPS Hetzner - solo puertos 22, 80 y 443]
+    subgraph VPS[Servidor Hetzner - solo puertos 22, 80 y 443]
         CADDY[Caddy - HTTPS y rutas]
 
-        subgraph STG[Proyecto Compose staging - red interna Docker]
+        subgraph STG[Proyecto Compose - red interna Docker]
             BOT[bot - webhook WhatsApp]
             PORTAL[portal - con login]
             WORKER[worker - cada 5 s]
             PG[(Postgres)]
             ENGINE[engine - algoritmo]:::pendiente
         end
-
-        PROD[Proyecto Compose prod - mismo diseño]:::pendiente
     end
 
     WA -- webhook --> CADDY
@@ -55,7 +55,6 @@ flowchart TB
     DESP -- HTTPS --> CADDY
     CADDY -- "solo /api/webhook/whatsapp y /api/health" --> BOT
     CADDY --> PORTAL
-    CADDY -.-> PROD
 
     BOT --> WA
     BOT --> OAI
@@ -74,7 +73,51 @@ flowchart TB
     classDef pendiente stroke-dasharray: 5 5
 ```
 
-Las líneas y cajas punteadas son lo que falta. El restaurante y el motorizado solo hablan con WhatsApp.
+Las líneas y cajas punteadas son lo que falta. Cada entorno usa su propio número de WhatsApp, su propia base y su propio `.env`. El restaurante y el motorizado solo hablan con WhatsApp.
+
+## Entornos y flujo de cambios
+
+Dos servidores distintos, con la misma estructura y nada compartido (ni base, ni secretos, ni número de WhatsApp). Cada rama lleva a un entorno.
+
+```mermaid
+flowchart LR
+    DEVR[Rama dev] -- push --> IMG1["images.yml: construye imágenes"]
+    IMG1 --> GHCR[(GHCR - imágenes por hash)]
+    GHCR -- "deploy.sh deploy hash" --> STG
+
+    subgraph STG[Servidor staging]
+        S1["staging.dispatch.clapi.solutions<br/>número de prueba de Meta<br/>base de pruebas"]
+    end
+
+    STG -- "el equipo prueba" --> OK{Funciona}
+    OK -- sí --> PR[PR de dev a main]
+    PR --> CI["ci.yml: lint, tipos, build, migraciones"]
+    CI -- merge --> MAIN[Rama main]
+    MAIN -- "botón: desplegar el mismo hash probado" --> GHCR
+    GHCR -- "deploy.sh deploy hash" --> PRD
+
+    subgraph PRD[Servidor producción]
+        P1["dispatch.clapi.solutions<br/>número real del cliente<br/>base con datos reales"]
+    end
+
+    OK -- no --> DEVR
+```
+
+| | Staging | Producción |
+|---|---|---|
+| Rama | `dev` | `main` |
+| Servidor | Hetzner CX23 (existe) | Otro Hetzner (pendiente: `infra/prod`) |
+| Portal / bot | `staging.dispatch…` / `bot.staging.dispatch…` | `dispatch…` / `bot.dispatch…` |
+| WhatsApp | Número de prueba de Meta | Número real del cliente |
+| Datos | De prueba, se pueden borrar | Reales, con backups |
+| Cómo se despliega | Automático al push (pendiente; hoy a mano) | Por botón, con un hash ya probado en staging |
+| Quién entra por SSH | Todo el equipo | Solo quien lo necesite |
+
+Reglas del flujo:
+- **Lo que llega a producción es la misma imagen que se probó en staging**: se despliega el hash, no se reconstruye.
+- Todo cambio pasa primero por `dev` y staging. Nada va directo a `main`.
+- Las migraciones corren antes de cambiar las apps; si fallan, no se toca nada y se mantiene la versión anterior.
+- Volver atrás es desplegar el hash anterior en el entorno que corresponda.
 
 ## Servicios
 
@@ -105,9 +148,9 @@ Todas las imágenes propias son `ghcr.io/clapi-labs/dispatch-*:<hash del commit>
 - **Node 22.23.4** y **Next 16.4.2** fijados (`.nvmrc`, `Dockerfile`).
 
 ### Entornos
-- **Staging y prod irán en el mismo servidor**, como dos proyectos de Compose con red, volúmenes, base y `.env` separados. Nunca comparten Postgres. Hoy solo existe staging.
+- **Staging y producción son servidores separados.** Cada uno con su Postgres, su `.env`, su número de WhatsApp y su estado de OpenTofu (`infra/staging`, `infra/prod`). Un error o una prueba en staging no puede afectar a producción.
 - Staging usa un número de prueba de Meta, nunca el del cliente.
-- Cuando prod tenga clientes pagando o haya presión de recursos, staging pasa a otro servidor: es cambiar el destino del despliegue.
+- Producción se crea copiando `infra/staging`; ver `OPERACION.md`.
 
 ### Infraestructura como código (`infra/`)
 - **OpenTofu** con el proveedor `hetznercloud/hcloud` (OpenTofu y no Terraform: misma sintaxis, licencia abierta).
@@ -172,7 +215,7 @@ Plan de prod: despliegue por botón (`workflow_dispatch`) con un hash ya probado
 ## Lo que falta
 
 1. Workflow de despliegue automático a staging (requiere guardar la llave de despliegue y la huella del servidor en los secretos de GitHub).
-2. Servidor de prod (`infra/prod`) y despliegue azul/verde.
+2. Servidor de producción aparte (`infra/prod`) y despliegue azul/verde.
 3. Backups: los de Hetzner (~20 % del costo del servidor) y un `pg_dump` diario fuera del servidor. Hoy **no hay ninguno**.
 4. Copia de seguridad de `terraform.tfstate`; sin él OpenTofu no sabe qué recursos le pertenecen.
 5. Token permanente de WhatsApp (usuario del sistema); el de pruebas dura ~24 h.
