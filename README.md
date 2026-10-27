@@ -2,7 +2,11 @@
 
 MVP de CLAPI Dispatch: automatización de domicilios para una agencia de logística B2B (fork de arquitectura desde `demo-delivery-system`, el sistema B2C de CLAPI).
 
-Ver [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md) para la arquitectura objetivo (VPS en Hetzner) y las decisiones de infraestructura.
+Documentación:
+
+- [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md): arquitectura, decisiones y estado.
+- [`docs/OPERACION.md`](docs/OPERACION.md): entrar al servidor, desplegar, secretos, usuarios, diagnóstico.
+- [`docs/ALGORITMO.md`](docs/ALGORITMO.md): cómo se conecta y se prueba el algoritmo de asignación.
 
 ## Correr en local
 

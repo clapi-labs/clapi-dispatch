@@ -1,162 +1,180 @@
 # Infraestructura
 
-Estado: **decidido, aún no implementado**. Hoy el sistema corre en Vercel + Neon + Infisical. Este documento describe el destino: todo en un VPS de Hetzner.
+Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay y por qué**. Cómo operarlo (entrar, desplegar, cambiar secretos) está en [`OPERACION.md`](OPERACION.md); el algoritmo de asignación, en [`ALGORITMO.md`](ALGORITMO.md).
 
-## Diagrama de arquitectura
+## Estado
+
+| Pieza | Estado |
+|---|---|
+| Servidor de staging (Hetzner, OpenTofu) | Hecho |
+| HTTPS automático (Caddy + Let's Encrypt) | Hecho |
+| Portal con login, bot, worker, Postgres | Hecho, funcionando en staging |
+| Migraciones versionadas (Drizzle) | Hecho |
+| CI (lint, tipos, build, migraciones) | Hecho, corre en PR hacia `main` |
+| Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
+| Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
+| Servidor de prod | Pendiente |
+| Backups | Pendiente (desactivados a propósito por ahora) |
+| Motor de asignación (`engine`) y GPS | Pendiente |
+
+## Arquitectura
 
 ```mermaid
 flowchart TB
-    subgraph Terceros
+    subgraph Externos
         WA[WhatsApp - Meta]
         OAI[OpenAI]
         GM[Google Maps]
-        TR[Traccar Client - celular del motorizado]
-        INF[Infisical - secretos]
+        TR[Traccar - GPS del motorizado]
     end
 
-    subgraph Personas
-        DESP[Despachador]
-        DEV[Equipo - SSH]
-    end
+    DESP[Despachador - navegador]
+    DEV[Equipo - SSH]
 
     subgraph GH[GitHub]
         REPO[Repo + Actions]
         GHCR[GHCR - imágenes]
     end
 
-    subgraph VPS[VPS Hetzner]
-        CADDY[Caddy - HTTPS, enruta por dominio]
+    subgraph VPS[VPS Hetzner - solo puertos 22, 80 y 443]
+        CADDY[Caddy - HTTPS y rutas]
 
-        subgraph PROD[Stack prod - red interna Docker]
-            BOT[bot - webhook WhatsApp + receptor GPS]
+        subgraph STG[Proyecto Compose staging - red interna Docker]
+            BOT[bot - webhook WhatsApp]
             PORTAL[portal - con login]
-            ENGINE[engine - algoritmo de asignación]
-            WORKER[worker - pendientes y ofertas]
+            WORKER[worker - cada 5 s]
             PG[(Postgres)]
+            ENGINE[engine - algoritmo]:::pendiente
         end
 
-        subgraph STG[Stack staging - mismo diseño, aislado]
-            STGAPP[bot, portal, engine, worker, Postgres]
-        end
+        PROD[Proyecto Compose prod - mismo diseño]:::pendiente
     end
 
     WA -- webhook --> CADDY
-    TR -- GPS --> CADDY
+    TR -.-> CADDY
     DESP -- HTTPS --> CADDY
-    CADDY --> BOT
+    CADDY -- "solo /api/webhook/whatsapp y /api/health" --> BOT
     CADDY --> PORTAL
-    CADDY -.-> STGAPP
+    CADDY -.-> PROD
 
     BOT --> WA
     BOT --> OAI
-    BOT --> ENGINE
-    ENGINE --> GM
     BOT --> PG
     PORTAL --> PG
-    WORKER --> PG
-    PORTAL --> BOT
+    PORTAL -- "/api/internal" --> BOT
+    WORKER -- "/api/internal/tick" --> BOT
+    BOT -.-> ENGINE
+    ENGINE -.-> GM
 
     REPO --> GHCR
-    REPO -- SSH de despliegue --> VPS
-    GHCR -- pull de imágenes --> VPS
-    INF -- secretos al desplegar --> VPS
-    DEV -- SSH personal --> VPS
+    GHCR -- pull --> VPS
+    REPO -. "deploy.sh por SSH" .-> VPS
+    DEV -- "SSH personal" --> VPS
+
+    classDef pendiente stroke-dasharray: 5 5
 ```
 
-El restaurante y el motorizado solo hablan con WhatsApp. El motor (`engine`) no toca la base de datos ni WhatsApp: recibe una foto del momento y devuelve el ranking.
+Las líneas y cajas punteadas son lo que falta. El restaurante y el motorizado solo hablan con WhatsApp.
+
+## Servicios
+
+| Servicio | Qué hace | Imagen |
+|---|---|---|
+| `caddy` | HTTPS, enruta por dominio. Único con puertos publicados | `caddy:2-alpine` |
+| `bot` | Webhook de WhatsApp, extracción con OpenAI, lógica de pedidos. Expone `/api/internal/*` solo a la red interna | `dispatch-bot` |
+| `portal` | Tablero del despachador (Next.js) con login | `dispatch-portal` |
+| `worker` | Cada 5 s llama a `/api/internal/tick`: asigna pendientes y notifica. Reemplaza el polling del portal | `dispatch-worker` |
+| `postgres` | Base de datos, volumen `pgdata` | `postgres:17-alpine` |
+| `migrate` | Solo al desplegar: aplica las migraciones y termina | `dispatch-migrate` |
+
+Todas las imágenes propias son `ghcr.io/clapi-labs/dispatch-*:<hash del commit>` (públicas). Nunca se despliega `latest`. Los contenedores tienen `restart: unless-stopped`, healthchecks y límite de memoria.
 
 ## Decisiones
 
 ### Hosting
-- **Todo en un VPS de Hetzner**, fuera de Vercel. Motivo principal: el receptor de GPS necesita un proceso siempre encendido, y los pendientes no pueden depender de una pestaña abierta del portal.
-- **Tamaño inicial: CX23** (2 vCPU, 4 GB, ~6,49 €/mes). Sin OSRM alcanza. Se puede subir de plan sin reinstalar (CX33: 4 vCPU, 8 GB).
-- **Región: Núremberg (`nbg1`).** El CX23 solo existe en Europa; en Ashburn solo hay planes CPX, mucho más caros. La latencia extra no importa: cada mensaje espera a Meta y OpenAI.
-- **Dominio:** `clapi.solutions`. Staging: `staging.dispatch.clapi.solutions` (portal) y `bot.staging.dispatch.clapi.solutions` (bot). Prod: `dispatch.clapi.solutions` y `bot.dispatch.clapi.solutions`.
-- **Infraestructura solo la toca una persona** (token de Hetzner y estado de OpenTofu locales). El resto del equipo cambia el repo (despliega con el botón de Actions) y entra al servidor por SSH con su propia llave; los administradores se gestionan en `infra/access/admins.json` con `infra/scripts/sync-admins.sh`.
-- **Node 22.23.4** fijado (parche del 21 de oct. de 2026) y **Next 16.4.2**; ver `.nvmrc`.
-- Backups de Hetzner activados, además del `pg_dump` diario.
+- **Un VPS de Hetzner, fuera de Vercel.** El receptor de GPS necesita un proceso siempre encendido, y los pendientes no pueden depender de una pestaña abierta del portal.
+- **CX23** (2 vCPU, 4 GB, ~6,49 €/mes). Suficiente sin OSRM. Se sube de plan sin reinstalar.
+- **Región `nbg1` (Núremberg).** El CX23 solo existe en Europa; en Ashburn solo hay CPX, más caros. La latencia no importa: cada mensaje espera a Meta y OpenAI.
+- **Dominios** (DNS en GoDaddy, registros A a la IP del servidor):
+
+  | Entorno | Portal | Bot |
+  |---|---|---|
+  | Staging | `staging.dispatch.clapi.solutions` | `bot.staging.dispatch.clapi.solutions` |
+  | Prod (futuro) | `dispatch.clapi.solutions` | `bot.dispatch.clapi.solutions` |
+
+- **Node 22.23.4** y **Next 16.4.2** fijados (`.nvmrc`, `Dockerfile`).
 
 ### Entornos
-- **Staging y prod en el mismo servidor**, como dos proyectos de Compose (`-p staging`, `-p prod`) con red, volúmenes, base de datos y variables separadas. Nunca comparten Postgres.
-- Límites de memoria y CPU en staging, para que no afecte a prod.
+- **Staging y prod irán en el mismo servidor**, como dos proyectos de Compose con red, volúmenes, base y `.env` separados. Nunca comparten Postgres. Hoy solo existe staging.
 - Staging usa un número de prueba de Meta, nunca el del cliente.
-- Staging detrás de login o lista de IP.
-- Cuando prod tenga clientes pagando o haya presión de recursos, staging pasa a un segundo servidor. Moverlo es cambiar el destino del despliegue.
+- Cuando prod tenga clientes pagando o haya presión de recursos, staging pasa a otro servidor: es cambiar el destino del despliegue.
 
-### Infraestructura como código
-- **OpenTofu** con el proveedor `hetznercloud/hcloud`: servidor, firewall, llaves SSH y cloud-init (usuarios, Docker, `ufw`, `fail2ban`, swap).
-- El estado de OpenTofu no va al repo (puede tener secretos): backend remoto o cifrado.
-- `prevent_destroy` en el volumen de la base de datos.
-- `tofu apply` es manual. En los PR solo se corre `tofu plan`.
+### Infraestructura como código (`infra/`)
+- **OpenTofu** con el proveedor `hetznercloud/hcloud` (OpenTofu y no Terraform: misma sintaxis, licencia abierta).
+- `infra/modules/server`: servidor, firewall, IP fija, llave de despliegue y `cloud-init`. `infra/staging`: los valores de ese entorno; prod será otra carpeta con su propio estado.
+- **`cloud-init`** deja el servidor listo al primer arranque: un usuario por administrador, SSH endurecido, Docker, fail2ban, swap y límites de logs de Docker.
+- `ignore_changes` en `user_data`, imagen y llaves: cambiar esos datos en el código nunca recrea el servidor.
+- **La infraestructura la toca una sola persona**: el token de Hetzner y `terraform.tfstate` viven en su equipo (el estado no se sube al repo). El resto del equipo cambia el repo y entra por SSH.
 
-### Aplicaciones
-- **Docker Compose** con `restart: always`, imágenes versionadas por hash de commit (nunca `latest`).
-- **Caddy** al frente: HTTPS automático. Solo los puertos 22, 80 y 443 están abiertos.
-- **Postgres** en contenedor, con backups probados. *Pendiente de confirmar: Postgres local o seguir en Neon al inicio.*
-- **worker**: reemplaza el `auto-assign` que hoy depende del polling del portal.
-- Migraciones versionadas de Drizzle (hoy se usa `db:push`), escritas en dos pasos para ser compatibles con la versión anterior.
+### Seguridad de red y acceso
+- **Firewall de Hetzner**, no `ufw`: Docker escribe sus propias reglas y se salta `ufw`. Solo 22, 80 y 443.
+- SSH solo con llave, un usuario por persona (`infra/access/admins.json`), sin `root` ni contraseña, grupo `dispatch-admins`.
+- **Llave de despliegue restringida**: la cuenta `deploy` solo puede ejecutar `/opt/dispatch/deploy.sh` (`command="..."` en `authorized_keys`), que a su vez solo acepta `deploy <sha>`. `deploy.sh` pertenece a root: esa cuenta no puede modificarlo.
+- En Caddy, el bot expone solo `/api/webhook/whatsapp` y `/api/health`. `/api/internal/*` queda dentro de la red de Docker.
+- Webhook de WhatsApp con verificación de firma. Portal con login (scrypt, cookie firmada de 12 h, 5 intentos por correo e IP).
+- Cabeceras de seguridad en Caddy (HSTS, nosniff, referrer, sin `Server`).
 
-### Algoritmo de asignación
-- Servicio independiente y **sin estado** (`engine`): `POST /evaluar` con motos, paradas, pedido y configuración; devuelve el ranking y la explicación.
-- Misma lógica en simulador, pruebas, modo sombra y producción.
-- *Pendiente de confirmar: Python en contenedor aparte (recomendado) o port a TypeScript.* Los casos JSON de `algoritmoDeli` sirven como pruebas de referencia en cualquiera de los dos.
-- **Google Maps solo mide** (minutos y km); el algoritmo decide. La función `tiempo(a, b)` es intercambiable:
-  - Haversine: pruebas automáticas, gratis y sin red.
-  - Google: staging y producción, y calibración en el simulador.
-- Flujo por pedido: filtro por radio con Haversine → preselección de candidatas (no solo por cercanía, para no dejar fuera a quien la equidad favorece) → una sola matriz a Google para las 3 mejores → el algoritmo puntúa.
-- Respaldo: si Google falla o se supera el tope diario, se usa Haversine.
-- OSRM queda fuera de la arquitectura. Solo fue un sustituto gratuito del simulador.
-- Modo de asignación en la tabla `settings`: `ASSIGNMENT_MODE = queue | shadow | auto`, cambiable sin redesplegar. Se empieza en `shadow`.
-- *Por verificar antes de construir:* si Google ofrece modo moto (`TWO_WHEELER`) en Colombia, el costo con volumen real y los límites de caché de sus términos.
+### Secretos
+- Viven **solo** en `/opt/dispatch/.env` del servidor (dueño `deploy`, grupo `docker`, permisos 660). No hay gestor externo.
+- Se cambian con `set-secret.sh`, que pide el valor oculto: no queda en el historial ni en el chat.
+- Las apps leen las variables al arrancar: tras cambiar un secreto hay que **redesplegar**.
+- El token de Hetzner y la llave privada de despliegue están solo en el equipo del administrador.
+- Nada de esto va al repo. Si un secreto se filtra, se rota; borrarlo del historial no basta.
 
-### CI/CD (GitHub Actions)
-- **Hecho:** `.github/workflows/ci.yml` (lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, verificación de que `schema.ts` no tiene cambios sin migración y seed de demo; solo en PRs hacia `main` y en `main`), `images.yml` (publica en GHCR al hacer merge a `main`, etiquetadas con el hash del commit) y Dependabot. **Falta:** los workflows de despliegue (fase 4) y los casos del algoritmo.
-- Imágenes: `ghcr.io/clapi-labs/dispatch-{bot,portal,migrate,worker}:<hash>`. La marca del portal se incrusta al construir, desde las variables del repositorio `CLIENT_NAME`, `CLIENT_INITIALS` y `CLIENT_COLOR`.
-- **CI** en cada PR y push a `main`: lint, typecheck, build, casos del algoritmo con `assert`, migraciones sobre base vacía. Rama protegida.
-- **CD a staging**: automático al hacer merge. Construye imágenes, las sube a GHCR y ejecuta `deploy.sh staging <hash>` por SSH.
-- **CD a prod**: botón (`workflow_dispatch`) con un hash ya probado en staging. No reconstruye: usa la misma imagen.
-- `deploy/deploy.sh` vive en el servidor y lo ejecuta GitHub Actions con una llave restringida (solo acepta `deploy <sha>`). Descarga el compose y el Caddyfile de ese commit, baja las imágenes, aplica las migraciones **antes** de tocar las apps (si fallan, no cambia nada), cambia las apps y espera sus healthchecks. Si algo falla, vuelve a la versión anterior y termina con error.
-- **Staging usa este despliegue simple** (las apps se recrean en unos segundos). El azul/verde sin corte queda para prod.
-- Volver atrás es el mismo botón con la versión anterior.
+| Variable | Para qué |
+|---|---|
+| `POSTGRES_PASSWORD` | Contraseña de la base |
+| `INTERNAL_SECRET` | Autentica las llamadas internas (`x-internal-secret`) |
+| `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas) |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | WhatsApp Cloud API |
+| `OPENAI_API_KEY` | Extracción de pedidos |
+| `BOT_ACTIVE` | `true` para que el bot responda |
+| `PORTAL_HOST`, `BOT_HOST`, `ACME_EMAIL`, `REGISTRY` | Dominios, correo de Let's Encrypt, registro de imágenes |
 
-### Secretos y claves
+### Despliegue
+- **Por hash de commit**: `deploy.sh deploy <sha>` descarga el `compose.yml` y el `Caddyfile` de *ese* commit, baja las imágenes, aplica migraciones **antes** de tocar las apps (si fallan, no cambia nada), arranca con `up --wait` y, si algo no queda sano, vuelve solo a la versión anterior.
+- Un solo despliegue a la vez (`flock`). La versión activa queda en `/opt/dispatch/.tag`.
+- Volver atrás es desplegar el hash anterior.
+- Staging usa este despliegue simple (las apps se recrean en segundos). El azul/verde sin corte queda para prod.
+- Las migraciones deben ser compatibles con la versión anterior de la app (cambios en dos pasos), porque corren antes del cambio.
 
-| Clave | Para qué | Dónde vive |
+### CI/CD
+
+```mermaid
+flowchart LR
+    PR[Pull request a main] --> CI["ci.yml: lint, tipos, build, migraciones, deriva del esquema"]
+    PUSH[Push a dev o main] --> IMG["images.yml: construye y publica en GHCR con el hash"]
+    IMG --> GHCR[(GHCR)]
+    MANUAL["deploy.sh deploy hash, por SSH"] --> GHCR
+    IMG -. "pendiente: deploy-staging.yml" .-> MANUAL
+```
+
+| Workflow | Cuándo corre | Qué hace |
 |---|---|---|
-| Llave SSH personal | Que una persona entre al servidor | Privada en su PC, pública en el servidor |
-| Llave SSH de despliegue | Que Actions ejecute el despliegue | Privada en secretos de GitHub; solo puede ejecutar `deploy.sh` |
-| Token de GHCR | Que el VPS descargue imágenes (solo lectura) | En el VPS |
-| Token de Hetzner | Que OpenTofu gestione la infraestructura | Equipo del administrador. No va al VPS ni a GitHub |
-| Credencial de Infisical | Que el VPS lea los secretos | En el VPS |
-| Secretos de la app | OpenAI, WhatsApp, Google, base de datos | Infisical |
+| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed |
+| `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker` y los publica en GHCR con el hash y el nombre de la rama |
+| `deploy-staging.yml` | **No existe aún** | Pendiente: al terminar `images.yml` en `dev`, ejecutar `deploy` por SSH con la llave restringida |
 
-- **Infisical** es la fuente de verdad de los secretos de la app, separados por entorno. Al desplegar se pasan a los contenedores (o se generan en un `.env` con permisos `600`, fuera del repo). Sin Infisical funcionaría igual con un `.env` por entorno en el servidor.
-- Ningún secreto se sube al repo. Si alguno se sube, se rota, no basta con borrarlo.
-- **Cambiar un secreto:** generar el nuevo en el proveedor → cambiarlo en Infisical → redesplegar/reiniciar → comprobar → revocar el viejo.
+La marca del portal (`NEXT_PUBLIC_*`) se incrusta al construir la imagen, desde las variables del repositorio `CLIENT_NAME`, `CLIENT_INITIALS` y `CLIENT_COLOR`. Dependabot propone actualizaciones con espera de 7 días.
 
-### Acceso y seguridad
-- SSH solo con llave, un usuario por persona, sin `root` ni contraseña. Grupo `docker` solo a quien lo necesite.
-- Las llaves públicas del equipo van versionadas en OpenTofu; revocar es borrar la línea y aplicar.
-- Firewall de Hetzner (no `ufw`: Docker escribe sus propias reglas por encima y se salta `ufw`); base de datos, motor y puertos internos sin exposición. En Caddy, el bot solo expone `/api/webhook/whatsapp` y `/api/health`; `/api/internal/*` queda en la red interna.
-- Login en el portal (hoy no existe) antes de exponerlo.
-- Traccar: identificadores aleatorios (`moto-7f3k9q`); el receptor descarta los no registrados.
-- Webhook de WhatsApp con verificación de firma (ya implementada).
-- Verificación en dos pasos en GitHub, Hetzner, Infisical y Google Cloud.
-- Datos de ubicación con autorización por escrito (Ley 1581 de 2012) y retención definida.
+Plan de prod: despliegue por botón (`workflow_dispatch`) con un hash ya probado en staging, sin reconstruir la imagen.
 
-## Orden de implementación
-1. OpenTofu: servidor, firewall, llaves y cloud-init.
-2. Compose con Caddy y Postgres; migrar a migraciones de Drizzle.
-3. CI con construcción de imágenes.
-4. Staging y prod como dos proyectos de Compose.
-5. Despliegue azul/verde.
-6. Motor (`engine`) con casos como pruebas, simulador apuntando a él.
-7. Receptor de GPS, eventos con hora exacta y modo sombra.
-8. Replay con historial del cliente, piloto y paso a `auto`.
+## Lo que falta
 
-## Pendientes por decidir
-- Región de Hetzner y disponibilidad del CX23.
-- Dominio.
-- Postgres local o Neon al inicio.
-- Motor en Python aparte o port a TypeScript.
-- Modo moto, costo y términos de caché de Google Maps.
+1. Workflow de despliegue automático a staging (requiere guardar la llave de despliegue y la huella del servidor en los secretos de GitHub).
+2. Servidor de prod (`infra/prod`) y despliegue azul/verde.
+3. Backups: los de Hetzner (~20 % del costo del servidor) y un `pg_dump` diario fuera del servidor. Hoy **no hay ninguno**.
+4. Copia de seguridad de `terraform.tfstate`; sin él OpenTofu no sabe qué recursos le pertenecen.
+5. Token permanente de WhatsApp (usuario del sistema); el de pruebas dura ~24 h.
+6. Motor de asignación y receptor de GPS (ver `ALGORITMO.md`).
+7. Datos de ubicación: autorización por escrito (Ley 1581 de 2012) y retención definida antes de usar GPS real.
