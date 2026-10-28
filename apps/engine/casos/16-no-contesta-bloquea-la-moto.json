@@ -1,0 +1,71 @@
+{
+  "nombre": "Cliente no contesta: la espera bloquea la moto",
+  "descripcion": "Ana está esperando a un cliente que no contesta (le quedan 8 min) a 300 m de otro restaurante. Entra un pedido de ese restaurante con la comida lista. Aunque Ana es la más cercana, no participa.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.373,
+      "lon": -76.5186,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.373,
+            -76.5186
+          ],
+          "cliente_no_contesta_hace": 2
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.3595,
+      "lon": -76.5204,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.3757,
+      "lon": -76.497,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3793,
+      "lon": -76.5402,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante B, comida lista",
+      "restaurante": [
+        3.3757,
+        -76.5204
+      ],
+      "cliente": [
+        3.3829,
+        -76.5258
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Ana está a 300 m pero está resolviendo un cliente que no contesta; Beto llega antes que las demás"
+    }
+  ]
+}

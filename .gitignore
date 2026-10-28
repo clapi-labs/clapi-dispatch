@@ -14,3 +14,6 @@ infisical-upload/
 *.tfstate.*
 *.tfplan
 crash.log
+
+# Python
+__pycache__/

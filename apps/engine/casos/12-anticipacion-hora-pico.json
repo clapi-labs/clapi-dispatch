@@ -1,0 +1,58 @@
+{
+  "nombre": "Hora pico: el restaurante avisa con 22 min de anticipación",
+  "descripcion": "Regla del cliente: en hora pico los restaurantes piden el domicilio con 20–25 min de anticipación. Todas las motos llegarían antes de tiempo. Sin asignación diferida ganaría la más lejana; ahora debe ganar la más cercana, asignada unos 18 min después.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3595,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Beto",
+      "lat": 3.3289,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.5105,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.355,
+      "lon": -76.5456,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A, listo en 22 min",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3658,
+        -76.5195
+      ],
+      "listo_en": 22
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "por": "Es la más cercana: con la asignación diferida llega 2 min antes de que salga la comida"
+    }
+  ]
+}

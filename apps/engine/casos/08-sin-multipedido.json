@@ -1,0 +1,72 @@
+{
+  "nombre": "Sin multi-pedido: la misma situación del caso 05",
+  "descripcion": "Idéntico al caso 05, pero sin permitir 2 pedidos por moto: Ana queda excluida aunque le quede de camino.",
+  "config": {
+    "modo": "pico",
+    "multi": false
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3514,
+      "lon": -76.5258,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.346,
+            -76.524
+          ],
+          "cliente": [
+            3.373,
+            -76.5186
+          ],
+          "recogido": true
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5132,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.5402,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3352,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → cliente vecino del de Ana",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3748,
+        -76.5168
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Ana está ocupada y no se permite agrupar"
+    }
+  ]
+}

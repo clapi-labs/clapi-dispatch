@@ -1,0 +1,71 @@
+{
+  "nombre": "No agrupar: el desvío es muy grande",
+  "descripcion": "Ana va hacia el sur con un pedido; el pedido nuevo va hacia el norte. Meterlo en su ruta le cuesta mucho desvío.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3523,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.3568,
+            -76.524
+          ],
+          "cliente": [
+            3.3325,
+            -76.5285
+          ],
+          "recogido": true
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5132,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.5402,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3766,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → norte",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3748,
+        -76.5195
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Moto libre cerca; Ana tendría que ir al sur y volver"
+    }
+  ]
+}

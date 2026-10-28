@@ -1,0 +1,93 @@
+{
+  "nombre": "Capacidad completa",
+  "descripcion": "Ana está al lado del restaurante pero ya lleva 3 pedidos, el máximo en hora pico según el cliente. Debe quedar excluida.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3559,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.373,
+            -76.5186
+          ],
+          "recogido": true
+        },
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.3757,
+            -76.5186
+          ],
+          "recogido": true
+        },
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.3703,
+            -76.5168
+          ],
+          "recogido": true
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5114,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.542,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3316,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → norte",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3739,
+        -76.5177
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Ana tiene la capacidad completa (3 en hora pico); Beto es la libre más cercana"
+    }
+  ]
+}

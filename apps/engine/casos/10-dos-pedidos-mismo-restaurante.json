@@ -1,0 +1,75 @@
+{
+  "nombre": "Dos pedidos del mismo restaurante",
+  "descripcion": "Llegan dos pedidos seguidos del mismo restaurante, listos en 2 min, con clientes vecinos. El segundo debe ir a la misma moto que el primero.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3622,
+      "lon": -76.524,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5096,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.3424,
+      "lon": -76.524,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.355,
+      "lon": -76.5438,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → cliente norte 1",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.373,
+        -76.5186
+      ],
+      "listo_en": 2
+    },
+    {
+      "nombre": "Restaurante A → cliente norte 2",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3757,
+        -76.5168
+      ],
+      "listo_en": 2
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "por": "Está a 0.8 km: llega en ~2.5 min, casi justo cuando sale la comida"
+    },
+    {
+      "pedido": 2,
+      "moto": "Ana",
+      "por": "Recoge los dos pedidos juntos y los entrega en la misma zona, sin desvío"
+    }
+  ]
+}

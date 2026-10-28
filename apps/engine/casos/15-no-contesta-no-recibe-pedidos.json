@@ -1,0 +1,71 @@
+{
+  "nombre": "Cliente no contesta: la moto no recibe pedidos nuevos",
+  "descripcion": "Ana lleva 4 min esperando a un cliente que no contesta; si no responde, devuelve el pedido al Restaurante A. Entra un pedido de ese mismo restaurante. Ana podría recogerlo en el viaje de regreso, pero mientras resuelve el imprevisto no recibe pedidos nuevos. PENDIENTE: definir con el cliente la reasignación en estos casos; si se permite, este caso debería cambiar a Ana.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.373,
+      "lon": -76.5186,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.373,
+            -76.5186
+          ],
+          "cliente_no_contesta_hace": 4
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5132,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.337,
+      "lon": -76.5285,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3595,
+      "lon": -76.5456,
+      "entregas": 3,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → norte, listo en 12 min",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3694,
+        -76.5159
+      ],
+      "listo_en": 12
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Ana está resolviendo un cliente que no contesta y queda excluida; Beto es la más cercana"
+    }
+  ]
+}
