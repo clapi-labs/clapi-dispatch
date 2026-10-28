@@ -59,3 +59,12 @@ export function sendButtons(phone: string, text: string, buttons: { id: string; 
     },
   });
 }
+
+/**
+ * Doble check azul + "escribiendo…" en el chat del remitente. Meta quita el
+ * indicador al enviar la respuesta o a los 25 s. Si falla no importa: es
+ * cosmético y la respuesta sale igual.
+ */
+export function markReadAndTyping(waMessageId: string) {
+  return post({ status: "read", message_id: waMessageId, typing_indicator: { type: "text" } });
+}

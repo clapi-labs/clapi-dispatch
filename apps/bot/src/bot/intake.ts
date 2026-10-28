@@ -13,7 +13,7 @@ import { recordMessage, updateConversation, upsertConversationOnInbound, type Co
 import { createTrip } from "@/db/queries/trips";
 import { DELIVER_BUTTON_PREFIX, notifyAssigned, notifyDelivered, sendCourierTicket } from "@/bot/notify";
 import { extractTripFields } from "@/services/openai/extract";
-import { sendText } from "@/services/whatsapp/client";
+import { markReadAndTyping, sendText } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
 /**
@@ -113,10 +113,16 @@ export async function handleIncoming(message: IncomingMessage) {
   // El motorizado va primero: su "Confirmar entrega" tiene que funcionar
   // siempre, aunque alguien haya pausado el bot en su chat.
   const courier = await findCourier(message.phone);
-  if (courier) return handleCourier(courier, conversation, message);
+  if (courier) {
+    await markReadAndTyping(message.waMessageId);
+    return handleCourier(courier, conversation, message);
+  }
 
   // Con un asesor al frente, el bot no contesta nada: escuchar y callar.
+  // Tampoco marca leído: eso le toca al asesor.
   if (conversation.botPaused) return;
+
+  await markReadAndTyping(message.waMessageId);
 
   if (message.kind !== "text") {
     await reply(conversation, message.phone, "Por ahora solo leo mensajes de texto. " + TEMPLATE);
