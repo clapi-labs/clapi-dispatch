@@ -32,6 +32,19 @@ jobs:
       # No necesita secretos: las variables se leen al usarlas, no al compilar.
       - run: npm run build
 
+  engine:
+    name: Engine (casos y contrato)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.4" # igual que apps/engine/Dockerfile
+      # Sin red ni Google: Haversine y librería estándar.
+      - run: python -m unittest discover -s tests -v
+        working-directory: apps/engine
+
   migrations:
     name: Migraciones
     runs-on: ubuntu-latest

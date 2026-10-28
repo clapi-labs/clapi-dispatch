@@ -1,7 +1,7 @@
-# Entorno local completo: Postgres + migraciones + bot + portal.
+# Entorno local completo: Postgres + migraciones + bot + portal + engine.
 #   cp .env.example .env   (y llenar los valores)
 #   docker compose up --build
-# Bot en http://localhost:3001, portal en http://localhost:3002.
+# Bot en http://localhost:3001, portal en http://localhost:3002, engine en http://localhost:3003.
 name: dispatch
 
 x-build: &build
@@ -55,6 +55,19 @@ services:
       - "127.0.0.1:3001:3001"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  engine:
+    build: apps/engine
+    environment:
+      PORT: 3003
+    ports:
+      - "127.0.0.1:3003:3003"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
       interval: 10s
       timeout: 3s
       retries: 5

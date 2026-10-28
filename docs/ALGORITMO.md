@@ -184,7 +184,7 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 ## Orden de implementación
 
 1. ~~Escribir y acordar el contrato JSON.~~ Hecho (ver «Contrato»).
-2. `engine` con Haversine y los casos como tests en CI (sin Google).
+2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
 3. El bot llama al engine en modo `shadow` y guarda el ranking. **Primera versión útil.**
 4. Google Maps para las 3 mejores, con respaldo a Haversine.
 5. GPS real (Traccar): identificadores aleatorios por moto (`moto-7f3k9q`); el receptor descarta los no registrados.
