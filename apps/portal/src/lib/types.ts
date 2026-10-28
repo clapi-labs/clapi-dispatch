@@ -73,6 +73,9 @@ export type FareMatrix = {
   defaultFare: number;
 };
 
+/** Un tramo de la tarifa por distancia; el último no tiene tope ("más de X km"). */
+export type FareRange = { upToKm: number | null; price: number };
+
 export type DraftFields = {
   origenRestaurante: string | null;
   direccionEntrega: string | null;

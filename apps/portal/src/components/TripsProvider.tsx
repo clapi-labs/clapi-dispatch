@@ -16,6 +16,8 @@ import { usePolling } from "@/lib/use-polling";
 
 type TripsState = {
   trips: Trip[];
+  /** Chats que piden ayuda a una persona: la burbuja amarilla de Conversaciones. */
+  needsHelp: number;
   loaded: boolean;
   online: boolean;
   soundOn: boolean;
@@ -29,6 +31,8 @@ const POLL_MS = 3000;
 
 export function TripsProvider({ children }: { children: React.ReactNode }) {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [needsHelp, setNeedsHelp] = useState(0);
+  const lastHelp = useRef<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(true);
   const [soundOn, setSoundOn] = useState(true);
@@ -44,9 +48,22 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
     try {
       // Si se liberó una moto (entregó desde su app), los pendientes la toman.
       await fetch("/api/dispatch/auto-assign", { method: "POST" });
-      const res = await fetch("/api/trips", { cache: "no-store" });
+      // El contador de ayuda va en paralelo: no le suma espera al sondeo.
+      const [res, help] = await Promise.all([
+        fetch("/api/trips", { cache: "no-store" }),
+        fetch("/api/conversations/needs-help", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       if (!res.ok) throw new Error(String(res.status));
       const data: Trip[] = await res.json();
+
+      if (help && typeof help.count === "number") {
+        // Suena cuando un chat nuevo pide ayuda; no en la primera carga.
+        if (lastHelp.current !== null && help.count > lastHelp.current && soundRef.current) playChime();
+        lastHelp.current = help.count;
+        setNeedsHelp(help.count);
+      }
 
       const assigned = data.filter((t) => t.assignedAt && t.status !== "pending");
       // La primera carga solo aprende qué existía: no suena por lo viejo.
@@ -95,7 +112,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <TripsContext.Provider value={{ trips, loaded, online, soundOn, setSoundOn, deliver }}>
+    <TripsContext.Provider value={{ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }}>
       {children}
 
       <AnimatePresence>
