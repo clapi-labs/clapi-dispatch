@@ -2,6 +2,32 @@
 
 Guía práctica para cualquiera del equipo. El porqué de cada decisión está en [`INFRAESTRUCTURA.md`](INFRAESTRUCTURA.md).
 
+## Guía rápida
+
+```bash
+# Entrar al servidor (la primera vez responde "yes" a la huella)
+ssh -i ~/.ssh/clapi_ed25519 tu_usuario@staging.dispatch.clapi.solutions
+cd /opt/dispatch
+
+# Estado
+docker ps                                   # todos (healthy)
+cat .tag                                    # versión desplegada
+docker logs --tail 50 dispatch-bot-1        # registros del bot
+
+# Desplegar un commit (después de que images.yml esté en verde)
+./deploy.sh deploy <hash-de-40-caracteres>  # git rev-parse HEAD en tu equipo
+
+# Cambiar un secreto y aplicarlo
+./set-secret.sh NOMBRE_VARIABLE
+./deploy.sh deploy "$(cat .tag)"
+```
+
+Lo importante:
+- Trabaja en una rama desde `dev`. Push a `dev` construye las imágenes; desplegar aún es manual.
+- Los secretos solo viven en `/opt/dispatch/.env`. Nunca en el repo ni en el chat.
+- Para volver atrás, despliega el hash anterior.
+- ¿Sin acceso? Sigue la sección 1: genera tu llave y pásale la `.pub` al administrador.
+
 ## Entornos y direcciones
 
 | Entorno | Portal | Bot (webhook de Meta) |
