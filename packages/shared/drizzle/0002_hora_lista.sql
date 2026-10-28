@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "ready_at" timestamp with time zone;

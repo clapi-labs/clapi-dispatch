@@ -159,6 +159,10 @@ export const trips = pgTable(
     /** Derivado de `paymentMethod`, pero congelado: si la regla de negocio
      *  cambia mañana, un viaje de hoy no cambia de opinión retroactivamente. */
     requiresCashReturn: boolean("requires_cash_return").notNull(),
+    /** Cuándo está lista la comida, como hora exacta: el restaurante dice
+     *  "listo en 15" y se guarda la hora, para que el engine sepa cuánto
+     *  falta cada vez que evalúa. Nulo en los viajes anteriores a este dato. */
+    readyAt: timestamp("ready_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

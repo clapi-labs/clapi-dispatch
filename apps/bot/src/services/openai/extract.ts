@@ -13,6 +13,14 @@ function isTransient(status: number) {
   return status === 429 || status >= 500;
 }
 
+/** "19:05": para que el modelo convierta "lista a las 7:40" en minutos. */
+function horaCali() {
+  return new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+}
+
+/** Más de 3 horas no es un domicilio que se esté pidiendo ahora: mejor repreguntar. */
+const MAX_LISTO_MIN = 180;
+
 /**
  * Una sola llamada con salida JSON forzada. Recibe lo ya capturado para que
  * el modelo sepa a qué campo pertenece un dato suelto ("3001234567" → el
@@ -32,7 +40,7 @@ export async function extractTripFields(
       { role: "system", content: buildExtractionPrompt(zoneNames) },
       {
         role: "user",
-        content: `Datos ya capturados:\n${JSON.stringify(known)}\n\nMensaje nuevo del restaurante:\n${messageText}`,
+        content: `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(known)}\n\nMensaje nuevo del restaurante:\n${messageText}`,
       },
     ],
   });
@@ -70,6 +78,7 @@ export async function extractTripFields(
         : typeof raw.valorACobrar === "string" && /\d/.test(raw.valorACobrar)
           ? Number(raw.valorACobrar.replace(/\D/g, ""))
           : null;
+    const listo = typeof raw.listoEnMinutos === "number" ? Math.round(raw.listoEnMinutos) : null;
 
     return {
       fields: {
@@ -78,6 +87,7 @@ export async function extractTripFields(
         telefonoCliente: typeof raw.telefonoCliente === "string" && /\d{7,}/.test(raw.telefonoCliente.replace(/\D/g, "")) ? raw.telefonoCliente.replace(/\D/g, "") : null,
         valorACobrar: valor && valor > 0 ? valor : null,
         metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
+        listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
         zonaRecogida: typeof raw.zonaRecogida === "string" ? raw.zonaRecogida : null,
         zonaEntrega: typeof raw.zonaEntrega === "string" ? raw.zonaEntrega : null,
       },

@@ -29,6 +29,9 @@ export async function createTrip(
       valueToCollect: fields.valorACobrar,
       paymentMethod: fields.metodoPago,
       requiresCashReturn: requiresCashReturn(fields.metodoPago),
+      // Contado desde el mensaje que dio el tiempo, no desde ahora: si llegó
+      // unos mensajes antes, contar desde ahora haría salir tarde a la moto.
+      readyAt: new Date((fields.listoDesde ? Date.parse(fields.listoDesde) : Date.now()) + fields.listoEnMinutos * 60_000),
       deliveryFee: fare.price,
       pickupZone: fare.pickupZone,
       deliveryZone: fare.deliveryZone,

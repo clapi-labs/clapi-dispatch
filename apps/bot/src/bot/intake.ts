@@ -4,6 +4,7 @@ import {
   EMPTY_TRIP_FIELDS,
   ESCALATION_MESSAGE,
   MAX_CLARIFICATION_ATTEMPTS,
+  REQUIRED_FIELD_COUNT,
   evaluateExtraction,
   mergeTripFields,
 } from "@dispatch/shared";
@@ -35,10 +36,11 @@ const FIELD_LABEL: Record<string, string> = {
   telefonoCliente: "el teléfono del cliente",
   valorACobrar: "el valor a cobrar",
   metodoPago: "si es en efectivo o por transferencia",
+  listoEnMinutos: "en cuántos minutos está lista la comida",
 };
 
 const TEMPLATE =
-  "¡Hola! 🛵 Para pedir una moto envíame:\n\n• Dónde se recoge (dirección y barrio)\n• Dirección de entrega (con barrio)\n• Teléfono del cliente\n• Valor a cobrar\n• Efectivo o transferencia\n\nPuede ser en un solo mensaje o por partes.";
+  "¡Hola! 🛵 Para pedir una moto envíame:\n\n• Dónde se recoge (dirección y barrio)\n• Dirección de entrega (con barrio)\n• Teléfono del cliente\n• Valor a cobrar\n• Efectivo o transferencia\n• En cuántos minutos está lista la comida\n\nPuede ser en un solo mensaje o por partes.";
 
 const TECHNICAL_ERROR_MESSAGE =
   "Tuve un problema técnico leyendo tu mensaje 🙏 No se perdió nada de lo que ya me diste. ¿Me lo reenvías en un momento?";
@@ -146,6 +148,10 @@ export async function handleIncoming(message: IncomingMessage) {
   }
 
   const merged = mergeTripFields(known, extraction.fields);
+  // El modelo repite el tiempo ya capturado en cada respuesta: solo cuando
+  // cambia es un dato nuevo, y se cuenta desde este mensaje.
+  const listo = extraction.fields.listoEnMinutos;
+  if (listo != null && listo !== known.listoEnMinutos) merged.listoDesde = message.timestamp.toISOString();
 
   if (extraction.confused) {
     await escalate(conversation, message.phone, "El restaurante dio datos confusos o pidió hablar con una persona.");
@@ -203,7 +209,7 @@ export async function handleIncoming(message: IncomingMessage) {
   }
 
   // Un saludo o un mensaje sin ningún dato no cuenta como intento fallido.
-  const nothingYet = result.missing.length === 5 && !merged.zonaRecogida && !merged.zonaEntrega;
+  const nothingYet = result.missing.length === REQUIRED_FIELD_COUNT &&!merged.zonaRecogida && !merged.zonaEntrega;
   if (nothingYet && conversation.failedAttempts === 0) {
     await reply(conversation, message.phone, TEMPLATE);
     return;

@@ -151,7 +151,7 @@ Códigos de `motivo`: `sin_senal`, `fuera_radio`, `cliente_no_contesta`, `ocupad
 
 Hoy no existe y el engine lo necesita:
 
-1. Exigir y extraer el tiempo de preparación (`services/openai/extract.ts`) y guardarlo como hora exacta en el viaje.
+1. ~~Exigir y extraer el tiempo de preparación (`services/openai/extract.ts`) y guardarlo como hora exacta en el viaje.~~ Hecho: es un dato obligatorio más (`listoEnMinutos`) y se guarda en `trips.ready_at`, contado desde el mensaje que lo dijo.
 2. ~~Geocodificar la dirección del cliente y no evaluar sin coordenadas.~~ Hecho con Google Geocoding (`services/google/geocode.ts`): si no la ubica con precisión, se le pide corregir al restaurante y luego pasa a un asesor. Sin `GOOGLE_MAPS_API_KEY`, o si Google falla, el viaje sale sin coordenadas.
 3. Botón «Recogido» para el motorizado.
 4. Guardar el `plan` de cada asignación, para armar las `paradas`.
