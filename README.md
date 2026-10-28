@@ -8,6 +8,7 @@ Documentación:
 - [`docs/OPERACION.md`](docs/OPERACION.md): entrar al servidor, desplegar, secretos, usuarios, diagnóstico.
 - [`docs/ALGORITMO.md`](docs/ALGORITMO.md): cómo se conecta y se prueba el algoritmo de asignación.
 - [`docs/PLAN.md`](docs/PLAN.md): próximos pasos, simulador de flota y reparto del equipo.
+- [`docs/ACCESO_SSH.md`](docs/ACCESO_SSH.md): paso a paso para conectarse al servidor por primera vez.
 
 ## Correr en local
 
