@@ -59,6 +59,7 @@ flowchart TB
 
     BOT --> WA
     BOT --> OAI
+    BOT -- geocoding --> GM
     BOT --> PG
     PORTAL --> PG
     PORTAL -- "/api/internal" --> BOT
@@ -297,6 +298,7 @@ stateDiagram-v2
 | `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas) |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | WhatsApp Cloud API |
 | `OPENAI_API_KEY` | Extracción de pedidos |
+| `GOOGLE_MAPS_API_KEY` | Ubicar la dirección de entrega (Geocoding API). Opcional: sin ella, los viajes salen sin coordenadas |
 | `BOT_ACTIVE` | `true` para que el bot responda |
 | `PORTAL_HOST`, `BOT_HOST`, `ACME_EMAIL`, `REGISTRY` | Dominios, correo de Let's Encrypt, registro de imágenes |
 

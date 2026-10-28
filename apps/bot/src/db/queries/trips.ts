@@ -14,6 +14,7 @@ export async function createTrip(
   conversationId: number,
   fields: ResolvedTripFields,
   fare: { price: number; pickupZone: string | null; deliveryZone: string | null },
+  deliveryLocation: { lat: number; lng: number } | null,
 ) {
   const [trip] = await db
     .insert(schema.trips)
@@ -23,6 +24,7 @@ export async function createTrip(
       status: "pending",
       originRestaurantName: fields.origenRestaurante,
       deliveryAddress: fields.direccionEntrega,
+      deliveryLocation,
       customerPhone: fields.telefonoCliente,
       valueToCollect: fields.valorACobrar,
       paymentMethod: fields.metodoPago,

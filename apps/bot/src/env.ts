@@ -50,6 +50,14 @@ export const env = {
     },
   },
 
+  /** Opcional: sin la llave, los viajes se crean sin coordenadas y los asigna
+   *  la cola actual. Con ella, la dirección de entrega se exige ubicada. */
+  google: {
+    get mapsApiKey() {
+      return optional("GOOGLE_MAPS_API_KEY");
+    },
+  },
+
   /**
    * El número se comparte con el sistema de pedidos de restaurante
    * (`demo-delivery-system`) mientras se prueba esto — nunca los dos activos

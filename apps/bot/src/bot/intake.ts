@@ -12,6 +12,7 @@ import { assignNextCourier, completeTrip, db, findZoneByName, listZones, matchZo
 import { recordMessage, updateConversation, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
 import { createTrip } from "@/db/queries/trips";
 import { DELIVER_BUTTON_PREFIX, notifyAssigned, notifyDelivered, sendCourierTicket } from "@/bot/notify";
+import { geocodeAddress } from "@/services/google/geocode";
 import { extractTripFields } from "@/services/openai/extract";
 import { markReadAndTyping, sendText } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -154,6 +155,27 @@ export async function handleIncoming(message: IncomingMessage) {
   const result = evaluateExtraction(merged);
 
   if (result.complete) {
+    // El engine necesita la entrega en coordenadas. Una dirección que Google
+    // no ubica se le pide corregir al restaurante, con el mismo tope de
+    // intentos que un dato que falta; luego pasa a un asesor. Si Google falla
+    // o no hay llave, el viaje sale igual sin coordenadas y lo asigna la cola.
+    const geocoded = await geocodeAddress(result.fields.direccionEntrega);
+    if (geocoded.kind === "not_found") {
+      const attempts = conversation.failedAttempts + 1;
+      if (attempts >= MAX_CLARIFICATION_ATTEMPTS) {
+        await escalate(conversation, message.phone, `No se pudo ubicar en el mapa la dirección de entrega: ${result.fields.direccionEntrega}`);
+        return;
+      }
+      await updateConversation(conversation.id, { draft: merged, failedAttempts: attempts });
+      await reply(
+        conversation,
+        message.phone,
+        `No pude ubicar en el mapa la dirección «${result.fields.direccionEntrega}» 🗺️ ¿Me la confirmas con el número completo y el barrio? Por ejemplo: Cra 15 # 32-10, San Fernando.`,
+      );
+      return;
+    }
+    const deliveryLocation = geocoded.kind === "found" ? geocoded.location : null;
+
     // La zona la propone el modelo; si no la reconoce, se buscan las
     // palabras clave de cada zona en la dirección. Sin zona: tarifa base.
     const pickupZone = findZoneByName(merged.zonaRecogida, zones) ?? matchZone(result.fields.origenRestaurante, zones);
@@ -165,7 +187,7 @@ export async function handleIncoming(message: IncomingMessage) {
       price,
       pickupZone: pickupZone?.name ?? null,
       deliveryZone: deliveryZone?.name ?? null,
-    });
+    }, deliveryLocation);
 
     const courierAssigned = await assignNextCourier(trip.id);
     if (courierAssigned) {
