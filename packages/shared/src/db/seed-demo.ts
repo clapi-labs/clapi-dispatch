@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db, schema } from "./client";
 import { saveFareRanges } from "./fares";
@@ -98,7 +98,14 @@ export async function seedDemo() {
   await db.delete(schema.assignments);
   await db.delete(schema.trips);
   // Los chats se quedan, pero sin un pedido a medio armar ni un asesor pendiente.
-  await db.update(schema.conversations).set({ draft: null, failedAttempts: 0, botPaused: false, escalationReason: null });
+  // Lo ya conversado se da por respondido, para que el bot no lo retome.
+  await db.update(schema.conversations).set({
+    draft: null,
+    failedAttempts: 0,
+    botPaused: false,
+    escalationReason: null,
+    processedThroughMessageId: sql`(select max(${schema.messages.id}) from ${schema.messages} where ${schema.messages.conversationId} = ${schema.conversations.id})`,
+  });
 
   // Zonas y tarifas (idempotente: por nombre de zona y par origen/destino).
   const zoneIds: number[] = [];

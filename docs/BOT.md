@@ -45,7 +45,7 @@ Mensajes por pedido: dos en el mejor caso (pedido completo + confirmar). La meta
 | Ubicación | Dirección escrita (se geocodifica una vez) o pin de WhatsApp (coordenadas exactas, sin costo) |
 | Notas | Lo que no es un campo (con cuánto paga el cliente, qué lleva, torre y apto) va en `trips.notes` y sale en la ficha del motorizado |
 | Citar mensajes | Todo aviso sobre un pedido responde citando el mensaje con que el restaurante lo pidió. Cada mensaje guarda su wamid y su viaje, para saber de qué pedido habla el restaurante cuando cita uno nuestro |
-| Espera antes de responder | 8 s desde el último mensaje (constante). Leído al 25 % y «escribiendo…» al 50 % del tiempo, para que se sienta natural. Junta los mensajes partidos en uno |
+| Espera antes de responder | 6 s desde el último mensaje (`REPLY_DELAY_MS` en `apps/bot/src/bot/intake.ts`). Leído al 25 % y «escribiendo…» al 50 % del tiempo, para que se sienta natural. Junta los mensajes partidos en uno |
 
 ## Para después
 

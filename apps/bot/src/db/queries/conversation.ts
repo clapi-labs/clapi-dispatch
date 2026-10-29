@@ -35,16 +35,21 @@ export async function recordMessage(
   conversationId: number,
   role: schema.MessageRole,
   text: string,
-  extra?: { waMessageId?: string | null; tripId?: number | null; extraction?: Conversation["draft"] },
-) {
-  await db.insert(schema.messages).values({
-    conversationId,
-    role,
-    text,
-    waMessageId: extra?.waMessageId ?? null,
-    tripId: extra?.tripId ?? null,
-    extraction: extra?.extraction ?? null,
-  });
+  extra?: { waMessageId?: string | null; tripId?: number | null; incoming?: schema.IncomingPayload; extraction?: Conversation["draft"] },
+): Promise<number> {
+  const [row] = await db
+    .insert(schema.messages)
+    .values({
+      conversationId,
+      role,
+      text,
+      waMessageId: extra?.waMessageId ?? null,
+      tripId: extra?.tripId ?? null,
+      incoming: extra?.incoming ?? null,
+      extraction: extra?.extraction ?? null,
+    })
+    .returning({ id: schema.messages.id });
 
   await db.update(schema.conversations).set({ lastMessageAt: new Date() }).where(eq(schema.conversations.id, conversationId));
+  return row.id;
 }

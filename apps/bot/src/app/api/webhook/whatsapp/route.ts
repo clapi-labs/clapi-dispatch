@@ -50,17 +50,20 @@ export async function POST(request: Request) {
   return new Response("OK", { status: 200 });
 }
 
+/**
+ * Los mensajes de una misma entrega se atienden a la vez: el bot espera unos
+ * segundos antes de responder (`REPLY_DELAY_MS`) para juntar los que llegan
+ * seguidos, y uno tras otro cada mensaje esperaría solo.
+ */
 async function processWebhook(payload: WaWebhookPayload) {
-  const incoming = extractIncomingMessages(payload);
-
-  for (const message of incoming) {
-    try {
-      const isNew = await markProcessedIfNew(message.waMessageId);
-      if (!isNew) continue;
-
-      await handleIncoming(message);
-    } catch (error) {
-      console.error("[webhook] fallo procesando un mensaje:", error);
-    }
+  const fresh = [];
+  for (const message of extractIncomingMessages(payload)) {
+    if (await markProcessedIfNew(message.waMessageId)) fresh.push(message);
   }
+
+  await Promise.all(
+    fresh.map((message) =>
+      handleIncoming(message).catch((error) => console.error("[webhook] fallo procesando un mensaje:", error)),
+    ),
+  );
 }

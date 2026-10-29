@@ -54,6 +54,10 @@ export const conversations = pgTable(
     draft: jsonb("draft").$type<ExtractedTripFields>(),
     /** Cuántas veces se repreguntó por el pedido en curso. */
     failedAttempts: integer("failed_attempts").notNull().default(0),
+    /** El último mensaje entrante (`messages.id`) que el bot ya respondió. El
+     *  bot espera unos segundos antes de responder y junta lo que llegó en
+     *  ese tiempo: lo posterior a este id es lo que falta por procesar. */
+    processedThroughMessageId: integer("processed_through_message_id"),
     lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
@@ -62,6 +66,17 @@ export const conversations = pgTable(
 );
 
 export type MessageRole = "restaurant" | "bot" | "agent";
+
+/** Lo que el bot necesita de un mensaje entrante para procesarlo más tarde. */
+export type IncomingPayload = (
+  | { kind: "text"; text: string }
+  | { kind: "button"; buttonId: string; title: string }
+  | { kind: "location"; lat: number; lng: number; label: string | null }
+  | { kind: "unsupported"; type: string }
+) & {
+  /** El wamid del mensaje que el restaurante citó, si respondió a uno. */
+  replyTo?: string | null;
+};
 
 export const messages = pgTable(
   "messages",
@@ -77,6 +92,9 @@ export const messages = pgTable(
      *  restaurante responde citando un mensaje nuestro, por aquí se sabe a
      *  qué pedido se refiere. */
     tripId: integer("trip_id"),
+    /** El mensaje entrante tal como llegó (texto, botón o ubicación), para
+     *  procesarlo después de la espera aunque `text` sea solo su resumen. */
+    incoming: jsonb("incoming").$type<IncomingPayload>(),
     /** Lo que extrajo el modelo de este mensaje, antes de validar que esté
      *  completo. Queda guardado para poder auditar por qué un viaje pidió
      *  una repregunta. */

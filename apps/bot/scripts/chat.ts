@@ -10,6 +10,9 @@
  *   /de <número>     cambia quién escribe (restaurante o motorizado)
  *   /boton <id>      toca un botón (el id sale entre paréntesis en la respuesta)
  *   /ubicacion <lat>,<lng> [nombre]   envía un pin de ubicación
+ *   /espera          espera a que el bot responda lo pendiente (como dejar de
+ *                    escribir un rato). Lo que se manda sin /espera de por
+ *                    medio llega seguido y el bot lo junta en un solo turno.
  *   """              abre y cierra un mensaje de varias líneas (cada línea
  *                    suelta es un mensaje aparte, como en WhatsApp)
  *   /salir
@@ -27,7 +30,14 @@ async function main() {
   let phone = process.argv[2] ?? DEFAULT_PHONE;
   let counter = 0;
 
-  const send = async (content: Pick<Incoming, "kind"> & Record<string, unknown>) => {
+  // El bot espera unos segundos antes de responder y junta los mensajes
+  // seguidos, así que los envíos no se bloquean entre sí.
+  const pending = new Set<Promise<void>>();
+  const waitPending = async () => {
+    while (pending.size) await Promise.all(pending);
+  };
+
+  const send = (content: Pick<Incoming, "kind"> & Record<string, unknown>) => {
     const message = {
       waMessageId: `sim-${Date.now()}-${counter++}`,
       phone,
@@ -35,11 +45,10 @@ async function main() {
       timestamp: new Date(),
       ...content,
     } as Incoming;
-    try {
-      await handleIncoming(message);
-    } catch (error) {
-      console.error("⚠️ ", error instanceof Error ? error.message : error);
-    }
+    const task: Promise<void> = handleIncoming(message)
+      .catch((error) => console.error("⚠️ ", error instanceof Error ? error.message : error))
+      .finally(() => pending.delete(task));
+    pending.add(task);
   };
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -51,7 +60,7 @@ async function main() {
     rl.prompt();
   };
 
-  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, """ para varias líneas, /salir.\n`);
+  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, /espera, """ para varias líneas, /salir.\n`);
   prompt();
 
   for await (const raw of rl) {
@@ -59,13 +68,15 @@ async function main() {
 
     if (block) {
       if (line === '"""') {
-        if (block.length) await send({ kind: "text", text: block.join("\n") });
+        if (block.length) send({ kind: "text", text: block.join("\n") });
         block = null;
       } else {
         block.push(raw);
       }
     } else if (line === "/salir") {
       break;
+    } else if (line === "/espera") {
+      await waitPending();
     } else if (line === '"""') {
       block = [];
     } else if (line) {
@@ -79,19 +90,20 @@ async function main() {
         const [coords, ...label] = arg.split(" ");
         const [lat, lng] = coords.split(",").map(Number);
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
-          await send({ kind: "location", lat, lng, label: label.join(" ") || null });
+          send({ kind: "location", lat, lng, label: label.join(" ") || null });
         } else {
           console.log("Uso: /ubicacion 3.3772,-76.5225 [nombre del lugar]\n");
         }
       } else if (command === "/boton" && arg) {
-        await send({ kind: "button", buttonId: arg, title: arg });
+        send({ kind: "button", buttonId: arg, title: arg });
       } else {
-        await send({ kind: "text", text: line });
+        send({ kind: "text", text: line });
       }
     }
     prompt();
   }
 
+  await waitPending();
   rl.close();
   process.exit(0);
 }
