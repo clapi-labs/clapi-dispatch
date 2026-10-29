@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 
 import { db, schema, type Restaurant } from "@dispatch/shared/db";
-import { requiresCashReturn, type OrderDraft } from "@dispatch/shared";
+import { requiresCashReturn, type DeliveryDraft } from "@dispatch/shared";
 
 /** "D-7F3K2": un prefijo que distingue un código de viaje a simple vista de
  *  un `#PEDIDO` de catálogo, por si algún día conviven en el mismo número. */
@@ -12,11 +12,12 @@ function generateTripCode(): string {
   return `D-${code}`;
 }
 
-/** El viaje a partir del borrador confirmado. Quien llama ya comprobó que
- *  trae los datos obligatorios de la agencia. */
+/** El viaje de una entrega del pedido confirmado. Quien llama ya comprobó
+ *  que trae los datos obligatorios de la agencia. */
 export async function createTrip(
   conversationId: number,
-  draft: OrderDraft & { origenRestaurante: string; direccionEntrega: string },
+  order: { origenRestaurante: string; mensajeOrigen: string | null },
+  draft: DeliveryDraft,
   fare: { price: number; pickupZone: string | null; deliveryZone: string | null },
   restaurant: Restaurant | null,
 ) {
@@ -34,11 +35,11 @@ export async function createTrip(
       conversationId,
       restaurantId: restaurant?.id ?? null,
       status: "pending",
-      originRestaurantName: draft.origenRestaurante,
+      originRestaurantName: order.origenRestaurante,
       // Del registro del restaurante: ya geocodificada una vez, no por pedido.
       pickupAddress: restaurant?.knownPickupAddress ?? null,
       pickupLocation: restaurant?.knownPickupLocation ?? null,
-      deliveryAddress: draft.direccionEntrega,
+      deliveryAddress: draft.direccionEntrega ?? "",
       deliveryLocation: draft.ubicacionEntrega ?? null,
       customerPhone: draft.telefonoCliente,
       customerName: draft.nombreCliente ?? null,
@@ -46,7 +47,7 @@ export async function createTrip(
       paymentMethod: draft.metodoPago,
       requiresCashReturn: requiresCashReturn(draft.metodoPago),
       notes: draft.notas ?? null,
-      sourceWaMessageId: draft.mensajeOrigen ?? null,
+      sourceWaMessageId: order.mensajeOrigen,
       readyAt,
       deliveryFee: fare.price,
       pickupZone: fare.pickupZone,

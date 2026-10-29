@@ -1,4 +1,4 @@
-import type { ExtractedTripFields, OrderDraft, TripUpdate } from "@dispatch/shared";
+import type { DeliveryDraft, Interpretation, OrderDraft, TripUpdate } from "@dispatch/shared";
 
 import { say } from "@/bot/messaging";
 import { notifyTripUpdated } from "@/bot/notify";
@@ -20,7 +20,7 @@ export const PICK_TRIP_PREFIX = "pedido:";
 type Context = { conversation: Conversation; phone: string };
 
 /** Lo que el mensaje cambia frente a lo que ya se sabía. `null` si nada. */
-export function tripUpdateFrom(fields: ExtractedTripFields, known: OrderDraft, at: Date): TripUpdate | null {
+export function tripUpdateFrom(fields: Interpretation["entregas"][number], known: DeliveryDraft, at: Date): TripUpdate | null {
   const update: TripUpdate = { desde: at.toISOString() };
   if (fields.listoEnMinutos != null && fields.listoEnMinutos !== known.listoEnMinutos) update.listoEnMinutos = fields.listoEnMinutos;
   if (fields.notas) update.notas = fields.notas;

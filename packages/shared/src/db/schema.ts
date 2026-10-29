@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import type { ExtractedTripFields, PaymentMethod } from "../domain/extraction";
+import type { Interpretation, OrderDraft, PaymentMethod } from "../domain/extraction";
 import type { OfferOutcome } from "../domain/dispatch/types";
 
 /**
@@ -51,7 +51,7 @@ export const conversations = pgTable(
      * bot no puede olvidar el primero al leer el segundo. Se vacía al crear
      * el viaje o al escalar.
      */
-    draft: jsonb("draft").$type<ExtractedTripFields>(),
+    draft: jsonb("draft").$type<OrderDraft>(),
     /** Cuántas veces se repreguntó por el pedido en curso. */
     failedAttempts: integer("failed_attempts").notNull().default(0),
     /** El último mensaje entrante (`messages.id`) que el bot ya respondió. El
@@ -98,7 +98,7 @@ export const messages = pgTable(
     /** Lo que extrajo el modelo de este mensaje, antes de validar que esté
      *  completo. Queda guardado para poder auditar por qué un viaje pidió
      *  una repregunta. */
-    extraction: jsonb("extraction").$type<ExtractedTripFields>(),
+    extraction: jsonb("extraction").$type<Interpretation>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.id), index("messages_wa_message_idx").on(t.waMessageId)],

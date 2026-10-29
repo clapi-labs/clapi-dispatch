@@ -35,7 +35,7 @@ export async function recordMessage(
   conversationId: number,
   role: schema.MessageRole,
   text: string,
-  extra?: { waMessageId?: string | null; tripId?: number | null; incoming?: schema.IncomingPayload; extraction?: Conversation["draft"] },
+  extra?: { waMessageId?: string | null; tripId?: number | null; incoming?: schema.IncomingPayload; extraction?: (typeof schema.messages.$inferInsert)["extraction"] },
 ): Promise<number> {
   const [row] = await db
     .insert(schema.messages)

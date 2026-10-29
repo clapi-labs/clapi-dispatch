@@ -1,18 +1,53 @@
-import { EMPTY_TRIP_FIELDS, buildExtractionPrompt, type ExtractedTripFields } from "@dispatch/shared";
+import { buildExtractionPrompt, type Interpretation, type OrderDraft } from "@dispatch/shared";
 
 import { env } from "@/env";
 
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
  *  el código igual verifica que haya una cotización que aceptar). */
-export type ExtractionOutcome = { fields: ExtractedTripFields; confirms: boolean; confused: boolean; failed: boolean };
+export type ExtractionOutcome = { fields: Interpretation; confirms: boolean; confused: boolean; failed: boolean };
+
+const NOTHING: Interpretation = { origenRestaurante: null, zonaRecogida: null, entregas: [] };
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
 /** Lo que el modelo necesita saber del pedido en curso: los datos y la etapa,
  *  sin coordenadas ni ids internos. */
-function knownForModel(known: ExtractedTripFields) {
-  const { origenRestaurante, direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas, etapa } = known;
-  return { etapa: etapa ?? "recibiendo", origenRestaurante, direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas };
+function knownForModel(known: OrderDraft) {
+  return {
+    etapa: known.etapa,
+    origenRestaurante: known.origenRestaurante,
+    entregas: known.entregas.map(({ direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas }) => ({
+      direccionEntrega,
+      telefonoCliente,
+      nombreCliente,
+      valorACobrar,
+      metodoPago,
+      listoEnMinutos,
+      notas,
+    })),
+  };
+}
+
+/** Una entrega tal como la devolvió el modelo, validada campo por campo. */
+function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"][number] {
+  const valor =
+    typeof raw.valorACobrar === "number"
+      ? raw.valorACobrar
+      : typeof raw.valorACobrar === "string" && /\d/.test(raw.valorACobrar)
+        ? Number(raw.valorACobrar.replace(/\D/g, ""))
+        : null;
+  const listo = typeof raw.listoEnMinutos === "number" ? Math.round(raw.listoEnMinutos) : null;
+  const phone = typeof raw.telefonoCliente === "string" ? raw.telefonoCliente.replace(/\D/g, "") : "";
+  return {
+    direccionEntrega: text(raw.direccionEntrega),
+    telefonoCliente: phone.length >= 7 ? phone : null,
+    nombreCliente: text(raw.nombreCliente),
+    valorACobrar: valor && valor > 0 ? valor : null,
+    metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
+    listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
+    notas: text(raw.notas),
+    zonaEntrega: text(raw.zonaEntrega),
+  };
 }
 
 const TIMEOUT_MS = 15_000;
@@ -38,9 +73,9 @@ const MAX_LISTO_MIN = 180;
  * teléfono que faltaba). Si OpenAI falla, devuelve `failed` y el llamador
  * conserva el borrador tal cual — un error de red no puede borrar el pedido.
  */
-export async function extractTripFields(
+export async function interpretMessage(
   messageText: string,
-  known: ExtractedTripFields,
+  known: OrderDraft,
   zoneNames: string[],
 ): Promise<ExtractionOutcome> {
   const body = JSON.stringify({
@@ -77,39 +112,24 @@ export async function extractTripFields(
 
     if (!response.ok) {
       console.error(`[openai] error ${response.status}: ${(await response.text()).slice(0, 200)}`);
-      return { fields: EMPTY_TRIP_FIELDS, confirms: false, confused: false, failed: true };
+      return { fields: NOTHING, confirms: false, confused: false, failed: true };
     }
 
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const raw = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
 
-    const valor =
-      typeof raw.valorACobrar === "number"
-        ? raw.valorACobrar
-        : typeof raw.valorACobrar === "string" && /\d/.test(raw.valorACobrar)
-          ? Number(raw.valorACobrar.replace(/\D/g, ""))
-          : null;
-    const listo = typeof raw.listoEnMinutos === "number" ? Math.round(raw.listoEnMinutos) : null;
+    const entregas = Array.isArray(raw.entregas)
+      ? raw.entregas.filter((e: unknown): e is Record<string, unknown> => !!e && typeof e === "object").map(parseDelivery)
+      : [];
 
     return {
-      fields: {
-        origenRestaurante: text(raw.origenRestaurante),
-        direccionEntrega: text(raw.direccionEntrega),
-        nombreCliente: text(raw.nombreCliente),
-        notas: text(raw.notas),
-        telefonoCliente: typeof raw.telefonoCliente === "string" && /\d{7,}/.test(raw.telefonoCliente.replace(/\D/g, "")) ? raw.telefonoCliente.replace(/\D/g, "") : null,
-        valorACobrar: valor && valor > 0 ? valor : null,
-        metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
-        listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
-        zonaRecogida: typeof raw.zonaRecogida === "string" ? raw.zonaRecogida : null,
-        zonaEntrega: typeof raw.zonaEntrega === "string" ? raw.zonaEntrega : null,
-      },
+      fields: { origenRestaurante: text(raw.origenRestaurante), zonaRecogida: text(raw.zonaRecogida), entregas },
       confirms: raw.confirma === true,
       confused: raw.confuso === true,
       failed: false,
     };
   } catch (error) {
     console.error("[openai] no se pudo extraer el pedido:", error instanceof Error ? error.message : error);
-    return { fields: EMPTY_TRIP_FIELDS, confirms: false, confused: false, failed: true };
+    return { fields: NOTHING, confirms: false, confused: false, failed: true };
   }
 }
