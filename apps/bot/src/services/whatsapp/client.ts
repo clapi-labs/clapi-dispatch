@@ -17,7 +17,21 @@ export type SendResult =
 
 const MAX_BUTTON_TITLE = 20;
 
+/** Modo simulado (`WHATSAPP_SIMULADO=true`): nada sale hacia Meta; cada
+ *  envío se imprime en la terminal. Es el que usa `npm run bot:chat`. */
+function simulate(payload: Record<string, unknown>): SendResult {
+  if (payload.type === "text") {
+    console.log(`\n🤖 → ${payload.to}\n${(payload.text as { body: string }).body}\n`);
+  } else if (payload.type === "interactive") {
+    const interactive = payload.interactive as { body: { text: string }; action: { buttons: { reply: { id: string; title: string } }[] } };
+    const buttons = interactive.action.buttons.map((b) => `[${b.reply.title}] (${b.reply.id})`).join("  ");
+    console.log(`\n🤖 → ${payload.to}\n${interactive.body.text}\n   ${buttons}\n`);
+  }
+  return { ok: true };
+}
+
 async function post(payload: Record<string, unknown>): Promise<SendResult> {
+  if (env.whatsappSimulated) return simulate(payload);
   if (!env.botActive) return { ok: false, reason: "bot_inactive" };
 
   try {

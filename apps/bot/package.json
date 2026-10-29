@@ -7,7 +7,8 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "lint": "eslint"
+    "lint": "eslint",
+    "chat": "tsx --env-file-if-exists=../../.env.local scripts/chat.ts"
   },
   "dependencies": {
     "@dispatch/shared": "*",

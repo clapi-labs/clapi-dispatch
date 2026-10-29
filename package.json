@@ -9,6 +9,7 @@
   "scripts": {
     "dev:bot": "npm run dev --workspace=@dispatch/bot",
     "dev:portal": "npm run dev --workspace=@dispatch/portal",
+    "bot:chat": "npm run chat --workspace=@dispatch/bot --",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "tsc --build --verbose",

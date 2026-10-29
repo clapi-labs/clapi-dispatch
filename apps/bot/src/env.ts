@@ -67,6 +67,11 @@ export const env = {
     return optional("BOT_ACTIVE", "false") === "true";
   },
 
+  /** Pruebas locales: los envíos se imprimen en vez de ir a Meta. */
+  get whatsappSimulated() {
+    return optional("WHATSAPP_SIMULADO", "false") === "true";
+  },
+
   get internalSecret() {
     return required("INTERNAL_SECRET");
   },
