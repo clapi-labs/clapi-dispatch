@@ -8,7 +8,18 @@ import {
   evaluateExtraction,
   mergeTripFields,
 } from "@dispatch/shared";
-import { assignNextCourier, completeTrip, db, findZoneByName, listZones, matchZone, quoteFare, schema } from "@dispatch/shared/db";
+import {
+  assignNextCourier,
+  completeTrip,
+  db,
+  findRestaurantByPhone,
+  findZoneByName,
+  listZones,
+  matchZone,
+  quoteFare,
+  schema,
+  type Restaurant,
+} from "@dispatch/shared/db";
 
 import { recordMessage, updateConversation, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
 import { createTrip } from "@/db/queries/trips";
@@ -39,8 +50,20 @@ const FIELD_LABEL: Record<string, string> = {
   listoEnMinutos: "en cuántos minutos está lista la comida",
 };
 
-const TEMPLATE =
-  "¡Hola! 🛵 Para pedir una moto envíame:\n\n• Dónde se recoge (dirección y barrio)\n• Dirección de entrega (con barrio)\n• Teléfono del cliente\n• Valor a cobrar\n• Efectivo o transferencia\n• En cuántos minutos está lista la comida\n\nPuede ser en un solo mensaje o por partes.";
+/** Qué pedir en el primer mensaje. A un restaurante registrado no se le pide
+ *  dónde se recoge: ya se sabe por su número. */
+function template(restaurant: Restaurant | null) {
+  const items = [
+    ...(restaurant ? [] : ["Dónde se recoge (dirección y barrio)"]),
+    "Dirección de entrega (con barrio)",
+    "Teléfono del cliente",
+    "Valor a cobrar",
+    "Efectivo o transferencia",
+    "En cuántos minutos está lista la comida",
+  ];
+  const greeting = restaurant ? `¡Hola, ${restaurant.name}! 🛵` : "¡Hola! 🛵";
+  return `${greeting} Para pedir una moto envíame:\n\n${items.map((i) => `• ${i}`).join("\n")}\n\nPuede ser en un solo mensaje o por partes.`;
+}
 
 const TECHNICAL_ERROR_MESSAGE =
   "Tuve un problema técnico leyendo tu mensaje 🙏 No se perdió nada de lo que ya me diste. ¿Me lo reenvías en un momento?";
@@ -127,13 +150,19 @@ export async function handleIncoming(message: IncomingMessage) {
 
   await markReadAndTyping(message.waMessageId);
 
+  // Un restaurante registrado se reconoce por su número: el origen del
+  // pedido es él, sin preguntarlo. Uno sin registrar sigue diciéndolo en el
+  // mensaje, como antes.
+  const restaurant = await findRestaurantByPhone(message.phone);
+
   if (message.kind !== "text") {
-    await reply(conversation, message.phone, "Por ahora solo leo mensajes de texto. " + TEMPLATE);
+    await reply(conversation, message.phone, "Por ahora solo leo mensajes de texto. " + template(restaurant));
     return;
   }
 
   const zones = await listZones();
-  const known = conversation.draft ?? EMPTY_TRIP_FIELDS;
+  const draft = conversation.draft ?? EMPTY_TRIP_FIELDS;
+  const known = restaurant ? { ...draft, origenRestaurante: restaurant.name } : draft;
   const extraction = await extractTripFields(
     message.text,
     known,
@@ -148,6 +177,7 @@ export async function handleIncoming(message: IncomingMessage) {
   }
 
   const merged = mergeTripFields(known, extraction.fields);
+  if (restaurant) merged.origenRestaurante = restaurant.name;
   // El modelo repite el tiempo ya capturado en cada respuesta: solo cuando
   // cambia es un dato nuevo, y se cuenta desde este mensaje.
   const listo = extraction.fields.listoEnMinutos;
@@ -184,16 +214,18 @@ export async function handleIncoming(message: IncomingMessage) {
 
     // La zona la propone el modelo; si no la reconoce, se buscan las
     // palabras clave de cada zona en la dirección. Sin zona: tarifa base.
-    const pickupZone = findZoneByName(merged.zonaRecogida, zones) ?? matchZone(result.fields.origenRestaurante, zones);
+    const pickupZone = findZoneByName(merged.zonaRecogida, zones) ?? matchZone(restaurant?.knownPickupAddress ?? result.fields.origenRestaurante, zones);
     const deliveryZone = findZoneByName(merged.zonaEntrega, zones) ?? matchZone(result.fields.direccionEntrega, zones);
     const price = await quoteFare(pickupZone, deliveryZone);
 
     await updateConversation(conversation.id, { draft: null, failedAttempts: 0 });
-    const trip = await createTrip(conversation.id, result.fields, {
-      price,
-      pickupZone: pickupZone?.name ?? null,
-      deliveryZone: deliveryZone?.name ?? null,
-    }, deliveryLocation);
+    const trip = await createTrip(
+      conversation.id,
+      result.fields,
+      { price, pickupZone: pickupZone?.name ?? null, deliveryZone: deliveryZone?.name ?? null },
+      deliveryLocation,
+      restaurant,
+    );
 
     const courierAssigned = await assignNextCourier(trip.id);
     if (courierAssigned) {
@@ -209,9 +241,11 @@ export async function handleIncoming(message: IncomingMessage) {
   }
 
   // Un saludo o un mensaje sin ningún dato no cuenta como intento fallido.
-  const nothingYet = result.missing.length === REQUIRED_FIELD_COUNT &&!merged.zonaRecogida && !merged.zonaEntrega;
+  // Al registrado el origen ya le cuenta como dato, así que se descuenta.
+  const requiredToAsk = REQUIRED_FIELD_COUNT - (restaurant ? 1 : 0);
+  const nothingYet = result.missing.length === requiredToAsk && !merged.zonaRecogida && !merged.zonaEntrega;
   if (nothingYet && conversation.failedAttempts === 0) {
-    await reply(conversation, message.phone, TEMPLATE);
+    await reply(conversation, message.phone, template(restaurant));
     return;
   }
 

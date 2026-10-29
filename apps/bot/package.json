@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint",
-    "chat": "tsx --env-file-if-exists=../../.env.local scripts/chat.ts"
+    "chat": "tsx --env-file-if-exists=../../.env.local scripts/chat.ts",
+    "restaurant:create": "tsx --env-file-if-exists=../../.env.local scripts/restaurant-create.ts"
   },
   "dependencies": {
     "@dispatch/shared": "*",

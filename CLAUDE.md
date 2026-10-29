@@ -33,6 +33,7 @@ npm run db:generate                # tras editar packages/shared/src/db/schema.t
 npm run db:migrate
 npm run db:seed:demo
 USER_PASSWORD='clave-de-10+' npm run user:create -- correo@x.com "Nombre"   # no hay registro público
+npm run restaurant:create -- 573001234567 "Nombre" "Dirección de recogida" [--lat N --lng N]   # geocodifica una vez
 ```
 
 Cambios de esquema: editar `schema.ts`, correr `db:generate` y commitear la migración en `packages/shared/drizzle/`. CI falla si el esquema tiene cambios sin migración, y exige que las migraciones sean idempotentes.

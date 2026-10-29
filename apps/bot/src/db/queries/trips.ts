@@ -1,4 +1,4 @@
-import { db, schema } from "@dispatch/shared/db";
+import { db, schema, type Restaurant } from "@dispatch/shared/db";
 import { requiresCashReturn, type ResolvedTripFields } from "@dispatch/shared";
 
 /** "D-7F3K2": un prefijo que distingue un código de viaje a simple vista de
@@ -15,14 +15,19 @@ export async function createTrip(
   fields: ResolvedTripFields,
   fare: { price: number; pickupZone: string | null; deliveryZone: string | null },
   deliveryLocation: { lat: number; lng: number } | null,
+  restaurant: Restaurant | null,
 ) {
   const [trip] = await db
     .insert(schema.trips)
     .values({
       code: generateTripCode(),
       conversationId,
+      restaurantId: restaurant?.id ?? null,
       status: "pending",
       originRestaurantName: fields.origenRestaurante,
+      // Del registro del restaurante: ya geocodificada una vez, no por pedido.
+      pickupAddress: restaurant?.knownPickupAddress ?? null,
+      pickupLocation: restaurant?.knownPickupLocation ?? null,
       deliveryAddress: fields.direccionEntrega,
       deliveryLocation,
       customerPhone: fields.telefonoCliente,

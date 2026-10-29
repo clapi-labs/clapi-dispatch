@@ -48,7 +48,7 @@ export function courierTicket(trip: typeof schema.trips.$inferSelect) {
   return [
     `🛵 *Nuevo viaje ${trip.code}*`,
     "",
-    `📍 Recoge: ${trip.originRestaurantName}`,
+    `📍 Recoge: ${trip.originRestaurantName}${trip.pickupAddress ? ` · ${trip.pickupAddress}` : ""}`,
     `🏁 Entrega: ${trip.deliveryAddress}`,
     `📞 Cliente: ${trip.customerPhone}`,
     money,

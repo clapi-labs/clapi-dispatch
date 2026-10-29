@@ -24,6 +24,15 @@ const COURIERS = [
   { name: "Sebastián Cruz", phone: "573006667788", lat: 3.4583, lng: -76.5172 },
 ];
 
+/** Restaurante de prueba: el número es el que usa `npm run bot:chat` por
+ *  defecto, así el chat de la terminal escribe como un restaurante registrado. */
+const DEMO_RESTAURANT = {
+  phone: "573000000001",
+  name: "Donde Lucho",
+  knownPickupAddress: "Cra 83 # 42-15, El Caney",
+  knownPickupLocation: { lat: 3.4012, lng: -76.5285 },
+};
+
 /**
  * Zonas del sur de Cali y la matriz de precios de ejemplo. Más cerca, más
  * barato: El Caney y Valle del Lili son vecinos, Pance y Ciudad Jardín
@@ -103,6 +112,11 @@ export async function seedDemo() {
     .insert(schema.settings)
     .values({ key: "default_fare", value: DEFAULT_FARE_VALUE })
     .onConflictDoUpdate({ target: schema.settings.key, set: { value: DEFAULT_FARE_VALUE } });
+
+  await db
+    .insert(schema.restaurants)
+    .values(DEMO_RESTAURANT)
+    .onConflictDoUpdate({ target: schema.restaurants.phone, set: DEMO_RESTAURANT });
 
   // Flota: se respeta la que haya (los celulares reales que el equipo agregó
   // en Flota). Solo si está vacía se crean los motorizados de ejemplo.
@@ -188,6 +202,7 @@ export async function seedDemo() {
     await db.update(schema.couriers).set({ status: "busy" }).where(eq(schema.couriers.id, t.courierId));
   }
 
+  console.log(`✓ Restaurante de prueba: ${DEMO_RESTAURANT.name} (${DEMO_RESTAURANT.phone})`);
   console.log(`✓ Tarifas: ${ZONES.length} zonas, ${ZONES.length ** 2} precios`);
   console.log(`✓ Flota: ${ids.length} motorizados (${ids.length - enRoute.length} libres, ${ids.length - fakeIds.length} con celular real)`);
   console.log(`✓ Viajes: ${DELIVERED.length} entregados, ${enRoute.length} en ruta, 0 por asignar`);
