@@ -53,3 +53,17 @@ export async function recordMessage(
   await db.update(schema.conversations).set({ lastMessageAt: new Date() }).where(eq(schema.conversations.id, conversationId));
   return row.id;
 }
+
+/** La conversación de un número al que el bot le escribe primero (un
+ *  motorizado que nunca ha escrito): se crea para que el mensaje quede en el
+ *  hilo y se pueda citar después. */
+export async function conversationForOutbound(phone: string): Promise<Conversation> {
+  const [existing] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, phone)).limit(1);
+  if (existing) return existing;
+  const [created] = await db
+    .insert(schema.conversations)
+    .values({ phone })
+    .onConflictDoNothing({ target: schema.conversations.phone })
+    .returning();
+  return created ?? (await db.select().from(schema.conversations).where(eq(schema.conversations.phone, phone)))[0];
+}

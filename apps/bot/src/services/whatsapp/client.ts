@@ -22,6 +22,9 @@ const MAX_BUTTON_TITLE = 20;
 /** Modo simulado (`WHATSAPP_SIMULADO=true`): nada sale hacia Meta; cada
  *  envío se imprime en la terminal. Es el que usa `npm run bot:chat`. */
 let simulatedId = 0;
+// Distinto en cada corrida del chat: un id repetido haría que una cita apunte a
+// un mensaje de una prueba anterior.
+const simulatedRun = Date.now().toString(36).slice(-4);
 
 function simulate(payload: Record<string, unknown>): SendResult {
   if (payload.status === "read") {
@@ -31,7 +34,7 @@ function simulate(payload: Record<string, unknown>): SendResult {
   }
   const context = payload.context as { message_id: string } | undefined;
   const quote = context ? `   ↩ respondiendo a ${context.message_id}\n` : "";
-  const messageId = `sim-out-${++simulatedId}`;
+  const messageId = `out-${simulatedRun}-${++simulatedId}`;
   if (payload.type === "text") {
     console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}${(payload.text as { body: string }).body}\n`);
   } else if (payload.type === "interactive") {

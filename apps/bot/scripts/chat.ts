@@ -10,6 +10,7 @@
  *   /de <número>     cambia quién escribe (restaurante o motorizado)
  *   /boton <id>      toca un botón (el id sale entre paréntesis en la respuesta)
  *   /ubicacion <lat>,<lng> [nombre]   envía un pin de ubicación
+ *   /cita <id> <texto>  responde citando un mensaje (el id sale entre corchetes)
  *   /espera          espera a que el bot responda lo pendiente (como dejar de
  *                    escribir un rato). Lo que se manda sin /espera de por
  *                    medio llega seguido y el bot lo junta en un solo turno.
@@ -60,7 +61,7 @@ async function main() {
     rl.prompt();
   };
 
-  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, /espera, """ para varias líneas, /salir.\n`);
+  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, /cita <id> <texto>, /espera, """ para varias líneas, /salir.\n`);
   prompt();
 
   for await (const raw of rl) {
@@ -94,6 +95,9 @@ async function main() {
         } else {
           console.log("Uso: /ubicacion 3.3772,-76.5225 [nombre del lugar]\n");
         }
+      } else if (command === "/cita" && rest.length >= 2) {
+        const [quoted, ...words] = rest;
+        send({ kind: "text", text: words.join(" "), replyTo: quoted });
       } else if (command === "/boton" && arg) {
         send({ kind: "button", buttonId: arg, title: arg });
       } else {

@@ -47,6 +47,15 @@ type OrderState = {
   /** El mensaje del restaurante que abrió el pedido: los avisos le responden
    *  citándolo, para que sepa de qué pedido se habla. */
   mensajeOrigen?: string | null;
+  /** Un cambio para un pedido ya creado (por ejemplo «ya está listo») cuando
+   *  hay varios abiertos y se preguntó a cuál se refiere. */
+  actualizacionPendiente?: TripUpdate | null;
+};
+
+/** Lo que un mensaje puede cambiar de un pedido ya creado. */
+export type TripUpdate = Partial<Pick<OrderFields, "listoEnMinutos" | "notas" | "telefonoCliente" | "nombreCliente" | "valorACobrar" | "metodoPago">> & {
+  /** Cuándo se dijo el tiempo (ISO), para contar desde ahí. */
+  desde: string;
 };
 
 export type ExtractedTripFields = OrderFields & OrderState;

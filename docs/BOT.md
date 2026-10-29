@@ -45,6 +45,7 @@ Mensajes por pedido: dos en el mejor caso (pedido completo + confirmar). La meta
 | Ubicación | Dirección escrita (se geocodifica una vez) o pin de WhatsApp (coordenadas exactas, sin costo) |
 | Notas | Lo que no es un campo (con cuánto paga el cliente, qué lleva, torre y apto) va en `trips.notes` y sale en la ficha del motorizado |
 | Citar mensajes | Todo aviso sobre un pedido responde citando el mensaje con que el restaurante lo pidió. Cada mensaje guarda su wamid y su viaje, para saber de qué pedido habla el restaurante cuando cita uno nuestro |
+| Cambios a un pedido creado | «Ya está listo», «se demora 5 más», «paga con 50» cambian el pedido, no abren otro. Cuál: el que citó; si no citó y hay uno abierto, ese; con varios, se pregunta con botones. Se le avisa al motorizado citando su ficha. Cambiar la dirección de un pedido creado pasa a un asesor |
 | Espera antes de responder | 6 s desde el último mensaje (`REPLY_DELAY_MS` en `apps/bot/src/bot/intake.ts`). Leído al 25 % y «escribiendo…» al 50 % del tiempo, para que se sienta natural. Junta los mensajes partidos en uno |
 
 ## Para después

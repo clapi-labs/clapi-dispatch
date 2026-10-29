@@ -22,8 +22,9 @@ import {
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
+import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
-import { createTrip } from "@/db/queries/trips";
+import { createTrip, tripFromQuote } from "@/db/queries/trips";
 import { geocodeAddress } from "@/services/google/geocode";
 import { extractTripFields } from "@/services/openai/extract";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -109,6 +110,10 @@ export async function handleRestaurant(ctx: Context) {
 
   // 1. Lo que trae el mensaje.
   if (message.kind === "button") {
+    if (message.buttonId.startsWith(PICK_TRIP_PREFIX)) {
+      await pickTrip({ conversation, phone: message.phone }, message.buttonId, known);
+      return;
+    }
     if (message.buttonId !== CONFIRM_BUTTON_ID) return;
     if (!draft.cotizacion) {
       await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
@@ -131,6 +136,24 @@ export async function handleRestaurant(ctx: Context) {
       await escalate(ctx, "El restaurante dio datos confusos o pidió hablar con una persona.");
       return;
     }
+
+    // ¿Habla de un pedido ya creado? Si citó uno de sus mensajes, de ese; si
+    // no hay un pedido a medio armar y el mensaje no trae una dirección nueva,
+    // de sus pedidos abiertos (casos 9 y 12: «ya está listo»).
+    const quoted = message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null;
+    const update = tripUpdateFrom(extraction.fields, known, message.timestamp);
+    const newAddress = !!extraction.fields.direccionEntrega && extraction.fields.direccionEntrega !== known.direccionEntrega;
+    const updateCtx = { conversation, phone: message.phone };
+    if (quoted && newAddress) {
+      await escalate(ctx, `Pidió cambiar la dirección del pedido ${quoted.code}, que ya estaba creado.`);
+      return;
+    }
+    if (quoted && update) {
+      await applyTripUpdate(updateCtx, quoted, update);
+      return;
+    }
+    if (!quoted && update && !newAddress && !known.direccionEntrega && (await routeTripUpdate(updateCtx, update, known))) return;
+
     draft = mergeTripFields(draft, extraction.fields);
     if (restaurant) draft.origenRestaurante = restaurant.name;
     draft.zonaRecogida = extraction.fields.zonaRecogida ?? draft.zonaRecogida ?? null;

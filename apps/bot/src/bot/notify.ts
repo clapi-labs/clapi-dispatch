@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
+import { conversationForOutbound } from "@/db/queries/conversation";
 import type { SendResult } from "@/services/whatsapp/client";
 
 /**
@@ -27,10 +28,9 @@ async function loadTrip(tripId: number) {
   return row ?? null;
 }
 
-async function conversationOf(phone: string) {
-  const [c] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, phone));
-  return c ?? null;
-}
+/** El hilo del motorizado; se crea si nunca ha escrito, para que su ficha
+ *  quede guardada y los avisos posteriores la puedan citar. */
+const conversationOf = conversationForOutbound;
 
 async function restaurantConversation(conversationId: number | null) {
   if (!conversationId) return null;
@@ -76,7 +76,7 @@ export function courierTicket(trip: typeof schema.trips.$inferSelect) {
 
 export async function sendCourierTicket(phone: string, trip: typeof schema.trips.$inferSelect): Promise<SendResult> {
   const conversation = await conversationOf(phone);
-  return say(conversation?.id ?? null, phone, courierTicket(trip), {
+  return say(conversation.id, phone, courierTicket(trip), {
     tripId: trip.id,
     buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "✅ Confirmar entrega" }],
   });
@@ -108,7 +108,7 @@ export async function notifyDelivered(tripId: number) {
       ? `✅ Entrega ${row.trip.code} registrada. Recuerda entregar ${cop(row.trip.valueToCollect!)} en base.\nQuedas libre en la cola 🛵`
       : `✅ Entrega ${row.trip.code} registrada. Quedas libre en la cola 🛵`;
     const conversation = await conversationOf(row.courier.phone);
-    await say(conversation?.id ?? null, row.courier.phone, text, { tripId });
+    await say(conversation.id, row.courier.phone, text, { tripId });
   }
 
   const restaurant = await restaurantConversation(row.trip.conversationId);
@@ -119,4 +119,29 @@ export async function notifyDelivered(tripId: number) {
       tripId,
     });
   }
+}
+
+/** El último mensaje que el bot le mandó a un número sobre un viaje: para
+ *  responder citándolo (la ficha del motorizado, por ejemplo). */
+async function lastBotMessageAbout(tripId: number, phone: string) {
+  const [row] = await db
+    .select({ waMessageId: schema.messages.waMessageId })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(and(eq(schema.messages.tripId, tripId), eq(schema.messages.role, "bot"), eq(schema.conversations.phone, phone)))
+    .orderBy(desc(schema.messages.id))
+    .limit(1);
+  return row?.waMessageId ?? null;
+}
+
+/** El restaurante cambió algo de un pedido ya asignado: se le avisa al
+ *  motorizado citando su ficha. Sin moto asignada no hay a quién avisar. */
+export async function notifyTripUpdated(tripId: number, change: string) {
+  const row = await loadTrip(tripId);
+  if (!row?.courier) return;
+  const conversation = await conversationOf(row.courier.phone);
+  await say(conversation.id, row.courier.phone, `📢 ${row.trip.code}: ${change}`, {
+    replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
+    tripId,
+  });
 }
