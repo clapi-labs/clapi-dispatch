@@ -2,7 +2,18 @@ import { EMPTY_TRIP_FIELDS, buildExtractionPrompt, type ExtractedTripFields } fr
 
 import { env } from "@/env";
 
-export type ExtractionOutcome = { fields: ExtractedTripFields; confused: boolean; failed: boolean };
+/** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
+ *  el código igual verifica que haya una cotización que aceptar). */
+export type ExtractionOutcome = { fields: ExtractedTripFields; confirms: boolean; confused: boolean; failed: boolean };
+
+const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** Lo que el modelo necesita saber del pedido en curso: los datos y la etapa,
+ *  sin coordenadas ni ids internos. */
+function knownForModel(known: ExtractedTripFields) {
+  const { origenRestaurante, direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas, etapa } = known;
+  return { etapa: etapa ?? "recibiendo", origenRestaurante, direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas };
+}
 
 const TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 800;
@@ -40,7 +51,7 @@ export async function extractTripFields(
       { role: "system", content: buildExtractionPrompt(zoneNames) },
       {
         role: "user",
-        content: `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(known)}\n\nMensaje nuevo del restaurante:\n${messageText}`,
+        content: `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(knownForModel(known))}\n\nMensaje nuevo del restaurante:\n${messageText}`,
       },
     ],
   });
@@ -66,7 +77,7 @@ export async function extractTripFields(
 
     if (!response.ok) {
       console.error(`[openai] error ${response.status}: ${(await response.text()).slice(0, 200)}`);
-      return { fields: EMPTY_TRIP_FIELDS, confused: false, failed: true };
+      return { fields: EMPTY_TRIP_FIELDS, confirms: false, confused: false, failed: true };
     }
 
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
@@ -82,8 +93,10 @@ export async function extractTripFields(
 
     return {
       fields: {
-        origenRestaurante: typeof raw.origenRestaurante === "string" && raw.origenRestaurante.trim() ? raw.origenRestaurante.trim() : null,
-        direccionEntrega: typeof raw.direccionEntrega === "string" && raw.direccionEntrega.trim() ? raw.direccionEntrega.trim() : null,
+        origenRestaurante: text(raw.origenRestaurante),
+        direccionEntrega: text(raw.direccionEntrega),
+        nombreCliente: text(raw.nombreCliente),
+        notas: text(raw.notas),
         telefonoCliente: typeof raw.telefonoCliente === "string" && /\d{7,}/.test(raw.telefonoCliente.replace(/\D/g, "")) ? raw.telefonoCliente.replace(/\D/g, "") : null,
         valorACobrar: valor && valor > 0 ? valor : null,
         metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
@@ -91,11 +104,12 @@ export async function extractTripFields(
         zonaRecogida: typeof raw.zonaRecogida === "string" ? raw.zonaRecogida : null,
         zonaEntrega: typeof raw.zonaEntrega === "string" ? raw.zonaEntrega : null,
       },
+      confirms: raw.confirma === true,
       confused: raw.confuso === true,
       failed: false,
     };
   } catch (error) {
     console.error("[openai] no se pudo extraer el pedido:", error instanceof Error ? error.message : error);
-    return { fields: EMPTY_TRIP_FIELDS, confused: false, failed: true };
+    return { fields: EMPTY_TRIP_FIELDS, confirms: false, confused: false, failed: true };
   }
 }

@@ -4,3 +4,4 @@ export * from "./dispatch-queue";
 export * from "./fares";
 export * from "./restaurants";
 export * from "./quote";
+export * from "./bot-config";

@@ -9,6 +9,7 @@
  * Comandos dentro del chat:
  *   /de <número>     cambia quién escribe (restaurante o motorizado)
  *   /boton <id>      toca un botón (el id sale entre paréntesis en la respuesta)
+ *   /ubicacion <lat>,<lng> [nombre]   envía un pin de ubicación
  *   """              abre y cierra un mensaje de varias líneas (cada línea
  *                    suelta es un mensaje aparte, como en WhatsApp)
  *   /salir
@@ -50,7 +51,7 @@ async function main() {
     rl.prompt();
   };
 
-  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, """ para varias líneas, /salir.\n`);
+  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, """ para varias líneas, /salir.\n`);
   prompt();
 
   for await (const raw of rl) {
@@ -74,6 +75,14 @@ async function main() {
       if (command === "/de" && arg) {
         phone = arg.replace(/\D/g, "");
         console.log(`Ahora escribes como ${phone}.\n`);
+      } else if (command === "/ubicacion" && arg) {
+        const [coords, ...label] = arg.split(" ");
+        const [lat, lng] = coords.split(",").map(Number);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          await send({ kind: "location", lat, lng, label: label.join(" ") || null });
+        } else {
+          console.log("Uso: /ubicacion 3.3772,-76.5225 [nombre del lugar]\n");
+        }
       } else if (command === "/boton" && arg) {
         await send({ kind: "button", buttonId: arg, title: arg });
       } else {

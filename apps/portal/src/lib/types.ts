@@ -9,9 +9,9 @@ export type Trip = {
   originRestaurantName: string;
   pickupAddress: string | null;
   deliveryAddress: string;
-  customerPhone: string;
-  valueToCollect: number;
-  paymentMethod: PaymentMethod;
+  customerPhone: string | null;
+  valueToCollect: number | null;
+  paymentMethod: PaymentMethod | null;
   requiresCashReturn: boolean;
   deliveryFee: number;
   pickupZone: string | null;

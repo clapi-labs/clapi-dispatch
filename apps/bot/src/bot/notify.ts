@@ -1,10 +1,9 @@
 import { eq } from "drizzle-orm";
 
-import { ASSIGNED_MESSAGE } from "@dispatch/shared";
 import { db, schema } from "@dispatch/shared/db";
 
-import { recordMessage } from "@/db/queries/conversation";
-import { sendButtons, sendText, type SendResult } from "@/services/whatsapp/client";
+import { say } from "@/bot/messaging";
+import type { SendResult } from "@/services/whatsapp/client";
 
 /**
  * Los avisos que salen cuando un viaje cambia de manos. Viven en el bot (el
@@ -33,54 +32,68 @@ async function conversationOf(phone: string) {
   return c ?? null;
 }
 
-async function restaurantPhone(conversationId: number | null) {
+async function restaurantConversation(conversationId: number | null) {
   if (!conversationId) return null;
   const [c] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId));
   return c ?? null;
 }
 
+function formatPhone(phone: string) {
+  const d = phone.replace(/\D/g, "").slice(-10);
+  return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : phone;
+}
+
+/** Qué hacer con la plata. Sin método de pago dicho, no se inventa una orden:
+ *  el motorizado se guía por las notas o pregunta. */
+function moneyLine(trip: typeof schema.trips.$inferSelect) {
+  if (trip.paymentMethod === "efectivo") {
+    return trip.valueToCollect ? `💵 COBRAR en efectivo: *${cop(trip.valueToCollect)}*` : "💵 Cobrar en efectivo";
+  }
+  if (trip.paymentMethod === "transferencia") return "💳 Ya pagado. *NO cobrar* al cliente.";
+  return trip.valueToCollect ? `💵 Valor del pedido: ${cop(trip.valueToCollect)}` : null;
+}
+
 /** La ficha que le llega al motorizado, con el botón de confirmar entrega. */
 export function courierTicket(trip: typeof schema.trips.$inferSelect) {
-  const money =
-    trip.paymentMethod === "efectivo"
-      ? `💵 COBRAR en efectivo: *${cop(trip.valueToCollect)}*`
-      : `💳 Ya pagado. *NO cobrar* al cliente.`;
-  return [
+  const customer = [trip.customerName, trip.customerPhone && formatPhone(trip.customerPhone)].filter(Boolean).join(" · ");
+  const lines: (string | null | false | undefined)[] = [
     `🛵 *Nuevo viaje ${trip.code}*`,
     "",
     `📍 Recoge: ${trip.originRestaurantName}${trip.pickupAddress ? ` · ${trip.pickupAddress}` : ""}`,
     `🏁 Entrega: ${trip.deliveryAddress}`,
-    `📞 Cliente: ${trip.customerPhone}`,
-    money,
+    customer ? `📞 Cliente: ${customer}` : null,
+    moneyLine(trip),
+    trip.notes && `📝 ${trip.notes}`,
     "",
-    `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress}, Cali`)}&navigate=yes`,
+    trip.deliveryLocation
+      ? `🗺️ https://waze.com/ul?ll=${trip.deliveryLocation.lat},${trip.deliveryLocation.lng}&navigate=yes`
+      : `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress}, Cali`)}&navigate=yes`,
     "",
     "Cuando entregues, toca el botón 👇",
-  ].join("\n");
+  ];
+  return lines.filter((l): l is string => typeof l === "string").join("\n");
 }
 
 export async function sendCourierTicket(phone: string, trip: typeof schema.trips.$inferSelect): Promise<SendResult> {
-  const text = courierTicket(trip);
-  const result = await sendButtons(phone, text, [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "✅ Confirmar entrega" }]);
   const conversation = await conversationOf(phone);
-  if (conversation) {
-    await recordMessage(conversation.id, "bot", result.ok ? text : `${text}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`);
-  }
-  return result;
+  return say(conversation?.id ?? null, phone, courierTicket(trip), {
+    tripId: trip.id,
+    buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "✅ Confirmar entrega" }],
+  });
 }
 
-/** Moto asignada: ficha al motorizado + confirmación al restaurante. */
+/** Moto asignada: ficha al motorizado + aviso al restaurante, citando el
+ *  mensaje con que pidió ese domicilio. */
 export async function notifyAssigned(tripId: number) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
 
   await sendCourierTicket(row.courier.phone, row.trip);
 
-  const restaurant = await restaurantPhone(row.trip.conversationId);
+  const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
-    const text = `✅ ${ASSIGNED_MESSAGE}\n\n🛵 ${row.courier.name}\n📦 Pedido ${row.trip.code} · Domicilio ${cop(row.trip.deliveryFee)}`;
-    await recordMessage(restaurant.id, "bot", text);
-    await sendText(restaurant.phone, text);
+    const text = `✅ Pedido ${row.trip.code} confirmado · ${cop(row.trip.deliveryFee)}\n🛵 Va ${row.courier.name} · ${formatPhone(row.courier.phone)}`;
+    await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }
 
@@ -90,19 +103,20 @@ export async function notifyDelivered(tripId: number) {
   if (!row) return;
 
   if (row.courier) {
-    const text =
-      row.trip.paymentMethod === "efectivo"
-        ? `✅ Entrega ${row.trip.code} registrada. Recuerda entregar ${cop(row.trip.valueToCollect)} en base.\nQuedas libre en la cola 🛵`
-        : `✅ Entrega ${row.trip.code} registrada. Quedas libre en la cola 🛵`;
+    const cash = row.trip.paymentMethod === "efectivo" && row.trip.valueToCollect;
+    const text = cash
+      ? `✅ Entrega ${row.trip.code} registrada. Recuerda entregar ${cop(row.trip.valueToCollect!)} en base.\nQuedas libre en la cola 🛵`
+      : `✅ Entrega ${row.trip.code} registrada. Quedas libre en la cola 🛵`;
     const conversation = await conversationOf(row.courier.phone);
-    if (conversation) await recordMessage(conversation.id, "bot", text);
-    await sendText(row.courier.phone, text);
+    await say(conversation?.id ?? null, row.courier.phone, text, { tripId });
   }
 
-  const restaurant = await restaurantPhone(row.trip.conversationId);
+  const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
-    const text = `📦 Pedido ${row.trip.code} entregado a las ${new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" })} ✅`;
-    await recordMessage(restaurant.id, "bot", text);
-    await sendText(restaurant.phone, text);
+    const time = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" });
+    await say(restaurant.id, restaurant.phone, `📦 Pedido ${row.trip.code} entregado a las ${time} ✅`, {
+      replyTo: row.trip.sourceWaMessageId,
+      tripId,
+    });
   }
 }

@@ -35,13 +35,14 @@ export async function recordMessage(
   conversationId: number,
   role: schema.MessageRole,
   text: string,
-  extra?: { waMessageId?: string; extraction?: Conversation["draft"] },
+  extra?: { waMessageId?: string | null; tripId?: number | null; extraction?: Conversation["draft"] },
 ) {
   await db.insert(schema.messages).values({
     conversationId,
     role,
     text,
     waMessageId: extra?.waMessageId ?? null,
+    tripId: extra?.tripId ?? null,
     extraction: extra?.extraction ?? null,
   });
 

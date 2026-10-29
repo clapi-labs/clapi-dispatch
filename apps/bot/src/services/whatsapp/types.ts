@@ -21,6 +21,15 @@ export type WaInteractiveMessage = {
   };
 };
 
+/** El pin de ubicación de WhatsApp: coordenadas exactas, sin geocodificar. */
+export type WaLocationMessage = {
+  id: string;
+  from: string;
+  timestamp: string;
+  type: "location";
+  location: { latitude: number; longitude: number; name?: string; address?: string };
+};
+
 export type WaOtherMessage = {
   id: string;
   from: string;
@@ -28,7 +37,10 @@ export type WaOtherMessage = {
   type: string;
 };
 
-export type WaMessage = WaTextMessage | WaInteractiveMessage | WaOtherMessage;
+/** Cuando el restaurante responde citando un mensaje, llega `context.id`. */
+export type WaMessage = (WaTextMessage | WaInteractiveMessage | WaLocationMessage | WaOtherMessage) & {
+  context?: { id?: string; from?: string };
+};
 
 export type WaContact = { wa_id: string; profile?: { name?: string } };
 
@@ -59,8 +71,11 @@ export type IncomingMessage = {
   phone: string;
   profileName: string | null;
   timestamp: Date;
+  /** El wamid del mensaje que citó, si respondió a uno. */
+  replyTo?: string | null;
 } & (
   | { kind: "text"; text: string }
+  | { kind: "location"; lat: number; lng: number; label: string | null }
   | { kind: "button"; buttonId: string; title: string }
   | { kind: "unsupported"; type: string }
 );
