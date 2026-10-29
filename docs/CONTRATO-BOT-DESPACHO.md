@@ -11,7 +11,7 @@ El contrato del engine en sí (`POST /evaluar`) está en [`ALGORITMO.md`](ALGORI
 | Habla con restaurantes y motorizados | Sí | No |
 | Entiende los mensajes (texto e imagen) | Sí | No |
 | Geocodifica direcciones | Sí, una vez por dirección | No |
-| Cotiza el domicilio | Sí, con `cotizar` | No |
+| Cotiza el domicilio | Sí, con `quoteByDistance` | No |
 | Crea el viaje en la base (`pending`) | Sí | No |
 | Elige la moto y guarda la asignación | No | Sí, con `despachar` |
 | Envía avisos de asignación y entrega | Sí, a partir del resultado | No |
@@ -64,20 +64,20 @@ Para el tick hay una variante que recorre todos los pendientes y devuelve un res
 function despacharPendientes(): Promise<ResultadoDespacho[]>;
 ```
 
-## 2. `cotizar(origen, destino)`
+## 2. `quoteByDistance(origen, destino)`
 
-El precio del domicilio por distancia. La usa el bot al cotizar y al crear el viaje (el precio se congela en `trips.delivery_fee`).
+El precio del domicilio por distancia. La usa el bot al cotizar y al crear el viaje (el precio se congela en `trips.delivery_fee`). Vive en `packages/shared/src/db/quote.ts`.
 
 ```ts
-function cotizar(origen: LatLng, destino: LatLng): Promise<Cotizacion>;
+function quoteByDistance(from: GeoPoint, to: GeoPoint): Promise<Quote>;
 
-type LatLng = { lat: number; lng: number };
-type Cotizacion = { km: number; precio: number };
+type GeoPoint = { lat: number; lng: number };
+type Quote = { km: number; price: number; source: "ranges" | "default" };
 ```
 
-- `km` es la distancia en línea recta (Haversine) por un factor de ruta (1,3, el mismo del engine). Gratis, sin red.
-- `precio` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`).
-- Si más adelante el engine ofrece una distancia mejor, cambia el interior de `cotizar`, no su forma.
+- `km` es la distancia en línea recta (Haversine) por el factor de ruta (1,3, el mismo `FACTOR_RUTA` del engine). Gratis, sin red.
+- `price` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`). Si la tabla está vacía, la tarifa por defecto (`source: "default"`).
+- Si más adelante el engine ofrece una distancia mejor, cambia el interior de la función, no su forma.
 
 ## 3. Lo que el bot deja en la base para el engine
 
@@ -96,7 +96,7 @@ El despacho se encarga del resto: la `cuota`, el `plan` de cada asignación y `d
 
 ## 4. Lo que no cambia al conectar el engine
 
-Si el contrato se respeta, conectar el engine solo toca el interior de `despachar` (y, si se quiere, el de `cotizar`). No cambian:
+Si el contrato se respeta, conectar el engine solo toca el interior de `despachar` (y, si se quiere, el de `quoteByDistance`). No cambian:
 
 - los mensajes al restaurante y al motorizado;
 - el flujo de la conversación;

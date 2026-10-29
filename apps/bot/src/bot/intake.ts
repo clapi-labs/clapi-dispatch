@@ -16,6 +16,7 @@ import {
   findZoneByName,
   listZones,
   matchZone,
+  quoteByDistance,
   quoteFare,
   schema,
   type Restaurant,
@@ -213,10 +214,18 @@ export async function handleIncoming(message: IncomingMessage) {
     const deliveryLocation = geocoded.kind === "found" ? geocoded.location : null;
 
     // La zona la propone el modelo; si no la reconoce, se buscan las
-    // palabras clave de cada zona en la dirección. Sin zona: tarifa base.
+    // palabras clave de cada zona en la dirección.
     const pickupZone = findZoneByName(merged.zonaRecogida, zones) ?? matchZone(restaurant?.knownPickupAddress ?? result.fields.origenRestaurante, zones);
     const deliveryZone = findZoneByName(merged.zonaEntrega, zones) ?? matchZone(result.fields.direccionEntrega, zones);
-    const price = await quoteFare(pickupZone, deliveryZone);
+
+    // Con los dos puntos en el mapa se cobra por distancia (tabla de rangos
+    // por km). Si falta alguno (restaurante sin registrar, Google sin llave o
+    // caído), se cobra por zona como antes.
+    const pickupLocation = restaurant?.knownPickupLocation ?? null;
+    const price =
+      pickupLocation && deliveryLocation
+        ? (await quoteByDistance(pickupLocation, deliveryLocation)).price
+        : await quoteFare(pickupZone, deliveryZone);
 
     await updateConversation(conversation.id, { draft: null, failedAttempts: 0 });
     const trip = await createTrip(

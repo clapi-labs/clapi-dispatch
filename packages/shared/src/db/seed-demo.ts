@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { db, schema } from "./client";
+import { saveFareRanges } from "./fares";
 
 /**
  * Deja la base lista para mostrar: `npm run db:seed:demo`.
@@ -59,6 +60,15 @@ const PRICES = [
 
 const DEFAULT_FARE_VALUE = 7000;
 
+/** Tabla de precios por distancia (la que se edita en el portal). */
+const FARE_RANGES = [
+  { upToKm: 2, price: 5000 },
+  { upToKm: 4, price: 6000 },
+  { upToKm: 6, price: 7000 },
+  { upToKm: 8, price: 8000 },
+  { upToKm: null, price: 10000 },
+];
+
 // Pedidos de ejemplo entre esas zonas. `courier` es una posición en la flota.
 const DELIVERED = [
   { courier: 0, restaurant: "Donde Lucho · Cra 83 El Caney", address: "Calle 48 #98-20, Valle del Lili", pickupZone: 0, deliveryZone: 1, value: 32000, cash: true, hoursAgo: 4.2 },
@@ -112,6 +122,7 @@ export async function seedDemo() {
     .insert(schema.settings)
     .values({ key: "default_fare", value: DEFAULT_FARE_VALUE })
     .onConflictDoUpdate({ target: schema.settings.key, set: { value: DEFAULT_FARE_VALUE } });
+  await saveFareRanges(FARE_RANGES);
 
   await db
     .insert(schema.restaurants)
@@ -203,7 +214,7 @@ export async function seedDemo() {
   }
 
   console.log(`✓ Restaurante de prueba: ${DEMO_RESTAURANT.name} (${DEMO_RESTAURANT.phone})`);
-  console.log(`✓ Tarifas: ${ZONES.length} zonas, ${ZONES.length ** 2} precios`);
+  console.log(`✓ Tarifas: ${ZONES.length} zonas, ${ZONES.length ** 2} precios y ${FARE_RANGES.length} rangos por km`);
   console.log(`✓ Flota: ${ids.length} motorizados (${ids.length - enRoute.length} libres, ${ids.length - fakeIds.length} con celular real)`);
   console.log(`✓ Viajes: ${DELIVERED.length} entregados, ${enRoute.length} en ruta, 0 por asignar`);
 }

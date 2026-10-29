@@ -3,3 +3,4 @@ export * from "./schema";
 export * from "./dispatch-queue";
 export * from "./fares";
 export * from "./restaurants";
+export * from "./quote";
