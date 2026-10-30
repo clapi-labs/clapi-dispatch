@@ -209,6 +209,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
       "zonaEntrega": string | null        // una de las zonas de la lista, o null
     }
   ],
+  "consulta": "estado" | "cobertura" | null,
   "confirma": boolean,
   "confuso": boolean
 }
@@ -232,6 +233,7 @@ Reglas:
 - Para las zonas, mira el barrio de cada dirección y escoge la zona de la lista que corresponda, aunque esté escrita distinto. Si no hay barrio o no está en la lista, null. Nunca inventes una zona.
 - Nunca inventes un valor: lo que no sepas va en null.
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
+- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto, o se contradice sin aclarar cuál dato es el bueno. Saludos, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;
 }

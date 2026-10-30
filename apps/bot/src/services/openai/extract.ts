@@ -4,7 +4,8 @@ import { env } from "@/env";
 
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
  *  el código igual verifica que haya una cotización que aceptar). */
-export type ExtractionOutcome = { fields: Interpretation; confirms: boolean; confused: boolean; failed: boolean };
+/** `query`: el mensaje pregunta algo en vez de pedir (docs/BOT.md, consultas). */
+export type ExtractionOutcome = { fields: Interpretation; query: "estado" | "cobertura" | null; confirms: boolean; confused: boolean; failed: boolean };
 
 const NOTHING: Interpretation = { origenRestaurante: null, zonaRecogida: null, entregas: [] };
 
@@ -112,7 +113,7 @@ export async function interpretMessage(
 
     if (!response.ok) {
       console.error(`[openai] error ${response.status}: ${(await response.text()).slice(0, 200)}`);
-      return { fields: NOTHING, confirms: false, confused: false, failed: true };
+      return { fields: NOTHING, query: null, confirms: false, confused: false, failed: true };
     }
 
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
@@ -124,12 +125,13 @@ export async function interpretMessage(
 
     return {
       fields: { origenRestaurante: text(raw.origenRestaurante), zonaRecogida: text(raw.zonaRecogida), entregas },
+      query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       confirms: raw.confirma === true,
       confused: raw.confuso === true,
       failed: false,
     };
   } catch (error) {
     console.error("[openai] no se pudo extraer el pedido:", error instanceof Error ? error.message : error);
-    return { fields: NOTHING, confirms: false, confused: false, failed: true };
+    return { fields: NOTHING, query: null, confirms: false, confused: false, failed: true };
   }
 }

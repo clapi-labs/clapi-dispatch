@@ -26,6 +26,7 @@ import {
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
+import { answerStatus } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, tripFromQuote } from "@/db/queries/trips";
@@ -180,10 +181,22 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
 
+    const quoted = message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null;
+
+    // Consultas: no cambian el pedido en curso, solo se responden.
+    if (extraction.query === "estado") {
+      await answerStatus(conversation, message.phone, quoted);
+      return;
+    }
+    const asksAddress = !extraction.fields.entregas.some((e) => e.direccionEntrega) && !known.entregas.some((e) => e.direccionEntrega);
+    if (extraction.query === "cobertura" && asksAddress) {
+      await say(conversation.id, message.phone, "Envíame la dirección o la ubicación y te digo si llegamos y cuánto vale 🛵");
+      return;
+    }
+
     // ¿Habla de un pedido ya creado? Si citó uno de sus mensajes, de ese; si
     // no hay un pedido a medio armar y el mensaje no trae una dirección,
     // de sus pedidos abiertos (casos 9 y 12: «ya está listo»).
-    const quoted = message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null;
     const changed = changedDelivery(extraction.fields, known);
     const update = changed ? tripUpdateFrom(changed.incoming, changed.before, message.timestamp) : null;
     const newAddress = !!changed?.incoming.direccionEntrega && changed.incoming.direccionEntrega !== changed.before.direccionEntrega;
