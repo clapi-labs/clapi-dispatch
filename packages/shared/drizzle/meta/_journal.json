@@ -15,6 +15,20 @@
       "when": 1792690556284,
       "tag": "0001_usuarios",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793385069396,
+      "tag": "0002_viajes_por_fecha",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793385070268,
+      "tag": "0003_avisos_en_vivo",
+      "breakpoints": true
     }
   ]
 }

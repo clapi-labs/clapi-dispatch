@@ -2,11 +2,12 @@
 
 import { Banknote, Check, CheckCircle2, CreditCard } from "lucide-react";
 import { motion } from "motion/react";
+import { memo } from "react";
 
 import { PhoneLink } from "@/components/PhoneLink";
 import { formatCOP, initials } from "@/lib/format";
 import type { Trip } from "@/lib/types";
-import { clock, useNow } from "@/lib/use-now";
+import { clock, useAfter, useNow } from "@/lib/use-now";
 
 /**
  * El cronómetro de cada tarjeta y sus umbrales. Pendiente: lo que importa es
@@ -14,7 +15,9 @@ import { clock, useNow } from "@/lib/use-now";
  * calle desde que se asignó (prometemos 10-15 min de recogida, así que pasado
  * 25 algo anda mal).
  */
-function Timer({ trip, now }: { trip: Trip; now: number }) {
+function Timer({ trip }: { trip: Trip }) {
+  // Solo los que corren se actualizan cada segundo; un entregado no cambia.
+  const now = useNow(trip.status === "pending" || trip.status === "en_route" ? 1000 : null);
   const pill = "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums";
   if (trip.status === "pending") {
     const s = (now - new Date(trip.createdAt).getTime()) / 1000;
@@ -43,10 +46,16 @@ function Timer({ trip, now }: { trip: Trip; now: number }) {
   return null;
 }
 
-export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: number) => void }) {
-  const now = useNow(1000);
-  const urgent = trip.status === "pending" && now - new Date(trip.createdAt).getTime() > 120_000;
-  const justAssigned = trip.status === "en_route" && trip.assignedAt && now - new Date(trip.assignedAt).getTime() < 8000;
+/**
+ * La tarjeta no depende del reloj: solo el cronómetro (`Timer`) late cada
+ * segundo. Antes la tarjeta entera, con su animación de `layout`, se volvía a
+ * medir y dibujar cada segundo por cada viaje en pantalla. `memo`: si el viaje
+ * no cambió, una actualización del tablero tampoco la toca.
+ */
+export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: number) => void }) {
+  const urgent = useAfter(trip.status === "pending" ? Date.parse(trip.createdAt) + 120_000 : null);
+  const assignedFor8s = useAfter(trip.status === "en_route" && trip.assignedAt ? Date.parse(trip.assignedAt) + 8000 : null);
+  const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
   const cash = trip.paymentMethod === "efectivo";
 
   return (
@@ -61,7 +70,7 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
-        <Timer trip={trip} now={now} />
+        <Timer trip={trip} />
       </header>
 
       {/* Recorrido A → B: el conector sale del punto de recogida y llega al de entrega. */}
@@ -144,4 +153,4 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
       </footer>
     </motion.article>
   );
-}
+});

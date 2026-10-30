@@ -26,7 +26,7 @@ import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKE
 import { copyText } from "@/lib/clipboard";
 import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
-import { usePolling } from "@/lib/use-polling";
+import { useLive } from "@/lib/live";
 
 function timeLabel(iso: string) {
   const d = new Date(iso);
@@ -242,11 +242,19 @@ export default function ConversacionesPage() {
     if (res.ok) setThread(await res.json());
   }, []);
 
-  usePolling(loadList, 2500);
+  // La bandeja marca quién es motorizado: también cambia con la flota.
+  useLive(loadList, ["conversations", "messages", "couriers"]);
   const pollThread = useCallback(() => {
     if (selectedId !== null) loadThread(selectedId);
   }, [selectedId, loadThread]);
-  usePolling(pollThread, 2000, selectedId !== null);
+  useLive(pollThread, ["messages", "conversations"], selectedId !== null);
+  // Al cambiar de chat se carga el nuevo de una vez, sin esperar un aviso.
+  // En un setTimeout: el setState de la respuesta no ocurre dentro del efecto.
+  useEffect(() => {
+    if (selectedId === null) return;
+    const id = setTimeout(() => loadThread(selectedId), 0);
+    return () => clearTimeout(id);
+  }, [selectedId, loadThread]);
 
   // Bajar al último mensaje solo cuando llega uno nuevo, no en cada sondeo.
   useEffect(() => {
