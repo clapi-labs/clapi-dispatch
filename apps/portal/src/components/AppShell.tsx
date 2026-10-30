@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, BellOff, LayoutGrid, LogOut, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, LayoutGrid, LogOut, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import logotipo from "@/assets/logotipo-clapi.svg";
 import { useTrips } from "@/components/TripsProvider";
@@ -61,31 +62,118 @@ function SoundButton({ compact }: { compact?: boolean }) {
   );
 }
 
-function LogoutButton({ compact }: { compact?: boolean }) {
+/** El estado del bot, siempre a la vista: "En vivo" mientras el portal le llega
+ *  al servidor. En el celular se va el robot para que quepa al lado de la campana. */
+function LiveStatus({ compact }: { compact?: boolean }) {
+  const { online } = useTrips();
+  return (
+    <span
+      role="status"
+      className={`flex h-10 shrink-0 items-center gap-2 rounded-xl text-xs font-semibold text-white ${compact ? "px-2.5" : "px-3"} ${
+        online ? "bg-white/10" : "bg-danger/30"
+      }`}
+    >
+      <Bot size={16} className={compact ? "hidden sm:block" : ""} />
+      {online ? "En vivo" : "Sin conexión"}
+      <span className={`h-2 w-2 rounded-full ${online ? "animate-live bg-ok" : "bg-danger"}`} />
+    </span>
+  );
+}
+
+/**
+ * El cliente: al pie del riel, o su insignia en la cabecera del celular.
+ * "Cerrar sesión" aparece al pasar el cursor o al tocarlo.
+ */
+function ClientMenu({ variant }: { variant: "rail" | "header" }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const rail = variant === "rail";
   const router = useRouter();
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
     router.replace("/login");
     router.refresh();
   }
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  // Solo el mouse abre y cierra al pasar: en táctil el toque haría las dos cosas a la vez.
+  const hover = (next: boolean) => (e: React.PointerEvent) => {
+    if (e.pointerType === "mouse") setOpen(next);
+  };
+
   return (
-    <button
-      type="button"
-      onClick={logout}
-      aria-label="Cerrar sesión"
-      className={`ease-ui flex shrink-0 items-center gap-2 rounded-xl text-xs font-medium text-white/50 hover:bg-white/5 hover:text-white focus-visible:outline-gold ${
-        compact ? "h-10 w-10 justify-center" : "h-10 px-3"
-      }`}
-    >
-      <LogOut size={16} />
-      {!compact && "Cerrar sesión"}
-    </button>
+    <div ref={box} className="relative" onPointerEnter={hover(true)} onPointerLeave={hover(false)}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={
+          rail
+            ? "ease-ui flex w-full items-center gap-3 rounded-2xl bg-white/5 p-2.5 text-left focus-visible:outline-gold can-hover:hover:bg-white/10"
+            : "flex items-center gap-2 rounded-full focus-visible:outline-gold"
+        }
+      >
+        {rail ? (
+          <>
+            <ClientLogo />
+            <span className="min-w-0 truncate text-sm font-semibold">{BRAND.client.name}</span>
+          </>
+        ) : (
+          <>
+            {/* En celular solo va la insignia: el nombre se lee desde tableta. */}
+            <span className="sr-only truncate text-sm font-semibold md:not-sr-only">{BRAND.client.name}</span>
+            <ClientLogo round />
+          </>
+        )}
+      </button>
+
+      {open && (
+        // Relleno y no margen entre el botón y el menú: el cursor cruza sin que el menú se cierre.
+        <div className={`absolute z-50 ${rail ? "bottom-full left-0 right-0 pb-2" : "right-0 top-full w-56 pt-2"}`}>
+          <div role="menu" className="rounded-2xl bg-surface p-1.5 text-ink shadow-xl ring-1 ring-line">
+            {!rail && <p className="truncate px-3 pb-1.5 pt-1 text-xs font-semibold text-ink-3">{BRAND.client.name}</p>}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={logout}
+              className="ease-ui flex h-10 w-full items-center gap-2.5 rounded-xl px-3 text-sm font-medium text-danger can-hover:hover:bg-danger/10"
+            >
+              <LogOut size={16} /> Cerrar sesión
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
+}
+
+/** La burbuja amarilla de una sección: cuántas cosas esperan a alguien. */
+function badgeFor(href: string, pending: number, needsHelp: number) {
+  if (href === "/viajes") return pending;
+  if (href === "/conversaciones") return needsHelp;
+  return 0;
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { trips } = useTrips();
+  const { trips, needsHelp } = useTrips();
   const pending = trips.filter((t) => t.status === "pending").length;
 
   return (
@@ -99,6 +187,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex flex-col gap-3">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname?.startsWith(href);
+            const badge = badgeFor(href, pending, needsHelp);
             return (
               <Link
                 key={href}
@@ -109,39 +198,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon size={18} />
                 {label}
-                {href === "/viajes" && pending > 0 && (
-                  <span className="ml-auto rounded-full bg-gold px-2 py-0.5 text-[11px] font-bold text-clapi-deep">{pending}</span>
-                )}
+                {badge > 0 && <span className="ml-auto rounded-full bg-gold px-2 py-0.5 text-[11px] font-bold text-clapi-deep">{badge}</span>}
               </Link>
             );
           })}
         </nav>
 
-        {/* Abajo: las alertas y, al pie, de quién es la central. */}
+        {/* Abajo: el estado del bot, las alertas y, al pie, el cliente (con "Cerrar sesión"). */}
         <div className="mt-auto flex flex-col gap-3">
+          <LiveStatus />
           <SoundButton />
-          <LogoutButton />
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-2.5">
-            <ClientLogo />
-            <div className="min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold">{BRAND.client.name}</p>
-              <p className="text-xs text-white/60">Central de despachos</p>
-            </div>
-          </div>
+          <ClientMenu variant="rail" />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Celular y tablet: cabecera compacta, en el mismo azul noche del riel.
-            A la izquierda CLAPI; a la derecha la campana y, al final, el cliente. */}
+        {/* Celular y tablet: cabecera compacta, en el mismo azul noche del riel. A la
+            izquierda CLAPI; a la derecha el estado del bot, la campana y, al final, el cliente. */}
         <header className="flex items-center justify-between gap-3 bg-clapi-deep px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white lg:hidden">
           <PlatformLogo size="sm" />
           <div className="flex min-w-0 items-center gap-2">
+            <LiveStatus compact />
             <SoundButton compact />
-            <LogoutButton compact />
-            {/* En celular solo va la insignia: el nombre se lee desde tableta. */}
-            <p className="sr-only truncate text-sm font-semibold md:not-sr-only">{BRAND.client.name}</p>
-            <ClientLogo round />
+            <ClientMenu variant="header" />
           </div>
         </header>
 
@@ -152,6 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 bg-clapi-deep/95 pb-[env(safe-area-inset-bottom)] text-white backdrop-blur lg:hidden">
           {NAV.map(({ href, short, icon: Icon }) => {
             const active = pathname?.startsWith(href);
+            const badge = badgeFor(href, pending, needsHelp);
             return (
               <Link
                 key={href}
@@ -162,9 +242,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <span className={`ease-ui relative flex h-8 w-14 items-center justify-center rounded-full ${active ? "bg-clapi" : ""}`}>
                   <Icon size={20} strokeWidth={active ? 2.4 : 2} />
-                  {href === "/viajes" && pending > 0 && (
+                  {badge > 0 && (
                     <span className="absolute -top-1 right-0 min-w-[18px] rounded-full bg-gold px-1 text-center text-[10px] font-bold leading-[18px] text-clapi-deep">
-                      {pending}
+                      {badge}
                     </span>
                   )}
                 </span>

@@ -1,15 +1,28 @@
 "use client";
 
-import { ArrowLeft, Bot, Check, Hand, Headset, MessagesSquare, MoreVertical, RotateCcw, SendHorizontal } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  Check,
+  Hand,
+  Headset,
+  MessagesSquare,
+  MoreVertical,
+  Pin,
+  RotateCcw,
+  SendHorizontal,
+  TriangleAlert,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { ChatContactActions } from "@/components/ChatContactActions";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { KINDS, KindChip } from "@/components/KindChip";
 import { MessageMenu } from "@/components/MessageMenu";
 import { QuickReplies } from "@/components/QuickReplies";
-import { conversationName as name, phoneFromHash, sendErrorText } from "@/lib/chat";
+import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKEOVER_REASON } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
 import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
@@ -23,12 +36,25 @@ function timeLabel(iso: string) {
     : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }
 
-/** En cada mensaje van el día y la hora: un chat también se revisa días después. */
+/** En cada mensaje va solo la hora, como en WhatsApp. El día lo dice el separador de arriba. */
 function messageTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" });
+}
+
+/** El separador entre días del hilo: "Hoy", "Ayer" o la fecha. */
+function dayLabel(iso: string) {
   const d = new Date(iso);
-  const day = d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
-  const time = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
-  return `${day} · ${time}`;
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Hoy";
+  if (d.toDateString() === yesterday.toDateString()) return "Ayer";
+  return d.toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(d.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
+  });
 }
 
 type Tab = ConversationKind | "all";
@@ -126,7 +152,7 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
         onContextMenu={(e) => {
           if (touched.current) e.preventDefault();
         }}
-        className={`max-w-[85%] min-w-0 select-none whitespace-pre-wrap wrap-anywhere rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
+        className={`relative max-w-[85%] min-w-0 select-none whitespace-pre-wrap wrap-anywhere rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
           mine ? "rounded-br-md bg-chat-out" : "rounded-bl-md bg-surface"
         }`}
       >
@@ -136,8 +162,15 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
             {message.role === "bot" ? "Bot" : "Asesor"}
           </p>
         )}
+        {/* La hora al lado del texto, como en WhatsApp: una copia invisible le guarda el
+            sitio al final de la última línea; si no cabe, salta sola a una línea nueva. */}
         {message.text}
-        <p className={`mt-1 whitespace-nowrap text-right text-[10px] ${mine ? "text-ink-2/80" : "text-ink-3"}`}>{messageTime(message.createdAt)}</p>
+        <span aria-hidden className="invisible ml-2 inline-block whitespace-nowrap text-[10px] leading-none">
+          {messageTime(message.createdAt)}
+        </span>
+        <span className={`absolute bottom-1.5 right-3 whitespace-nowrap text-[10px] leading-none ${mine ? "text-ink-2/80" : "text-ink-3"}`}>
+          {messageTime(message.createdAt)}
+        </span>
       </div>
       <button
         type="button"
@@ -256,7 +289,17 @@ export default function ConversacionesPage() {
   async function act(action: "pause" | "resume") {
     if (!selected) return;
     // Optimista: el botón responde al toque, el sondeo confirma.
-    setList((prev) => prev.map((c) => (c.id === selected.id ? { ...c, botPaused: action === "pause" } : c)));
+    const patch =
+      action === "pause" ? { botPaused: true, escalationReason: TAKEOVER_REASON } : { botPaused: false, escalationReason: null };
+    const update = () => setList((prev) => prev.map((c) => (c.id === selected.id ? { ...c, ...patch } : c)));
+    if (action === "pause") {
+      // Al intervenir, el cursor ya queda en la caja de texto. `flushSync` pinta la caja
+      // antes del `focus()`, todavía dentro del toque: solo así el celular abre el teclado.
+      flushSync(update);
+      inputRef.current?.focus();
+    } else {
+      update();
+    }
     await fetch(`/api/conversations/${selected.id}`, { method: "POST", body: JSON.stringify({ action }) });
     loadList();
   }
@@ -299,15 +342,11 @@ export default function ConversacionesPage() {
       <div className="flex min-h-0 w-full overflow-hidden lg:card">
         {/* Lista de chats */}
         <aside className={`min-h-0 w-full flex-col border-line lg:flex lg:w-[340px] lg:border-r ${selected ? "hidden" : "flex"}`}>
-          <div className="border-b border-line px-4 py-4">
-            <h1 className="text-xl font-bold tracking-tight">Conversaciones</h1>
-            <p className="text-sm text-ink-3">El bot atendiendo en vivo</p>
-            <div role="tablist" aria-label="Tipo de contacto" className="mt-3 flex gap-1 rounded-xl bg-sunken p-1">
+          <div className="border-b border-line px-4 py-3">
+            <div role="tablist" aria-label="Tipo de contacto" className="flex gap-1 rounded-xl bg-sunken p-1">
+              {/* Sin contadores: los chats que piden ayuda ya se ven fijados arriba en amarillo,
+                  y su número está en la burbuja de "Conversaciones" en la navegación. */}
               {TABS.map((t) => {
-                const chats = list.filter((c) => inTab(c, t.key));
-                // El punto avisa que en ese grupo hay chats esperando a una persona,
-                // aunque se esté mirando la otra pestaña. En "Todos" sobraría.
-                const waiting = t.key === "all" ? 0 : chats.filter((c) => c.botPaused).length;
                 const active = t.key === tab;
                 return (
                   <button
@@ -315,20 +354,12 @@ export default function ConversacionesPage() {
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    title={waiting > 0 ? `${waiting} esperando un asesor` : undefined}
                     onClick={() => switchTab(t.key)}
-                    className={`ease-ui relative flex h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-semibold ${
+                    className={`ease-ui flex h-9 flex-auto items-center justify-center whitespace-nowrap rounded-lg px-2 text-xs font-semibold ${
                       active ? "bg-surface text-ink shadow-sm" : "text-ink-2 can-hover:hover:text-ink"
                     }`}
                   >
                     {t.label}
-                    <span className="font-medium tabular-nums text-ink-3">{chats.length}</span>
-                    {waiting > 0 && (
-                      <>
-                        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-gold" />
-                        <span className="sr-only">, {waiting} esperando un asesor</span>
-                      </>
-                    )}
                   </button>
                 );
               })}
@@ -341,44 +372,55 @@ export default function ConversacionesPage() {
                 {TABS.find((t) => t.key === tab)?.empty}
               </div>
             )}
-            {visible.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => open(c.id)}
-                className={`ease-ui flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
-                  c.id === selectedId ? KINDS[c.kind].selected : "can-hover:hover:bg-sunken"
-                }`}
-              >
-                <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
-                  {initials(name(c)) || "#"}
-                  {c.botPaused && (
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
-                      <Headset size={11} className="text-clapi-deep" />
-                    </span>
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-semibold">{name(c)}</span>
-                    <span className="shrink-0 text-[11px] text-ink-3">{timeLabel(c.lastMessageAt)}</span>
+            {visible.map((c) => {
+              const help = needsHelp(c);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => open(c.id)}
+                  className={`ease-ui relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
+                    c.id === selectedId ? KINDS[c.kind].selected : help ? "bg-gold-soft/70 can-hover:hover:bg-gold-soft" : "can-hover:hover:bg-sunken"
+                  }`}
+                >
+                  {/* Franja amarilla a la izquierda: este chat pide ayuda. */}
+                  {help && <span className="absolute inset-y-0 left-0 w-1 bg-gold" />}
+                  <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
+                    {initials(name(c)) || "#"}
+                    {c.botPaused && (
+                      <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
+                        {help ? <TriangleAlert size={11} className="text-clapi-deep" /> : <Headset size={11} className="text-clapi-deep" />}
+                      </span>
+                    )}
                   </span>
-                  <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
-                    <KindChip kind={c.kind} />
-                    <span className="min-w-0 truncate">
-                      {c.botPaused ? (
-                        <span className="font-semibold text-gold-ink">Esperando un asesor</span>
-                      ) : (
-                        <>
-                          {c.lastRole === "bot" && "Bot: "}
-                          {c.lastText}
-                        </>
-                      )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-sm font-semibold">{name(c)}</span>
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] text-ink-3">
+                        {/* Fijado arriba hasta que vuelva al bot. */}
+                        {c.botPaused && <Pin size={11} className={help ? "fill-gold text-gold-ink" : ""} aria-label="Fijado" />}
+                        {timeLabel(c.lastMessageAt)}
+                      </span>
+                    </span>
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
+                      <KindChip kind={c.kind} />
+                      <span className="min-w-0 truncate">
+                        {help ? (
+                          <span className="font-semibold text-gold-ink">Necesita tu ayuda</span>
+                        ) : c.botPaused ? (
+                          <span className="font-medium text-gold-ink">Tú atiendes</span>
+                        ) : (
+                          <>
+                            {c.lastRole === "bot" && "Bot: "}
+                            {c.lastText}
+                          </>
+                        )}
+                      </span>
                     </span>
                   </span>
-                </span>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </aside>
 
@@ -441,14 +483,24 @@ export default function ConversacionesPage() {
 
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
               <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 py-4 lg:px-6">
-                {thread.map((m) => (
-                  <Bubble
-                    key={m.id}
-                    message={m}
-                    // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
-                    onMenu={(message, anchor) => setMenu({ message, anchor: isDesktop() ? anchor : null })}
-                  />
-                ))}
+                {thread.map((m, i) => {
+                  const day = dayLabel(m.createdAt);
+                  const newDay = i === 0 || dayLabel(thread[i - 1].createdAt) !== day;
+                  return (
+                    <Fragment key={m.id}>
+                      {newDay && (
+                        <p className="my-1 self-center rounded-lg bg-surface/90 px-3 py-1 text-[11px] font-medium text-ink-2 shadow-sm first-letter:uppercase">
+                          {day}
+                        </p>
+                      )}
+                      <Bubble
+                        message={m}
+                        // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
+                        onMenu={(message, anchor) => setMenu({ message, anchor: isDesktop() ? anchor : null })}
+                      />
+                    </Fragment>
+                  );
+                })}
                 <div ref={bottomRef} />
               </div>
 

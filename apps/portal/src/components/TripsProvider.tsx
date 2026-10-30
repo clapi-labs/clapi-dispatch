@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
+import { DEMO, installDemo } from "@/lib/demo";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Trip } from "@/lib/types";
 import { usePolling } from "@/lib/use-polling";
@@ -17,12 +18,18 @@ import { usePolling } from "@/lib/use-polling";
 
 type TripsState = {
   trips: Trip[];
+  /** Chats que piden ayuda a una persona: la burbuja amarilla de Conversaciones. */
+  needsHelp: number;
   loaded: boolean;
   online: boolean;
   soundOn: boolean;
   setSoundOn: (on: boolean) => void;
   deliver: (tripId: number) => Promise<void>;
 };
+
+// Con NEXT_PUBLIC_DEMO=1 las rutas /api/* responden con datos de ejemplo (lib/demo.ts).
+// Va aquí, al cargar el módulo: antes de que cualquier pantalla pida algo.
+installDemo();
 
 const TripsContext = createContext<TripsState | null>(null);
 
@@ -31,6 +38,8 @@ const POLL_MS = 3000;
 export function TripsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [needsHelp, setNeedsHelp] = useState(0);
+  const lastHelp = useRef<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(true);
   const [soundOn, setSoundOn] = useState(true);
@@ -44,7 +53,13 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/trips", { cache: "no-store" });
+      // El contador de ayuda va en paralelo: no le suma espera al sondeo.
+      const [res, help] = await Promise.all([
+        fetch("/api/trips", { cache: "no-store" }),
+        fetch("/api/conversations/needs-help", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       // La sesión venció: de vuelta al login en vez de quedarse "sin conexión".
       if (res.status === 401) {
         router.replace("/login");
@@ -52,6 +67,13 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       }
       if (!res.ok) throw new Error(String(res.status));
       const data: Trip[] = await res.json();
+
+      if (help && typeof help.count === "number") {
+        // Suena cuando un chat nuevo pide ayuda; no en la primera carga.
+        if (lastHelp.current !== null && help.count > lastHelp.current && soundRef.current) playChime();
+        lastHelp.current = help.count;
+        setNeedsHelp(help.count);
+      }
 
       const assigned = data.filter((t) => t.assignedAt && t.status !== "pending");
       // La primera carga solo aprende qué existía: no suena por lo viejo.
@@ -100,8 +122,14 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <TripsContext.Provider value={{ trips, loaded, online, soundOn, setSoundOn, deliver }}>
+    <TripsContext.Provider value={{ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }}>
       {children}
+
+      {DEMO && (
+        <span className="pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-3 z-50 rounded-full bg-gold px-2.5 py-1 text-[11px] font-bold text-clapi-deep shadow lg:bottom-3 lg:left-auto lg:right-3">
+          Datos de ejemplo
+        </span>
+      )}
 
       <AnimatePresence>
         {toast && (
