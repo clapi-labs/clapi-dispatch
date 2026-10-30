@@ -57,7 +57,7 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`card flex flex-col gap-3 p-4 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      className={`card flex flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
@@ -106,29 +106,25 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
         <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />
       </div>
 
-      {/* Rejilla y no fila: el contacto baja a su propia línea y pasa por debajo del
-          botón, así la cápsula del teléfono cabe entera en las columnas angostas. */}
-      <footer className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-t border-gray-100 pt-3">
+      {/* Una sola línea: avatar, nombre, chat y llamada; en "En ruta", el botón Entregado al final. */}
+      <footer className="flex items-center gap-2 border-t border-gray-100 pt-2.5">
         {trip.courierName ? (
           <>
-            <span className="row-span-2 flex h-8 w-8 items-center justify-center rounded-full bg-clapi text-xs font-bold text-white">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-clapi text-[11px] font-bold text-white">
               {initials(trip.courierName)}
             </span>
-            <p className={`truncate text-sm font-medium leading-tight ${trip.status === "en_route" ? "" : "col-span-2"}`}>{trip.courierName}</p>
-            <div className="col-span-2 col-start-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3">
-              {trip.status === "delivered" ? "Entregó" : "En camino"}
-              {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
-              {trip.courierPhone && (
-                <>
-                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
-                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
-                </>
-              )}
-            </div>
+            <p className="min-w-0 truncate text-sm font-medium leading-tight">{trip.courierName}</p>
+            {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
+            {trip.courierPhone && (
+              <div className="flex shrink-0 items-center gap-1.5 text-ink-3">
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
+              </div>
+            )}
           </>
         ) : (
-          <div className="col-span-2 flex items-center gap-2 text-sm text-ink-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-ink-3/40">
+          <div className="flex items-center gap-2 text-sm text-ink-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-ink-3/40">
               <span className="h-1.5 w-1.5 animate-live rounded-full bg-warn" />
             </span>
             Buscando moto libre…
@@ -139,7 +135,7 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
           <button
             type="button"
             onClick={() => onDeliver(trip.id)}
-            className="ease-ui col-start-3 row-start-1 flex h-9 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
+            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
           >
             <Check size={14} />
             Entregado
