@@ -1,10 +1,11 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { completeTrip, db, schema } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
 import { DELIVER_BUTTON_PREFIX, notifyAssigned, notifyDelivered, sendCourierTicket } from "@/bot/notify";
-import type { Conversation } from "@/db/queries/conversation";
+import { updateConversation, type Conversation } from "@/db/queries/conversation";
+import { classifyCourierMessage } from "@/services/openai/courier";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
 export type Courier = typeof schema.couriers.$inferSelect;
@@ -21,14 +22,34 @@ export async function findCourier(phone: string): Promise<Courier | null> {
   return courier ?? null;
 }
 
-/** El motorizado confirma entregas con el botón de la ficha, o escribe para
- *  "conectarse". */
+/** Lo que el motorizado tiene en curso, el más reciente primero. */
+async function activeTrips(courierId: number) {
+  const rows = await db
+    .select({ trip: schema.trips })
+    .from(schema.assignments)
+    .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+    .where(and(eq(schema.assignments.courierId, courierId), inArray(schema.trips.status, ["assigned", "en_route"])))
+    .orderBy(desc(schema.assignments.assignedAt));
+  return rows.map((r) => r.trip);
+}
+
+/**
+ * Lo normal es que el motorizado no escriba: recibe la ficha y toca
+ * «Terminé el servicio». Por eso un mensaje suyo solo se responde cuando
+ * hace falta (docs/BOT.md, «Mensajes por servicio»):
+ *
+ * - Novedad (accidente, no puede ir, el cliente no baja…): queda en pausa
+ *   (no se le asigna nada más, conserva lo que lleva) y su chat pasa a la
+ *   central, que decide qué hacer (docs/INTERVENCION-MANUAL.md).
+ * - Pide la ficha: se le reenvía.
+ * - «Ok», «voy», «ya recogí»: nada.
+ */
 export async function handleCourier(courier: Courier, conversation: Conversation, message: IncomingMessage) {
   if (message.kind === "button" && message.buttonId.startsWith(DELIVER_BUTTON_PREFIX)) {
     const tripId = Number(message.buttonId.slice(DELIVER_BUTTON_PREFIX.length));
     const result = await completeTrip(tripId);
     if (!result) {
-      await say(conversation.id, message.phone, "Ese viaje ya estaba cerrado ✅", { tripId });
+      await say(conversation.id, message.phone, "Ese servicio ya estaba cerrado ✅", { tripId });
       return;
     }
     await notifyDelivered(tripId);
@@ -37,23 +58,30 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     return;
   }
 
-  // Cualquier otro mensaje: si tiene un viaje en curso, se le reenvía la
-  // ficha (con el botón); si no, queda conectado y libre.
-  const [active] = await db
-    .select({ trip: schema.trips })
-    .from(schema.assignments)
-    .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
-    .where(and(eq(schema.assignments.courierId, courier.id), eq(schema.trips.status, "en_route")))
-    .orderBy(desc(schema.assignments.assignedAt))
-    .limit(1);
+  // Con la central al frente de su chat, el bot no se mete.
+  if (conversation.botPaused) return;
 
-  if (active) {
-    await sendCourierTicket(message.phone, active.trip);
+  const trips = await activeTrips(courier.id);
+  const intent = message.kind === "text" ? await classifyCourierMessage(message.text) : { kind: "otro" as const, summary: null };
+
+  if (intent.kind === "novedad") {
+    const codes = trips.map((t) => t.code).join(", ");
+    const reason = `Novedad de ${courier.name}${codes ? ` (${codes})` : ""}: ${intent.summary ?? "revisar su chat"}`;
+    await db.update(schema.couriers).set({ status: "paused" }).where(eq(schema.couriers.id, courier.id));
+    await updateConversation(conversation.id, { botPaused: true, escalationReason: reason });
+    await say(conversation.id, message.phone, "Recibido 🙏 La central ya te contacta.", { tripId: trips[0]?.id ?? null });
     return;
   }
 
-  if (courier.status === "offline" || courier.status === "paused") {
-    await db.update(schema.couriers).set({ status: "available" }).where(eq(schema.couriers.id, courier.id));
+  if (intent.kind === "ficha" && trips.length) {
+    for (const trip of trips) await sendCourierTicket(message.phone, trip);
+    return;
   }
-  await say(conversation.id, message.phone, `👋 ${courier.name.split(" ")[0]}, estás conectado a la central. Te escribo apenas tengas un viaje 🛵`);
+
+  // Sin viajes y desconectado: escribir es conectarse. En pausa no: esa la
+  // pone y la quita la central.
+  if (!trips.length && courier.status === "offline") {
+    await db.update(schema.couriers).set({ status: "available" }).where(eq(schema.couriers.id, courier.id));
+    await say(conversation.id, message.phone, `👋 ${courier.name.split(" ")[0]}, quedaste conectado. Te escribo apenas tengas un servicio 🛵`);
+  }
 }

@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 
-import { db, schema } from "@dispatch/shared/db";
+import { db, getBotConfig, schema } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
 import { conversationForOutbound } from "@/db/queries/conversation";
@@ -43,14 +43,13 @@ function formatPhone(phone: string) {
   return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : phone;
 }
 
-/** Qué hacer con la plata. Sin método de pago dicho, no se inventa una orden:
- *  el motorizado se guía por las notas o pregunta. */
+/** El cobro es entre el restaurante, el cliente y el motorizado: la agencia
+ *  no lo exige ni lo liquida. Si el restaurante lo dijo, va informativo. */
 function moneyLine(trip: typeof schema.trips.$inferSelect) {
-  if (trip.paymentMethod === "efectivo") {
-    return trip.valueToCollect ? `💵 COBRAR en efectivo: *${cop(trip.valueToCollect)}*` : "💵 Cobrar en efectivo";
-  }
-  if (trip.paymentMethod === "transferencia") return "💳 Ya pagado. *NO cobrar* al cliente.";
-  return trip.valueToCollect ? `💵 Valor del pedido: ${cop(trip.valueToCollect)}` : null;
+  if (trip.paymentMethod === "transferencia") return "💳 Ya pagado, no cobrar.";
+  const value = trip.valueToCollect ? ` ${cop(trip.valueToCollect)}` : "";
+  if (trip.paymentMethod === "efectivo") return `💵 Cobrar en efectivo${value}`;
+  return value ? `💵 Valor del pedido:${value}` : null;
 }
 
 /** La ficha que le llega al motorizado, con el botón de confirmar entrega. */
@@ -67,9 +66,10 @@ export function courierTicket(trip: typeof schema.trips.$inferSelect) {
     "",
     trip.deliveryLocation
       ? `🗺️ https://waze.com/ul?ll=${trip.deliveryLocation.lat},${trip.deliveryLocation.lng}&navigate=yes`
-      : `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress}, Cali`)}&navigate=yes`,
+      : // Solo la calle: la torre y el apto («· Torre 4 apto 302») confunden la búsqueda.
+        `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress.split(" · ")[0]}, Cali`)}&navigate=yes`,
     "",
-    "Cuando entregues, toca el botón 👇",
+    "Toca el botón cuando termines. Si te toca volver al restaurante (por el cambio, por ejemplo), tócalo al volver 👇",
   ];
   return lines.filter((l): l is string => typeof l === "string").join("\n");
 }
@@ -78,7 +78,7 @@ export async function sendCourierTicket(phone: string, trip: typeof schema.trips
   const conversation = await conversationOf(phone);
   return say(conversation.id, phone, courierTicket(trip), {
     tripId: trip.id,
-    buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "✅ Confirmar entrega" }],
+    buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "Terminé el servicio" }],
   });
 }
 
@@ -97,21 +97,17 @@ export async function notifyAssigned(tripId: number) {
   }
 }
 
-/** Entregado: confirmación al motorizado y aviso al restaurante. */
+/** Servicio terminado: los avisos que la agencia tenga encendidos. */
 export async function notifyDelivered(tripId: number) {
-  const row = await loadTrip(tripId);
+  const [row, config] = await Promise.all([loadTrip(tripId), getBotConfig()]);
   if (!row) return;
 
-  if (row.courier) {
-    const cash = row.trip.paymentMethod === "efectivo" && row.trip.valueToCollect;
-    const text = cash
-      ? `✅ Entrega ${row.trip.code} registrada. Recuerda entregar ${cop(row.trip.valueToCollect!)} en base.\nQuedas libre en la cola 🛵`
-      : `✅ Entrega ${row.trip.code} registrada. Quedas libre en la cola 🛵`;
+  if (row.courier && config.confirmDeliveryToCourier) {
     const conversation = await conversationOf(row.courier.phone);
-    await say(conversation.id, row.courier.phone, text, { tripId });
+    await say(conversation.id, row.courier.phone, `✅ ${row.trip.code} terminado. Quedas libre 🛵`, { tripId });
   }
 
-  const restaurant = await restaurantConversation(row.trip.conversationId);
+  const restaurant = config.notifyRestaurantOnDelivery ? await restaurantConversation(row.trip.conversationId) : null;
   if (restaurant) {
     const time = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" });
     await say(restaurant.id, restaurant.phone, `📦 Pedido ${row.trip.code} entregado a las ${time} ✅`, {

@@ -25,8 +25,15 @@ type DeliveryFields = {
    *  mensaje que lo dijo; 0 = ya está lista. */
   listoEnMinutos: number | null;
   /** Lo que no es un campo pero el motorizado necesita saber: "billete de
-   *  100 mil", "torre A apto 705", "2 hamburguesas". */
+   *  100 mil", "2 hamburguesas". */
   notas: string | null;
+  /** Torre y apartamento, casa, oficina o local: lo que va dentro de la
+   *  dirección. Aparte de `direccionEntrega` para no volver a geocodificar
+   *  (ni cotizar) cuando llega después. */
+  detalleDireccion: string | null;
+  /** La dirección es un conjunto, unidad, edificio o condominio: sin
+   *  `detalleDireccion` el motorizado no sabe a qué puerta ir. */
+  esConjunto: boolean | null;
   zonaEntrega?: string | null;
 };
 
@@ -75,13 +82,23 @@ export type Interpretation = {
 };
 
 /** Lo que se puede exigir por agencia antes de crear el viaje. */
-export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "zonaEntrega">;
+export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "zonaEntrega" | "esConjunto">;
 
 /** Los obligatorios del primer cliente. Cada agencia puede cambiarlos en
  *  `settings.bot_config` sin tocar el flujo. */
 export const DEFAULT_REQUIRED_FIELDS: OrderFieldKey[] = ["direccionEntrega", "listoEnMinutos"];
 
-const DELIVERY_KEYS = ["direccionEntrega", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"] as const;
+const DELIVERY_KEYS = [
+  "direccionEntrega",
+  "telefonoCliente",
+  "nombreCliente",
+  "valorACobrar",
+  "metodoPago",
+  "listoEnMinutos",
+  "notas",
+  "detalleDireccion",
+  "esConjunto",
+] as const;
 
 export function emptyDelivery(): DeliveryDraft {
   return {
@@ -92,6 +109,8 @@ export function emptyDelivery(): DeliveryDraft {
     metodoPago: null,
     listoEnMinutos: null,
     notas: null,
+    detalleDireccion: null,
+    esConjunto: null,
     zonaEntrega: null,
   };
 }
@@ -124,7 +143,16 @@ export function normalizeDraft(raw: unknown): OrderDraft {
 /** Lo que le falta a una entrega para crear su viaje. `origenRestaurante`
  *  es del pedido, no de la entrega: se revisa aparte. */
 export function missingFields(delivery: DeliveryDraft, required: OrderFieldKey[]): Exclude<OrderFieldKey, "origenRestaurante">[] {
-  return required.filter((k): k is Exclude<OrderFieldKey, "origenRestaurante"> => k !== "origenRestaurante" && delivery[k] == null);
+  const missing = required.filter((k): k is Exclude<OrderFieldKey, "origenRestaurante"> => k !== "origenRestaurante" && delivery[k] == null);
+  // En un conjunto o edificio la torre y el apartamento son obligatorios para
+  // toda agencia: sin ellos el motorizado llega a la portería y no sabe a quién.
+  if (delivery.esConjunto && !delivery.detalleDireccion && !missing.includes("detalleDireccion")) missing.push("detalleDireccion");
+  return missing;
+}
+
+/** La dirección tal como la lee el motorizado: calle y, si hay, torre y apto. */
+export function fullAddress(delivery: Pick<DeliveryDraft, "direccionEntrega" | "detalleDireccion">): string {
+  return [delivery.direccionEntrega, delivery.detalleDireccion].filter(Boolean).join(" · ");
 }
 
 /** "efectivo requiere retorno a base" (prompt maestro §A): la plata que
@@ -199,13 +227,15 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "zonaRecogida": string | null,        // una de las zonas de la lista, o null
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados
     {
-      "direccionEntrega": string | null,  // completa, tal como la escribió: con barrio, conjunto, torre y apto si los da
+      "direccionEntrega": string | null,  // todo lo que escribió (calle, número, nombre del conjunto o edificio, barrio, referencias) MENOS torre y apto, que van en detalleDireccion
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
       "metodoPago": "efectivo" | "transferencia" | null,
       "listoEnMinutos": number | null,    // en cuántos minutos está lista la comida; 0 si ya está lista
       "notas": string | null,             // solo lo NUEVO de este mensaje que el motorizado deba saber
+      "detalleDireccion": string | null,  // torre, bloque, apartamento, casa, piso, oficina o local: "Torre 3 apto 502"
+      "esConjunto": boolean | null,       // true si la dirección es un conjunto, unidad, edificio, condominio o torres
       "zonaEntrega": string | null        // una de las zonas de la lista, o null
     }
   ],
@@ -222,12 +252,16 @@ Reglas:
 - Una dirección nueva que el restaurante presenta como OTRO pedido ("y otro para…", "también a…", datos de un segundo cliente) se agrega al final.
 - Una CORRECCIÓN ("perdón, era…", "me equivoqué…", "la dirección correcta es…", "el de Pance es…", "no, es la…") NO agrega una entrega: reemplaza la dirección de la entrega que corrige, y la lista queda del mismo tamaño. Si no dice cuál corrige y hay varias, corrige la última.
   Ejemplo: capturadas [El Caney, Pance]; mensaje "perdón, el de Pance es Cra 105 # 14-30, Ciudad Jardín" → [El Caney, Cra 105 # 14-30, Ciudad Jardín].
+- La MISMA dirección repetida (aunque esté escrita un poco distinto o venga con datos nuevos como torre, apto o tiempo) es la misma entrega: complétala, no agregues otra.
 - Un dato suelto (solo un teléfono, solo un nombre) va a la entrega que le falte; si todas lo tienen o no se sabe, a la última.
 - El tiempo de preparación dicho sin señalar una entrega ("en 10", "ya están los 2") aplica a todas las entregas que no lo tengan.
 - Preguntar el precio ("¿qué vale a…?", "¿cuánto a…?", "¿domis acá?") es una cotización normal: extrae la dirección o el lugar y no es confuso.
 - Un lugar conocido sirve como dirección de entrega: "Clínica Farallones", "Centro Comercial Aquarela, local 12", "Unicentro". Guárdalo tal cual.
 - "Ya está pagado", "pagó por Nequi/transferencia" o similar = "transferencia".
 - "listoEnMinutos": "en 10", "listo en 15", "sale en 15 min" = ese número. "Ya está", "ya está listo", "pueden venir", "ya sale" = 0. Si da un rango ("10 a 15 min"), usa el menor. Si da una hora ("lista a las 7:40"), calcula los minutos desde la "Hora actual" que te paso. Si no dice nada del tiempo, null: nunca lo supongas.
+- "detalleDireccion": lo que identifica la puerta dentro de la dirección (torre, bloque, interior, apartamento, casa, piso, oficina, local). Si llega después en un mensaje suelto ("torre 2 apto 301", "casa 14"), va a la entrega que no lo tenga. No lo repitas en "direccionEntrega" ni en "notas", pero no quites de "direccionEntrega" nada más: el nombre del conjunto o edificio y el barrio se quedan ahí.
+  Ejemplo: "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio" → direccionEntrega "Calle 5 # 66-20, Edificio Torre Alta, El Refugio", detalleDireccion "Apto 1203", esConjunto true.
+- "esConjunto": true si la dirección nombra un conjunto, unidad residencial, edificio, condominio, torres o urbanización cerrada ("Conjunto Bosques del Lili", "Unidad Alameda", "Edificio Ceibas", "Torres de Comfandi"). false si es una casa en una calle, un local o un lugar público (clínica, centro comercial, universidad). null si no se sabe. Conserva el valor ya capturado si el mensaje no dice nada nuevo de la dirección.
 - "notas": instrucciones de entrega, con cuánto paga el cliente ("billete de 100 mil"), qué lleva el pedido, horarios o referencias del lugar. No repitas lo que ya va en otro campo ni lo que ya estaba en las notas.
 - "confirma": true solo si la etapa es "cotizado" o "confirmado" y el restaurante acepta el servicio: "sí", "dale", "listo", "confirmo", "ya están los 2", o da el tiempo de preparación. En la etapa "recibiendo", siempre false.
 - Para las zonas, mira el barrio de cada dirección y escoge la zona de la lista que corresponda, aunque esté escrita distinto. Si no hay barrio o no está en la lista, null. Nunca inventes una zona.

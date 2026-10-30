@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 
 import { db, schema, type Restaurant } from "@dispatch/shared/db";
-import { requiresCashReturn, type DeliveryDraft } from "@dispatch/shared";
+import { fullAddress, requiresCashReturn, type DeliveryDraft } from "@dispatch/shared";
 
 /** "D-7F3K2": un prefijo que distingue un código de viaje a simple vista de
  *  un `#PEDIDO` de catálogo, por si algún día conviven en el mismo número. */
@@ -39,7 +39,7 @@ export async function createTrip(
       // Del registro del restaurante: ya geocodificada una vez, no por pedido.
       pickupAddress: restaurant?.knownPickupAddress ?? null,
       pickupLocation: restaurant?.knownPickupLocation ?? null,
-      deliveryAddress: draft.direccionEntrega ?? "",
+      deliveryAddress: fullAddress(draft),
       deliveryLocation: draft.ubicacionEntrega ?? null,
       customerPhone: draft.telefonoCliente,
       customerName: draft.nombreCliente ?? null,

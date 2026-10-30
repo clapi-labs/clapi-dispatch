@@ -11,6 +11,7 @@
  *   /boton <id>      toca un botón (el id sale entre paréntesis en la respuesta)
  *   /ubicacion <lat>,<lng> [nombre]   envía un pin de ubicación
  *   /cita <id> <texto>  responde citando un mensaje (el id sale entre corchetes)
+ *   /imagen <ruta> [pie de foto]   envía una foto (captura de un pedido, por ejemplo)
  *   /espera          espera a que el bot responda lo pendiente (como dejar de
  *                    escribir un rato). Lo que se manda sin /espera de por
  *                    medio llega seguido y el bot lo junta en un solo turno.
@@ -61,7 +62,7 @@ async function main() {
     rl.prompt();
   };
 
-  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, /cita <id> <texto>, /espera, """ para varias líneas, /salir.\n`);
+  console.log(`Chat simulado. Escribes como ${phone}. /de <número>, /boton <id>, /ubicacion <lat>,<lng>, /cita <id> <texto>, /imagen <ruta> [texto], /espera, """ para varias líneas, /salir.\n`);
   prompt();
 
   for await (const raw of rl) {
@@ -98,6 +99,10 @@ async function main() {
       } else if (command === "/cita" && rest.length >= 2) {
         const [quoted, ...words] = rest;
         send({ kind: "text", text: words.join(" "), replyTo: quoted });
+      } else if (command === "/imagen" && rest.length >= 1) {
+        const [path, ...caption] = rest;
+        const { resolve } = await import("node:path");
+        send({ kind: "image", mediaId: resolve(path.replace(/^~/, process.env.HOME ?? "~")), caption: caption.join(" ") || null });
       } else if (command === "/boton" && arg) {
         send({ kind: "button", buttonId: arg, title: arg });
       } else {

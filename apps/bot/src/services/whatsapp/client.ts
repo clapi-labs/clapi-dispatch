@@ -112,3 +112,38 @@ export function markReadAndTyping(waMessageId: string) {
 export function markRead(waMessageId: string) {
   return post({ status: "read", message_id: waMessageId });
 }
+
+/** Las fotos se mandan al modelo en base64: así no hay que exponer la URL
+ *  de Meta (que pide el token) ni guardar el archivo. */
+export type DownloadedImage = { mimeType: string; base64: string };
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Descarga una foto que mandaron por WhatsApp: primero se pide a Meta la URL
+ * del archivo y luego el archivo, ambos con el token. En el chat simulado el
+ * id es una ruta local. `null` si no se pudo: el turno sigue con el texto.
+ */
+export async function downloadImage(mediaId: string): Promise<DownloadedImage | null> {
+  try {
+    if (env.whatsappSimulated) {
+      const { readFile } = await import("node:fs/promises");
+      const bytes = await readFile(mediaId);
+      const ext = mediaId.toLowerCase().split(".").pop();
+      const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      return { mimeType, base64: bytes.toString("base64") };
+    }
+    const auth = { Authorization: `Bearer ${env.whatsapp.accessToken}` };
+    const meta = await fetch(`https://graph.facebook.com/${env.whatsapp.apiVersion}/${mediaId}`, { headers: auth });
+    if (!meta.ok) throw new Error(`media ${meta.status}`);
+    const { url, mime_type } = (await meta.json()) as { url: string; mime_type?: string };
+    const file = await fetch(url, { headers: auth });
+    if (!file.ok) throw new Error(`archivo ${file.status}`);
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`muy pesada (${bytes.length} bytes)`);
+    return { mimeType: mime_type ?? "image/jpeg", base64: bytes.toString("base64") };
+  } catch (error) {
+    console.error("[whatsapp] no se pudo descargar la imagen", mediaId, error instanceof Error ? error.message : error);
+    return null;
+  }
+}

@@ -70,6 +70,8 @@ export type MessageRole = "restaurant" | "bot" | "agent";
 /** Lo que el bot necesita de un mensaje entrante para procesarlo más tarde. */
 export type IncomingPayload = (
   | { kind: "text"; text: string }
+  /** `mediaId`: el id de Meta para descargarla (en el chat simulado, una ruta local). */
+  | { kind: "image"; mediaId: string; caption: string | null }
   | { kind: "button"; buttonId: string; title: string }
   | { kind: "location"; lat: number; lng: number; label: string | null }
   | { kind: "unsupported"; type: string }

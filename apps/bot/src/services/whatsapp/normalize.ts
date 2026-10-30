@@ -47,6 +47,10 @@ function normalizeOne(message: WaMessage, profileName: string | null): IncomingM
     return { ...base, kind: "text", text: message.text.body };
   }
 
+  if ("image" in message) {
+    return { ...base, kind: "image", mediaId: message.image.id, caption: message.image.caption?.trim() || null };
+  }
+
   if ("location" in message) {
     const { latitude, longitude, name, address } = message.location;
     const label = [name, address].filter(Boolean).join(", ") || null;

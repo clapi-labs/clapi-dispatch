@@ -32,6 +32,7 @@ import { updateConversation, type Conversation } from "@/db/queries/conversation
 import { createTrip, tripFromQuote } from "@/db/queries/trips";
 import { geocodeAddress } from "@/services/google/geocode";
 import { interpretMessage } from "@/services/openai/extract";
+import { downloadImage, type DownloadedImage } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
 /**
@@ -59,6 +60,7 @@ const FIELD_LABEL: Record<OrderFieldKey, string> = {
   metodoPago: "si es en efectivo o por transferencia",
   listoEnMinutos: "en cuántos minutos está lista la comida",
   notas: "las indicaciones",
+  detalleDireccion: "la torre y el apartamento (o el número de casa)",
 };
 
 const TECHNICAL_ERROR_MESSAGE =
@@ -127,6 +129,19 @@ function changedDelivery(fields: Interpretation, known: OrderDraft) {
   return null;
 }
 
+/** Lo que falta para despachar, en palabras: del pedido y de cada entrega. */
+function missingParts(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft, zones: Zone[]) {
+  const missingOrigin = !restaurant && !draft.origenRestaurante;
+  const missing = quoted.map((d) => ({ d, keys: missingFields(d, config.requiredFields) })).filter((m) => m.keys.length);
+  return [
+    ...(missingOrigin ? [FIELD_LABEL.origenRestaurante] : []),
+    ...missing.map((m) => {
+      const labels = joinLabels(m.keys.map((k) => FIELD_LABEL[k]));
+      return quoted.length === 1 ? labels : `${labels} del de ${deliveryLabel(m.d, zones)}`;
+    }),
+  ];
+}
+
 /** Lo que cuesta una entrega: por distancia si están las dos ubicaciones; si
  *  no, por zona. `outOfRange` si pasa del tope de la agencia. */
 async function quoteDelivery(delivery: DeliveryDraft, restaurant: Restaurant | null, zones: Zone[], pickup: Zone | null, config: BotConfig) {
@@ -169,7 +184,12 @@ export async function handleRestaurant(ctx: Context) {
     const address = message.label ?? target.direccionEntrega ?? "Ubicación enviada por WhatsApp";
     Object.assign(target, { direccionEntrega: address, direccionUbicada: address, ubicacionEntrega: { lat: message.lat, lng: message.lng }, cotizacion: null });
   } else if (message.kind === "text") {
-    const extraction = await interpretMessage(message.text, draft, zones.map((z) => z.name));
+    const images = (await Promise.all((message.images ?? []).map(downloadImage))).filter((i): i is DownloadedImage => !!i);
+    if (message.images?.length && !images.length && !message.text.trim()) {
+      await say(conversation.id, message.phone, "No pude abrir la imagen 🙏 ¿Me escribes la dirección de entrega?");
+      return;
+    }
+    const extraction = await interpretMessage(message.text, draft, zones.map((z) => z.name), images);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
     // escala y el borrador queda como estaba. Solo se le pide reenviar.
     if (extraction.failed) {
@@ -316,7 +336,12 @@ export async function handleRestaurant(ctx: Context) {
       quoted.length === 1
         ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0], zones)} 🛵`
         : `Serían ${quoted.length} domicilios 🛵\n${quoted.map((d) => `• ${deliveryLabel(d, zones)}: ${cop(d.cotizacion!.precio)}`).join("\n")}\nTotal: ${cop(total)}`;
-    await say(conversation.id, message.phone, coverageNote ? `${body}\n\n${coverageNote}` : body, {
+    // Lo que falte se pide en la misma cotización: el restaurante confirma y
+    // completa en una sola respuesta, sin un mensaje más de ida y vuelta.
+    const pending = missingParts(quoted, config, restaurant, draft, zones);
+    const ask = pending.length ? `\nPara despacharlo envíame ${joinLabels(pending)}.` : "";
+    const text = [body + ask, coverageNote].filter(Boolean).join("\n\n");
+    await say(conversation.id, message.phone, text, {
       replyTo,
       buttons: [{ id: CONFIRM_BUTTON_ID, title: quoted.length === 1 ? "Confirmar servicio" : `Confirmar los ${quoted.length}` }],
     });
@@ -337,16 +362,8 @@ export async function handleRestaurant(ctx: Context) {
   }
 
   // 6. Confirmado: lo que falte según la agencia, entrega por entrega.
-  const missingOrigin = !restaurant && !draft.origenRestaurante;
-  const missing = quoted.map((d) => ({ d, keys: missingFields(d, config.requiredFields) })).filter((m) => m.keys.length);
-  if (missingOrigin || missing.length) {
-    const parts = [
-      ...(missingOrigin ? [FIELD_LABEL.origenRestaurante] : []),
-      ...missing.map((m) => {
-        const labels = joinLabels(m.keys.map((k) => FIELD_LABEL[k]));
-        return quoted.length === 1 ? labels : `${labels} del de ${deliveryLabel(m.d, zones)}`;
-      }),
-    ];
+  const parts = missingParts(quoted, config, restaurant, draft, zones);
+  if (parts.length) {
     if (await countAttempt(ctx, draft, progressed || confirms, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin los datos que faltan.`)) {
       await say(conversation.id, message.phone, `Listo ✅ Para pedir la moto me falta ${joinLabels(parts)}.`, { replyTo });
     }

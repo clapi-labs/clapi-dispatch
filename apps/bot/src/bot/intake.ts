@@ -38,6 +38,8 @@ function asText(message: IncomingMessage) {
       return `[Botón] ${message.title}`;
     case "location":
       return `[Ubicación] ${message.label ?? `${message.lat}, ${message.lng}`}`;
+    case "image":
+      return `[Imagen]${message.caption ? ` ${message.caption}` : ""}`;
     default:
       return `[${message.type}]`;
   }
@@ -55,6 +57,8 @@ function content(message: IncomingMessage): schema.IncomingPayload {
       return { kind: "button", buttonId: message.buttonId, title: message.title };
     case "location":
       return { kind: "location", lat: message.lat, lng: message.lng, label: message.label };
+    case "image":
+      return { kind: "image", mediaId: message.mediaId, caption: message.caption };
     default:
       return { kind: "unsupported", type: message.type };
   }
@@ -67,11 +71,12 @@ export async function handleIncoming(message: IncomingMessage) {
     incoming: asPayload(message),
   });
 
-  // El motorizado va primero: su "Confirmar entrega" tiene que funcionar
-  // siempre, aunque alguien haya pausado el bot en su chat.
+  // El motorizado va primero: su «Terminé el servicio» tiene que funcionar
+  // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
+  // se le responde, y un «escribiendo…» sin respuesta confunde.
   const courier = await findCourier(message.phone);
   if (courier) {
-    await markReadAndTyping(message.waMessageId);
+    await markRead(message.waMessageId);
     return handleCourier(courier, conversation, message);
   }
 
@@ -158,8 +163,20 @@ function mergeTurns(rows: (typeof schema.messages.$inferSelect)[], from: Incomin
     const payload = row.incoming ?? { kind: "text" as const, text: row.text };
     const base = { phone: from.phone, profileName: from.profileName, waMessageId: row.waMessageId ?? `msg-${row.id}`, timestamp: row.createdAt, replyTo: payload.replyTo ?? null };
     const last = turns[turns.length - 1];
-    if (payload.kind === "text" && last?.kind === "text") {
-      last.text = `${last.text}\n${payload.text}`;
+    // Una foto se lee junto con el texto que la rodea: «este pedido» + captura.
+    const piece =
+      payload.kind === "image"
+        ? { text: payload.caption ?? "", images: [payload.mediaId] }
+        : payload.kind === "text"
+          ? { text: payload.text, images: [] }
+          : null;
+    if (piece && last?.kind === "text") {
+      last.text = [last.text, piece.text].filter(Boolean).join("\n");
+      if (piece.images.length) last.images = [...(last.images ?? []), ...piece.images];
+      continue;
+    }
+    if (piece) {
+      turns.push({ ...base, kind: "text", text: piece.text, ...(piece.images.length ? { images: piece.images } : {}) });
       continue;
     }
     turns.push({ ...base, ...payload } as IncomingMessage);

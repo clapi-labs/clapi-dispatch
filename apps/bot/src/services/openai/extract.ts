@@ -1,6 +1,7 @@
 import { buildExtractionPrompt, type Interpretation, type OrderDraft } from "@dispatch/shared";
 
 import { env } from "@/env";
+import type { DownloadedImage } from "@/services/whatsapp/client";
 
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
  *  el código igual verifica que haya una cotización que aceptar). */
@@ -17,8 +18,10 @@ function knownForModel(known: OrderDraft) {
   return {
     etapa: known.etapa,
     origenRestaurante: known.origenRestaurante,
-    entregas: known.entregas.map(({ direccionEntrega, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas }) => ({
+    entregas: known.entregas.map(({ direccionEntrega, detalleDireccion, esConjunto, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas }) => ({
       direccionEntrega,
+      detalleDireccion,
+      esConjunto,
       telefonoCliente,
       nombreCliente,
       valorACobrar,
@@ -47,11 +50,13 @@ function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"]
     metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
     listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
     notas: text(raw.notas),
+    detalleDireccion: text(raw.detalleDireccion),
+    esConjunto: typeof raw.esConjunto === "boolean" ? raw.esConjunto : null,
     zonaEntrega: text(raw.zonaEntrega),
   };
 }
 
-const TIMEOUT_MS = 15_000;
+const TIMEOUT_MS = 30_000; // una foto en alta resolución tarda más que un texto
 const RETRY_DELAY_MS = 800;
 
 /** Fallos que valen un segundo intento: red, tiempo agotado, 429 y 5xx. Un 4xx
@@ -78,17 +83,24 @@ export async function interpretMessage(
   messageText: string,
   known: OrderDraft,
   zoneNames: string[],
+  images: DownloadedImage[] = [],
 ): Promise<ExtractionOutcome> {
+  const prompt = `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(knownForModel(known))}\n\nMensaje nuevo del restaurante:\n${messageText || "(sin texto)"}`;
+  // Las fotos van como parte del mensaje nuevo: una captura del pedido se lee
+  // igual que si la hubieran escrito.
+  const userContent = images.length
+    ? [
+        { type: "text", text: `${prompt}\n\n(El restaurante adjuntó ${images.length === 1 ? "una imagen" : `${images.length} imágenes`}: léela${images.length === 1 ? "" : "s"} como parte del mensaje.)` },
+        ...images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: "high" } })),
+      ]
+    : prompt;
   const body = JSON.stringify({
     model: env.openai.chatModel,
     response_format: { type: "json_object" },
     temperature: 0,
     messages: [
       { role: "system", content: buildExtractionPrompt(zoneNames) },
-      {
-        role: "user",
-        content: `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(knownForModel(known))}\n\nMensaje nuevo del restaurante:\n${messageText}`,
-      },
+      { role: "user", content: userContent },
     ],
   });
 
