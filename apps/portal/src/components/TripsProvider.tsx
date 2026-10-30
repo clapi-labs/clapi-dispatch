@@ -4,6 +4,7 @@ import { Bike } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
+import { DEMO, installDemo } from "@/lib/demo";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Trip } from "@/lib/types";
 import { usePolling } from "@/lib/use-polling";
@@ -24,6 +25,10 @@ type TripsState = {
   setSoundOn: (on: boolean) => void;
   deliver: (tripId: number) => Promise<void>;
 };
+
+// Con NEXT_PUBLIC_DEMO=1 las rutas /api/* responden con datos de ejemplo (lib/demo.ts).
+// Va aquí, al cargar el módulo: antes de que cualquier pantalla pida algo.
+installDemo();
 
 const TripsContext = createContext<TripsState | null>(null);
 
@@ -114,6 +119,12 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   return (
     <TripsContext.Provider value={{ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }}>
       {children}
+
+      {DEMO && (
+        <span className="pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-3 z-50 rounded-full bg-gold px-2.5 py-1 text-[11px] font-bold text-clapi-deep shadow lg:bottom-3 lg:left-auto lg:right-3">
+          Datos de ejemplo
+        </span>
+      )}
 
       <AnimatePresence>
         {toast && (

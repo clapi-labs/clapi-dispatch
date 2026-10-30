@@ -344,10 +344,9 @@ export default function ConversacionesPage() {
         <aside className={`min-h-0 w-full flex-col border-line lg:flex lg:w-[340px] lg:border-r ${selected ? "hidden" : "flex"}`}>
           <div className="border-b border-line px-4 py-3">
             <div role="tablist" aria-label="Tipo de contacto" className="flex gap-1 rounded-xl bg-sunken p-1">
+              {/* Sin contadores: los chats que piden ayuda ya se ven fijados arriba en amarillo,
+                  y su número está en la burbuja de "Conversaciones" en la navegación. */}
               {TABS.map((t) => {
-                // La burbuja amarilla no cuenta chats: cuenta los que piden ayuda en ese grupo,
-                // y se ve aunque se esté mirando otra pestaña.
-                const waiting = list.filter((c) => inTab(c, t.key) && needsHelp(c)).length;
                 const active = t.key === tab;
                 return (
                   <button
@@ -355,19 +354,12 @@ export default function ConversacionesPage() {
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    title={waiting > 0 ? `${waiting} ${waiting === 1 ? "chat necesita" : "chats necesitan"} tu ayuda` : undefined}
                     onClick={() => switchTab(t.key)}
-                    className={`ease-ui relative flex h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-semibold ${
+                    className={`ease-ui flex h-9 flex-auto items-center justify-center whitespace-nowrap rounded-lg px-2 text-xs font-semibold ${
                       active ? "bg-surface text-ink shadow-sm" : "text-ink-2 can-hover:hover:text-ink"
                     }`}
                   >
                     {t.label}
-                    {waiting > 0 && (
-                      <span className="min-w-[18px] rounded-full bg-gold px-1 text-center text-[10px] font-bold leading-[18px] text-clapi-deep">
-                        {waiting}
-                        <span className="sr-only"> {waiting === 1 ? "necesita" : "necesitan"} tu ayuda</span>
-                      </span>
-                    )}
                   </button>
                 );
               })}
