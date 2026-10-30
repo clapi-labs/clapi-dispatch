@@ -166,6 +166,8 @@ export const trips = pgTable(
   (t) => [
     index("trips_status_idx").on(t.status),
     index("trips_restaurant_idx").on(t.restaurantId),
+    // El tablero trae los activos y los que se movieron hoy (portal: listTrips).
+    index("trips_updated_idx").on(t.updatedAt),
   ],
 );
 

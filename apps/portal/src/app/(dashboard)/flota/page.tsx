@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { AddCourierForm } from "@/components/AddCourierForm";
 import { CourierCard } from "@/components/CourierCard";
 import type { Courier } from "@/lib/types";
-import { usePolling } from "@/lib/use-polling";
+import { useLive } from "@/lib/live";
 
 /** El mismo orden que usa la cola del servidor: nunca asignado primero,
  *  después el que hace más tiempo no recibe un viaje. */
@@ -28,7 +28,8 @@ export default function FlotaPage() {
     if (res.ok) setCouriers(await res.json());
   }, []);
 
-  usePolling(refresh, 3000);
+  // Estado, turno y última asignación cambian con la moto o con sus viajes.
+  useLive(refresh, ["couriers", "assignments", "trips"]);
 
   async function setStatus(id: number, status: Courier["status"]) {
     setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));

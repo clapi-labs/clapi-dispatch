@@ -3,12 +3,12 @@
 import { Bike } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { DEMO, installDemo } from "@/lib/demo";
+import { useLive } from "@/lib/live";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Trip } from "@/lib/types";
-import { usePolling } from "@/lib/use-polling";
 
 /**
  * Los viajes viven acá y no en cada página: así la alerta de "moto asignada"
@@ -31,9 +31,20 @@ type TripsState = {
 // Va aquí, al cargar el módulo: antes de que cualquier pantalla pida algo.
 installDemo();
 
+/** Los viajes que no cambiaron conservan el mismo objeto: así una tarjeta
+ *  (`TripCard`, con `memo`) solo se redibuja si su viaje cambió de verdad. */
+function keepUnchanged(prev: Trip[], next: Trip[]) {
+  const before = new Map(prev.map((t) => [t.id, t]));
+  return next.map((t) => {
+    const old = before.get(t.id);
+    return old && JSON.stringify(old) === JSON.stringify(t) ? old : t;
+  });
+}
+
 const TripsContext = createContext<TripsState | null>(null);
 
-const POLL_MS = 3000;
+const TRIP_TOPICS = ["trips", "assignments", "couriers"] as const;
+const HELP_TOPICS = ["conversations", "messages"] as const;
 
 export function TripsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -51,29 +62,25 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
     soundRef.current = soundOn;
   }, [soundOn]);
 
+  // El texto de la última respuesta: si llega igual, no se toca el estado y
+  // nada se vuelve a dibujar.
+  const lastBody = useRef<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
-      // El contador de ayuda va en paralelo: no le suma espera al sondeo.
-      const [res, help] = await Promise.all([
-        fetch("/api/trips", { cache: "no-store" }),
-        fetch("/api/conversations/needs-help", { cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-      ]);
+      const res = await fetch("/api/trips", { cache: "no-store" });
       // La sesión venció: de vuelta al login en vez de quedarse "sin conexión".
       if (res.status === 401) {
         router.replace("/login");
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
-      const data: Trip[] = await res.json();
-
-      if (help && typeof help.count === "number") {
-        // Suena cuando un chat nuevo pide ayuda; no en la primera carga.
-        if (lastHelp.current !== null && help.count > lastHelp.current && soundRef.current) playChime();
-        lastHelp.current = help.count;
-        setNeedsHelp(help.count);
-      }
+      const body = await res.text();
+      setOnline(true);
+      setLoaded(true);
+      if (body === lastBody.current) return;
+      lastBody.current = body;
+      const data: Trip[] = JSON.parse(body);
 
       const assigned = data.filter((t) => t.assignedAt && t.status !== "pending");
       // La primera carga solo aprende qué existía: no suena por lo viejo.
@@ -86,15 +93,27 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       }
       seenAssigned.current = new Set(assigned.map((t) => t.id));
 
-      setTrips(data);
-      setLoaded(true);
-      setOnline(true);
+      setTrips((prev) => keepUnchanged(prev, data));
     } catch {
       setOnline(false);
     }
   }, [router]);
 
-  usePolling(refresh, POLL_MS);
+  const refreshHelp = useCallback(async () => {
+    const help = await fetch("/api/conversations/needs-help", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!help || typeof help.count !== "number") return;
+    // Suena cuando un chat nuevo pide ayuda; no en la primera carga.
+    if (lastHelp.current !== null && help.count > lastHelp.current && soundRef.current) playChime();
+    lastHelp.current = help.count;
+    setNeedsHelp(help.count);
+  }, []);
+
+  // Los viajes, solo cuando cambian viajes, asignaciones o motos (el nombre
+  // del motorizado sale de ahí); el contador de ayuda, cuando cambian chats.
+  useLive(refresh, TRIP_TOPICS);
+  useLive(refreshHelp, HELP_TOPICS);
 
   useEffect(() => {
     const unlock = () => unlockAudio();
@@ -121,8 +140,14 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  // El mismo objeto mientras nada cambie: así no se redibuja todo el que lo usa.
+  const value = useMemo(
+    () => ({ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }),
+    [trips, needsHelp, loaded, online, soundOn, deliver],
+  );
+
   return (
-    <TripsContext.Provider value={{ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }}>
+    <TripsContext.Provider value={value}>
       {children}
 
       {DEMO && (

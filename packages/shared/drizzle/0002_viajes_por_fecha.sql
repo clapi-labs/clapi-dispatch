@@ -1,0 +1,1 @@
+CREATE INDEX "trips_updated_idx" ON "trips" USING btree ("updated_at");
