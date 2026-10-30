@@ -19,22 +19,22 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1793226403354,
-      "tag": "0002_hora_lista",
+      "when": 1793385069396,
+      "tag": "0002_viajes_por_fecha",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1793305183931,
-      "tag": "0003_pedido_flexible",
+      "when": 1793385070268,
+      "tag": "0003_avisos_en_vivo",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1793306821675,
-      "tag": "0004_espera_respuesta",
+      "when": 1793403810843,
+      "tag": "0004_bot_pedidos",
       "breakpoints": true
     }
   ]

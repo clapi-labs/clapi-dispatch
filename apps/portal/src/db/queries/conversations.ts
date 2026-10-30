@@ -1,9 +1,11 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
 
 import type { DraftFields } from "@/lib/types";
+
+import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
 
 /** La misma regla que `findCourier` en el bot (apps/bot/src/bot/intake.ts): un
  *  motorizado guardado como "3001234567" y el wa_id "573001234567" de
@@ -12,8 +14,9 @@ function last10(phone: string) {
   return phone.replace(/\D/g, "").slice(-10);
 }
 
-/** La bandeja: cada conversación con su último mensaje. Los que esperan a una
- *  persona (bot pausado) van arriba. Un solo SELECT de mensajes recientes en
+/** La bandeja: cada conversación con su último mensaje. Arriba, fijados, los
+ *  que piden ayuda (ver `needsHelp` en lib/chat.ts); después los que ya atiende
+ *  un asesor; después el resto, el más reciente primero. Un solo SELECT de mensajes recientes en
  *  vez de uno por conversación — a esta escala sobra. Cada chat sale marcado
  *  como restaurante o motorizado: es motorizado si su número está en la flota
  *  activa, que es justo a quien el bot atiende como tal. */
@@ -48,7 +51,33 @@ export async function listConversations() {
         lastRole: last?.role ?? null,
       };
     })
-    .sort((a, b) => Number(b.botPaused) - Number(a.botPaused));
+    .sort((a, b) => pinRank(b) - pinRank(a));
+}
+
+/** 2 = pide ayuda, 1 = la atiende un asesor, 0 = la atiende el bot. */
+function pinRank(c: Parameters<typeof needsHelp>[0]) {
+  if (needsHelp(c)) return 2;
+  return c.botPaused ? 1 : 0;
+}
+
+/** Cuántos chats piden ayuda: la burbuja amarilla de la navegación. Es
+ *  `needsHelp` (lib/chat.ts) en SQL: escalado por el bot, y lo último no lo
+ *  escribió la central. */
+export async function countNeedingHelp(): Promise<number> {
+  const lastRole = sql`(select ${schema.messages.role} from ${schema.messages}
+    where ${schema.messages.conversationId} = ${schema.conversations.id}
+    order by ${schema.messages.id} desc limit 1)`;
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.botPaused, true),
+        sql`${schema.conversations.escalationReason} is distinct from ${TAKEOVER_REASON}`,
+        sql`coalesce(${lastRole}, '') <> 'agent'`,
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 export async function getThread(conversationId: number) {
@@ -63,7 +92,7 @@ export async function getThread(conversationId: number) {
 export async function takeOver(conversationId: number) {
   await db
     .update(schema.conversations)
-    .set({ botPaused: true, escalationReason: "Un operador tomó la conversación.", draft: null, failedAttempts: 0 })
+    .set({ botPaused: true, escalationReason: TAKEOVER_REASON, draft: null, failedAttempts: 0 })
     .where(eq(schema.conversations.id, conversationId));
 }
 

@@ -1,6 +1,6 @@
 {
-  "id": "94d0f3ba-3caa-4869-a45e-92e8e6323d26",
-  "prevId": "f4be8ab4-11da-4f85-999e-1d7dde11b6c1",
+  "id": "827fb359-2c50-4399-a018-6b7095f62af3",
+  "prevId": "485f6e44-2dc9-4ec9-bb80-6e04de343e74",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1008,6 +1008,21 @@
           "columns": [
             {
               "expression": "restaurant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "trips_updated_idx": {
+          "name": "trips_updated_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

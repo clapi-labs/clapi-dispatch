@@ -2,11 +2,12 @@
 
 import { Banknote, Check, CheckCircle2, CreditCard } from "lucide-react";
 import { motion } from "motion/react";
+import { memo } from "react";
 
 import { PhoneLink } from "@/components/PhoneLink";
 import { formatCOP, initials } from "@/lib/format";
 import type { Trip } from "@/lib/types";
-import { clock, useNow } from "@/lib/use-now";
+import { clock, useAfter, useNow } from "@/lib/use-now";
 
 /**
  * El cronómetro de cada tarjeta y sus umbrales. Pendiente: lo que importa es
@@ -14,7 +15,9 @@ import { clock, useNow } from "@/lib/use-now";
  * calle desde que se asignó (prometemos 10-15 min de recogida, así que pasado
  * 25 algo anda mal).
  */
-function Timer({ trip, now }: { trip: Trip; now: number }) {
+function Timer({ trip }: { trip: Trip }) {
+  // Solo los que corren se actualizan cada segundo; un entregado no cambia.
+  const now = useNow(trip.status === "pending" || trip.status === "en_route" ? 1000 : null);
   const pill = "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums";
   if (trip.status === "pending") {
     const s = (now - new Date(trip.createdAt).getTime()) / 1000;
@@ -43,10 +46,16 @@ function Timer({ trip, now }: { trip: Trip; now: number }) {
   return null;
 }
 
-export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: number) => void }) {
-  const now = useNow(1000);
-  const urgent = trip.status === "pending" && now - new Date(trip.createdAt).getTime() > 120_000;
-  const justAssigned = trip.status === "en_route" && trip.assignedAt && now - new Date(trip.assignedAt).getTime() < 8000;
+/**
+ * La tarjeta no depende del reloj: solo el cronómetro (`Timer`) late cada
+ * segundo. Antes la tarjeta entera, con su animación de `layout`, se volvía a
+ * medir y dibujar cada segundo por cada viaje en pantalla. `memo`: si el viaje
+ * no cambió, una actualización del tablero tampoco la toca.
+ */
+export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: number) => void }) {
+  const urgent = useAfter(trip.status === "pending" ? Date.parse(trip.createdAt) + 120_000 : null);
+  const assignedFor8s = useAfter(trip.status === "en_route" && trip.assignedAt ? Date.parse(trip.assignedAt) + 8000 : null);
+  const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
   const cash = trip.paymentMethod === "efectivo";
 
   return (
@@ -57,11 +66,11 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`card flex flex-col gap-3 p-4 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      className={`card flex flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
-        <Timer trip={trip} now={now} />
+        <Timer trip={trip} />
       </header>
 
       {/* Recorrido A → B: el conector sale del punto de recogida y llega al de entrega. */}
@@ -107,29 +116,25 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
         {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
       </div>
 
-      {/* Rejilla y no fila: el contacto baja a su propia línea y pasa por debajo del
-          botón, así la cápsula del teléfono cabe entera en las columnas angostas. */}
-      <footer className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-t border-gray-100 pt-3">
+      {/* Una sola línea: avatar, nombre, chat y llamada; en "En ruta", el botón Entregado al final. */}
+      <footer className="flex items-center gap-2 border-t border-gray-100 pt-2.5">
         {trip.courierName ? (
           <>
-            <span className="row-span-2 flex h-8 w-8 items-center justify-center rounded-full bg-clapi text-xs font-bold text-white">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-clapi text-[11px] font-bold text-white">
               {initials(trip.courierName)}
             </span>
-            <p className={`truncate text-sm font-medium leading-tight ${trip.status === "en_route" ? "" : "col-span-2"}`}>{trip.courierName}</p>
-            <div className="col-span-2 col-start-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3">
-              {trip.status === "delivered" ? "Entregó" : "En camino"}
-              {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
-              {trip.courierPhone && (
-                <>
-                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
-                  <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
-                </>
-              )}
-            </div>
+            <p className="min-w-0 truncate text-sm font-medium leading-tight">{trip.courierName}</p>
+            {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
+            {trip.courierPhone && (
+              <div className="flex shrink-0 items-center gap-1.5 text-ink-3">
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
+              </div>
+            )}
           </>
         ) : (
-          <div className="col-span-2 flex items-center gap-2 text-sm text-ink-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-ink-3/40">
+          <div className="flex items-center gap-2 text-sm text-ink-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-ink-3/40">
               <span className="h-1.5 w-1.5 animate-live rounded-full bg-warn" />
             </span>
             Buscando moto libre…
@@ -140,7 +145,7 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
           <button
             type="button"
             onClick={() => onDeliver(trip.id)}
-            className="ease-ui col-start-3 row-start-1 flex h-9 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
+            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
           >
             <Check size={14} />
             Entregado
@@ -149,4 +154,4 @@ export function TripCard({ trip, onDeliver }: { trip: Trip; onDeliver: (id: numb
       </footer>
     </motion.article>
   );
-}
+});

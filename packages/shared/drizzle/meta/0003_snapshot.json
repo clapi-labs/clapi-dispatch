@@ -1,6 +1,6 @@
 {
-  "id": "f4be8ab4-11da-4f85-999e-1d7dde11b6c1",
-  "prevId": "ed2ba36a-2bba-4749-bf94-5fe3089d4679",
+  "id": "485f6e44-2dc9-4ec9-bb80-6e04de343e74",
+  "prevId": "4771befd-026e-4301-9aec-1cb1f1ed4302",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -64,37 +64,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "assignments_trip_id_trips_id_fk": {
           "name": "assignments_trip_id_trips_id_fk",
           "tableFrom": "assignments",
-          "tableTo": "trips",
           "columnsFrom": [
             "trip_id"
           ],
+          "tableTo": "trips",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "assignments_courier_id_couriers_id_fk": {
           "name": "assignments_courier_id_couriers_id_fk",
           "tableFrom": "assignments",
-          "tableTo": "couriers",
           "columnsFrom": [
             "courier_id"
           ],
+          "tableTo": "couriers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -184,9 +184,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -194,10 +194,10 @@
       "uniqueConstraints": {
         "conversations_phone_unique": {
           "name": "conversations_phone_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "phone"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -257,15 +257,15 @@
         "courier_profiles_courier_id_couriers_id_fk": {
           "name": "courier_profiles_courier_id_couriers_id_fk",
           "tableFrom": "courier_profiles",
-          "tableTo": "couriers",
           "columnsFrom": [
             "courier_id"
           ],
+          "tableTo": "couriers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -435,9 +435,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "dispatch_offers_pending_idx": {
           "name": "dispatch_offers_pending_idx",
@@ -456,37 +456,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "dispatch_offers_trip_id_trips_id_fk": {
           "name": "dispatch_offers_trip_id_trips_id_fk",
           "tableFrom": "dispatch_offers",
-          "tableTo": "trips",
           "columnsFrom": [
             "trip_id"
           ],
+          "tableTo": "trips",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "dispatch_offers_courier_id_couriers_id_fk": {
           "name": "dispatch_offers_courier_id_couriers_id_fk",
           "tableFrom": "dispatch_offers",
-          "tableTo": "couriers",
           "columnsFrom": [
             "courier_id"
           ],
+          "tableTo": "couriers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -542,37 +542,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "fares_origin_zone_id_zones_id_fk": {
           "name": "fares_origin_zone_id_zones_id_fk",
           "tableFrom": "fares",
-          "tableTo": "zones",
           "columnsFrom": [
             "origin_zone_id"
           ],
+          "tableTo": "zones",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "fares_destination_zone_id_zones_id_fk": {
           "name": "fares_destination_zone_id_zones_id_fk",
           "tableFrom": "fares",
-          "tableTo": "zones",
           "columnsFrom": [
             "destination_zone_id"
           ],
+          "tableTo": "zones",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -616,12 +616,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "trip_id": {
-          "name": "trip_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "extraction": {
           "name": "extraction",
           "type": "jsonb",
@@ -654,39 +648,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
-        },
-        "messages_wa_message_idx": {
-          "name": "messages_wa_message_idx",
-          "columns": [
-            {
-              "expression": "wa_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "messages_conversation_id_conversations_id_fk": {
           "name": "messages_conversation_id_conversations_id_fk",
           "tableFrom": "messages",
-          "tableTo": "conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "conversations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -782,9 +761,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -792,10 +771,10 @@
       "uniqueConstraints": {
         "restaurants_phone_unique": {
           "name": "restaurants_phone_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "phone"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -896,19 +875,13 @@
           "name": "customer_phone",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "customer_name": {
-          "name": "customer_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "value_to_collect": {
           "name": "value_to_collect",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "delivery_fee": {
           "name": "delivery_fee",
@@ -933,32 +906,13 @@
           "name": "payment_method",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "requires_cash_return": {
           "name": "requires_cash_return",
           "type": "boolean",
           "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_wa_message_id": {
-          "name": "source_wa_message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ready_at": {
-          "name": "ready_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -987,9 +941,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "trips_restaurant_idx": {
           "name": "trips_restaurant_idx",
@@ -1002,47 +956,62 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
+        },
+        "trips_updated_idx": {
+          "name": "trips_updated_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "trips_restaurant_id_restaurants_id_fk": {
           "name": "trips_restaurant_id_restaurants_id_fk",
           "tableFrom": "trips",
-          "tableTo": "restaurants",
           "columnsFrom": [
             "restaurant_id"
           ],
+          "tableTo": "restaurants",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "trips_conversation_id_conversations_id_fk": {
           "name": "trips_conversation_id_conversations_id_fk",
           "tableFrom": "trips",
-          "tableTo": "conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "conversations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "trips_code_unique": {
           "name": "trips_code_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "code"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1098,10 +1067,10 @@
       "uniqueConstraints": {
         "users_email_unique": {
           "name": "users_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1145,10 +1114,10 @@
       "uniqueConstraints": {
         "zones_name_unique": {
           "name": "zones_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1158,10 +1127,10 @@
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
