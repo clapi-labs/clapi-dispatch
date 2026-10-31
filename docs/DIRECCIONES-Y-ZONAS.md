@@ -27,27 +27,27 @@ Lugares adonde la agencia no entra (ni a recoger ni a entregar). Decisiones del 
 
 ### El mapa para marcarlas
 
-**https://claude.ai/artifact/FFPHcTXMW1cczECXsEEVqZ** («Zonas sin cobertura · Cali y Jamundí»)
+En el portal: menú **Zonas sin cobertura** (`/zonas`, que abre `/zonas/mapa.html` a pantalla completa). Pide el mismo login del portal; es una herramienta de computador (no sale en la barra del celular).
 
 - Se dibujan, editan y borran zonas con el mouse; buscador de barrios; nombre de la calle y el barrio bajo el cursor; «Probar una dirección» (dentro / franja gris / fuera); «Copiar zonas (GeoJSON)» como respaldo.
-- Las zonas se guardan en la base de datos del artifact, colección `zonas`: `{ name, note, kind: "sin_cobertura", ring: [{lat, lng}], updatedAt }`. Desde aquí se leen con la herramienta de datos del artifact; no hace falta exportar.
-- Es privado: para que el cliente marque, hay que compartirlo con permiso de edición (Share).
-- Calles y barrios de OpenStreetMap (descarga del 15 de julio de 2026). Los barrios de Jamundí dicen «· Jamundí».
+- **Cada cambio se guarda al momento** en la tabla `restricted_zones` (`/api/zonas`). Se puede cerrar y seguir otro día, desde cualquier computador; la lista se vuelve a leer cada 20 s y al volver a la pestaña.
+- Archivos: `apps/portal/public/zonas/mapa.html` y `cali.json` (calles y barrios de OpenStreetMap, 15 de julio de 2026; los de Jamundí dicen «· Jamundí»).
+- Primera versión: el artifact de claude.ai (https://claude.ai/artifact/FFPHcTXMW1cczECXsEEVqZ), que guardaba en su propia base. Ya no se usa.
 
-**Copia en el repo:** `tools/mapa-zonas/`
+**Herramientas para regenerar las calles:** `tools/mapa-zonas/`
 
 | Archivo | Qué es |
 |---|---|
-| `index.html` | El mapa (Leaflet). Fuera de claude.ai no guarda: usa la base del artifact (`claude.use("db")`) |
+| `index.html` | La versión del artifact (guarda con `claude.use("db")`); la del portal es `apps/portal/public/zonas/mapa.html` |
 | `cali.json` | Vías y barrios empaquetados (~1 MB) |
 | `descargar.sh` | Baja de OpenStreetMap (Overpass) las vías y barrios de Cali y Jamundí |
 | `empaquetar.py` | Los convierte en `cali.json`: `python3 empaquetar.py osm-raw cali.json` |
 
-Para actualizar las calles: `./descargar.sh osm-raw && python3 empaquetar.py osm-raw cali.json`, y volver a publicar el artifact con el nuevo `cali.json`.
+Para actualizar las calles: `./descargar.sh osm-raw && python3 empaquetar.py osm-raw cali.json`, y copiar el nuevo `cali.json` a `apps/portal/public/zonas/`.
 
 ### Por construir (cuando el cliente termine de marcar)
 
-1. Leer la colección `zonas` y guardarla en una tabla `restricted_zones` (polígono como lista de puntos).
+1. ~~Tabla `restricted_zones` y mapa en el portal.~~ Hecho.
 2. En `order.ts`, después de ubicar la entrega (y con la recogida del restaurante): punto dentro de un polígono → mensaje de no cobertura; a menos de 100 m del borde → franja gris.
 3. Franja gris: el pedido queda en espera y le aparece a William en el portal con Sí / No (ver las alertas en [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md)); al restaurante, «Déjame confirmar si llegamos hasta allá».
 4. Sin coordenadas no hay revisión posible, pero tampoco precio: el pedido ya pasa a la central.

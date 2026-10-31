@@ -368,3 +368,18 @@ export const users = pgTable("users", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Zonas sin cobertura (docs/DIRECCIONES-Y-ZONAS.md): polígonos que el cliente
+ * marca en el mapa del portal (/zonas). Permanentes, las mismas para todos
+ * los restaurantes, para recogida y entrega.
+ */
+export const restrictedZones = pgTable("restricted_zones", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  note: text("note"),
+  /** El contorno, en orden: al menos 3 puntos. */
+  ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

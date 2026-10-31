@@ -50,6 +50,8 @@ WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build --chown=app:app /repo/apps/${APP}/.next/standalone ./
 COPY --from=build --chown=app:app /repo/apps/${APP}/.next/static ./apps/${APP}/.next/static
+# Archivos estáticos (el mapa de zonas del portal). El bot tiene la carpeta vacía.
+COPY --from=build --chown=app:app /repo/apps/${APP}/public ./apps/${APP}/public
 USER app
 # El puerto lo fija docker-compose (PORT); 3001 bot, 3002 portal.
 CMD ["sh", "-c", "exec node apps/${APP}/server.js"]
