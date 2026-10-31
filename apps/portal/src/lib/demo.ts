@@ -225,12 +225,12 @@ function settlement(): Settlement {
     netEarnings += t.deliveryFee;
     const m = t.paymentMethod === "efectivo" ? byMethod.cash : byMethod.transfer;
     m.orders += 1;
-    m.amount += t.valueToCollect;
+    m.amount += t.valueToCollect ?? 0;
     const name = t.courierName ?? "—";
     const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, netEarnings: 0, cashToDeliver: 0 };
     row.deliveredCount += 1;
     row.netEarnings += t.deliveryFee;
-    if (t.paymentMethod === "efectivo") row.cashToDeliver += t.valueToCollect;
+    if (t.paymentMethod === "efectivo") row.cashToDeliver += t.valueToCollect ?? 0;
     byCourier.set(name, row);
   }
   return {

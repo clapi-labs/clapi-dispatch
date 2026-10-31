@@ -15,7 +15,8 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
 | Servidor de producción (separado de staging) | Pendiente |
 | Backups | Pendiente (desactivados a propósito por ahora) |
-| Motor de asignación (`engine`) y GPS | Pendiente |
+| Motor de asignación (`engine`) | Imagen y servicio listos, con casos en CI; el bot todavía no lo llama |
+| GPS (Traccar) | Pendiente |
 
 ## Arquitectura de un entorno
 
@@ -46,7 +47,7 @@ flowchart TB
             PORTAL[portal - con login]
             WORKER[worker - cada 5 s]
             PG[(Postgres)]
-            ENGINE[engine - algoritmo]:::pendiente
+            ENGINE[engine - algoritmo]
         end
     end
 
@@ -58,6 +59,7 @@ flowchart TB
 
     BOT --> WA
     BOT --> OAI
+    BOT -- geocoding --> GM
     BOT --> PG
     PORTAL --> PG
     PORTAL -- "/api/internal" --> BOT
@@ -129,6 +131,7 @@ Reglas del flujo:
 | `worker` | Cada 5 s llama a `/api/internal/tick`: asigna pendientes y notifica. Reemplaza el polling del portal | `dispatch-worker` |
 | `postgres` | Base de datos, volumen `pgdata` | `postgres:17-alpine` |
 | `migrate` | Solo al desplegar: aplica las migraciones y termina | `dispatch-migrate` |
+| `engine` | Algoritmo de asignación (`POST /evaluar`), sin estado y sin base de datos. Sin puerto público. Ver `ALGORITMO.md` | `dispatch-engine` |
 
 Todas las imágenes propias son `ghcr.io/clapi-labs/dispatch-*:<hash del commit>` (públicas). Nunca se despliega `latest`. Los contenedores tienen `restart: unless-stopped`, healthchecks y límite de memoria.
 
@@ -295,6 +298,7 @@ stateDiagram-v2
 | `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas) |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | WhatsApp Cloud API |
 | `OPENAI_API_KEY` | Extracción de pedidos |
+| `GOOGLE_MAPS_API_KEY` | Ubicar la dirección de entrega (Geocoding API). Opcional: sin ella, los viajes salen sin coordenadas |
 | `BOT_ACTIVE` | `true` para que el bot responda |
 | `PORTAL_HOST`, `BOT_HOST`, `ACME_EMAIL`, `REGISTRY` | Dominios, correo de Let's Encrypt, registro de imágenes |
 
@@ -318,8 +322,8 @@ flowchart LR
 
 | Workflow | Cuándo corre | Qué hace |
 |---|---|---|
-| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed |
-| `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker` y los publica en GHCR con el hash y el nombre de la rama |
+| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed. Además, los casos y las pruebas del contrato del engine |
+| `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker`, `engine` y los publica en GHCR con el hash y el nombre de la rama |
 | `deploy-staging.yml` | **No existe aún** | Pendiente: al terminar `images.yml` en `dev`, ejecutar `deploy` por SSH con la llave restringida |
 
 La marca del portal (`NEXT_PUBLIC_*`) se incrusta al construir la imagen, desde las variables del repositorio `CLIENT_NAME`, `CLIENT_INITIALS` y `CLIENT_COLOR`. Dependabot propone actualizaciones con espera de 7 días.

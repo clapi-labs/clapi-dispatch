@@ -71,6 +71,7 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
     depends_on:
       postgres: { condition: service_healthy }
@@ -100,6 +101,20 @@ services:
       retries: 6
       start_period: 15s
     mem_limit: 512m
+
+  # Algoritmo de asignación. Sin puertos: solo el bot lo alcanza, por la red interna.
+  engine:
+    image: ${REGISTRY}/dispatch-engine:${IMAGE_TAG:?}
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    mem_limit: 128m
 
   worker:
     image: ${REGISTRY}/dispatch-worker:${IMAGE_TAG:?}

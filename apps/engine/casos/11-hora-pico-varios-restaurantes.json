@@ -1,0 +1,109 @@
+{
+  "nombre": "Hora pico con varios restaurantes",
+  "descripcion": "Cuatro pedidos de tres restaurantes llegan en orden. Cada asignación cambia la situación para el siguiente.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3595,
+      "lon": -76.5213,
+      "entregas": 5,
+      "min_sin_pedido": 5
+    },
+    {
+      "id": "Beto",
+      "lat": 3.3676,
+      "lon": -76.5339,
+      "entregas": 2,
+      "min_sin_pedido": 20
+    },
+    {
+      "id": "Carla",
+      "lat": 3.3469,
+      "lon": -76.5123,
+      "entregas": 3,
+      "min_sin_pedido": 12
+    },
+    {
+      "id": "Dani",
+      "lat": 3.3478,
+      "lon": -76.5312,
+      "entregas": 1,
+      "min_sin_pedido": 30
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → norte",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.373,
+        -76.5186
+      ],
+      "listo_en": 3
+    },
+    {
+      "nombre": "Restaurante B → Ciudad Jardín",
+      "restaurante": [
+        3.3712,
+        -76.5375
+      ],
+      "cliente": [
+        3.3802,
+        -76.5429
+      ],
+      "listo_en": 8
+    },
+    {
+      "nombre": "Restaurante C → sur",
+      "restaurante": [
+        3.3442,
+        -76.5078
+      ],
+      "cliente": [
+        3.3307,
+        -76.5051
+      ],
+      "listo_en": 0
+    },
+    {
+      "nombre": "Restaurante A → norte (vecino del pedido 1)",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3748,
+        -76.5204
+      ],
+      "listo_en": 4
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Dani",
+      "por": "Ana y Dani llegan casi al mismo tiempo; desempata la equidad (Dani: 1 entrega y 30 min sin pedido)"
+    },
+    {
+      "pedido": 2,
+      "moto": "Beto",
+      "por": "Beto está al lado del Restaurante B; con la asignación diferida se le asigna cuando le toca salir, en vez de mandar a Ana desde lejos"
+    },
+    {
+      "pedido": 3,
+      "moto": "Carla",
+      "por": "Está al lado del Restaurante C y la comida ya está lista"
+    },
+    {
+      "pedido": 4,
+      "moto": "Dani",
+      "por": "Ya va al Restaurante A por el pedido 1 y el cliente es vecino: agrupa sin desvío (Ruta 100). Frente a Ana, además, lleva muchas menos entregas"
+    }
+  ]
+}

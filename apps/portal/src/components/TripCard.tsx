@@ -100,19 +100,20 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
       )}
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* Método de pago y cliente son opcionales: sin el dato no se muestra nada. */}
         {cash ? (
           <span className="flex items-center gap-1.5 rounded-full bg-gold px-3 py-1.5 text-xs font-bold text-clapi-deep">
             <Banknote size={14} />
-            Cobrar {formatCOP(trip.valueToCollect)}
+            Cobrar {trip.valueToCollect != null && formatCOP(trip.valueToCollect)}
           </span>
-        ) : (
+        ) : trip.paymentMethod === "transferencia" ? (
           <span className="flex items-center gap-1.5 rounded-full bg-ok-soft px-3 py-1.5 text-xs font-bold text-ok">
             <CreditCard size={14} />
-            Pre-pagado · {formatCOP(trip.valueToCollect)}
+            Pre-pagado{trip.valueToCollect != null && ` · ${formatCOP(trip.valueToCollect)}`}
           </span>
-        )}
+        ) : null}
         {/* El cliente final no tiene chat con el bot: su número solo llama. */}
-        <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />
+        {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
       </div>
 
       {/* Una sola línea: avatar, nombre, chat y llamada; en "En ruta", el botón Entregado al final. */}

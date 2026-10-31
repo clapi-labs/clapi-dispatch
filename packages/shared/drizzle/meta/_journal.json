@@ -29,6 +29,13 @@
       "when": 1793385070268,
       "tag": "0003_avisos_en_vivo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793403810843,
+      "tag": "0004_bot_pedidos",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,58 @@
+{
+  "nombre": "Comida en preparación: asignación diferida",
+  "descripcion": "La comida estará lista en 9 min. Antes ganaba Beto, el más lejano, porque era el que menos esperaba. Con la asignación diferida, el pedido se asigna cuando a la moto más rápida le toca salir, y gana Ana, la más cercana, que llega 2 min antes de que salga la comida.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3604,
+      "lon": -76.524,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Beto",
+      "lat": 3.3298,
+      "lon": -76.524,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.5384,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.355,
+      "lon": -76.4916,
+      "entregas": 2,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A, tarda 9 min",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3649,
+        -76.5204
+      ],
+      "listo_en": 9
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "por": "Se asigna en ~5 min; Ana llega 2 min antes de que salga la comida, las demás llegarían tarde"
+    }
+  ]
+}

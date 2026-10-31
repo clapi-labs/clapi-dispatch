@@ -1,6 +1,9 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
+import { normalizeDraft } from "@dispatch/shared";
+
+import type { DraftFields } from "@/lib/types";
 
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
 
@@ -42,7 +45,7 @@ export async function listConversations() {
         courierName,
         botPaused: c.botPaused,
         escalationReason: c.escalationReason,
-        draft: c.draft,
+        draft: draftSummary(c.draft),
         lastMessageAt: c.lastMessageAt,
         lastText: last?.text ?? null,
         lastRole: last?.role ?? null,
@@ -99,4 +102,23 @@ export async function resumeBot(conversationId: number) {
     .update(schema.conversations)
     .set({ botPaused: false, escalationReason: null, draft: null, failedAttempts: 0 })
     .where(eq(schema.conversations.id, conversationId));
+}
+
+/**
+ * El borrador del bot en la forma que muestra el panel. El bot arma un pedido
+ * con una o varias entregas; el panel muestra la última que va armando. Un
+ * borrador vacío no se muestra.
+ */
+function draftSummary(raw: unknown): DraftFields | null {
+  if (!raw) return null;
+  const draft = normalizeDraft(raw);
+  const delivery = draft.entregas[draft.entregas.length - 1];
+  if (!delivery && !draft.origenRestaurante) return null;
+  return {
+    origenRestaurante: draft.origenRestaurante,
+    direccionEntrega: delivery?.direccionEntrega ?? null,
+    telefonoCliente: delivery?.telefonoCliente ?? null,
+    valorACobrar: delivery?.valorACobrar ?? null,
+    metodoPago: delivery?.metodoPago ?? null,
+  };
 }

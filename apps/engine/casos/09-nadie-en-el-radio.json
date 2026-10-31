@@ -1,0 +1,58 @@
+{
+  "nombre": "Ninguna moto dentro del radio",
+  "descripcion": "Todas las motos están a más de 3 km del restaurante. El pedido queda sin asignar (falta definir con el cliente qué hacer).",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3856,
+      "lon": -76.524,
+      "entregas": 0,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Beto",
+      "lat": 3.3226,
+      "lon": -76.524,
+      "entregas": 0,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.355,
+      "lon": -76.4943,
+      "entregas": 0,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.355,
+      "lon": -76.56,
+      "entregas": 0,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.364,
+        -76.524
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": null,
+      "por": "Nadie a menos de 3 km"
+    }
+  ]
+}

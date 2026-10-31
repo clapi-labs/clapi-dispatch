@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import type { ExtractedTripFields, PaymentMethod } from "../domain/extraction";
+import type { Interpretation, OrderDraft, PaymentMethod } from "../domain/extraction";
 import type { OfferOutcome } from "../domain/dispatch/types";
 
 /**
@@ -51,9 +51,13 @@ export const conversations = pgTable(
      * bot no puede olvidar el primero al leer el segundo. Se vacía al crear
      * el viaje o al escalar.
      */
-    draft: jsonb("draft").$type<ExtractedTripFields>(),
+    draft: jsonb("draft").$type<OrderDraft>(),
     /** Cuántas veces se repreguntó por el pedido en curso. */
     failedAttempts: integer("failed_attempts").notNull().default(0),
+    /** El último mensaje entrante (`messages.id`) que el bot ya respondió. El
+     *  bot espera unos segundos antes de responder y junta lo que llegó en
+     *  ese tiempo: lo posterior a este id es lo que falta por procesar. */
+    processedThroughMessageId: integer("processed_through_message_id"),
     lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
@@ -62,6 +66,19 @@ export const conversations = pgTable(
 );
 
 export type MessageRole = "restaurant" | "bot" | "agent";
+
+/** Lo que el bot necesita de un mensaje entrante para procesarlo más tarde. */
+export type IncomingPayload = (
+  | { kind: "text"; text: string }
+  /** `mediaId`: el id de Meta para descargarla (en el chat simulado, una ruta local). */
+  | { kind: "image"; mediaId: string; caption: string | null }
+  | { kind: "button"; buttonId: string; title: string }
+  | { kind: "location"; lat: number; lng: number; label: string | null }
+  | { kind: "unsupported"; type: string }
+) & {
+  /** El wamid del mensaje que el restaurante citó, si respondió a uno. */
+  replyTo?: string | null;
+};
 
 export const messages = pgTable(
   "messages",
@@ -73,13 +90,20 @@ export const messages = pgTable(
     role: text("role").notNull().$type<MessageRole>(),
     text: text("text").notNull().default(""),
     waMessageId: text("wa_message_id"),
+    /** El viaje del que habla este mensaje, si habla de uno. Cuando el
+     *  restaurante responde citando un mensaje nuestro, por aquí se sabe a
+     *  qué pedido se refiere. */
+    tripId: integer("trip_id"),
+    /** El mensaje entrante tal como llegó (texto, botón o ubicación), para
+     *  procesarlo después de la espera aunque `text` sea solo su resumen. */
+    incoming: jsonb("incoming").$type<IncomingPayload>(),
     /** Lo que extrajo el modelo de este mensaje, antes de validar que esté
      *  completo. Queda guardado para poder auditar por qué un viaje pidió
      *  una repregunta. */
-    extraction: jsonb("extraction").$type<ExtractedTripFields>(),
+    extraction: jsonb("extraction").$type<Interpretation>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.id)],
+  (t) => [index("messages_conversation_idx").on(t.conversationId, t.id), index("messages_wa_message_idx").on(t.waMessageId)],
 );
 
 export const processedMessages = pgTable("processed_messages", {
@@ -147,18 +171,31 @@ export const trips = pgTable(
     deliveryAddress: text("delivery_address").notNull(),
     deliveryLocation: jsonb("delivery_location").$type<{ lat: number; lng: number }>(),
 
-    customerPhone: text("customer_phone").notNull(),
-    valueToCollect: integer("value_to_collect").notNull(),
+    /** Del cliente final. Opcionales: cada agencia decide qué datos exige
+     *  (`settings.bot_config`); si el restaurante los da, se guardan. */
+    customerPhone: text("customer_phone"),
+    customerName: text("customer_name"),
+    valueToCollect: integer("value_to_collect"),
     /** Lo que cobra la agencia por el domicilio: su ganancia. Sale de la
      *  tabla de tarifas (zona de recogida × zona de entrega) y se congela al
      *  crear el viaje — cambiar la tarifa mañana no reescribe el arqueo de hoy. */
     deliveryFee: integer("delivery_fee").notNull().default(0),
     pickupZone: text("pickup_zone"),
     deliveryZone: text("delivery_zone"),
-    paymentMethod: text("payment_method").notNull().$type<PaymentMethod>(),
+    paymentMethod: text("payment_method").$type<PaymentMethod>(),
     /** Derivado de `paymentMethod`, pero congelado: si la regla de negocio
      *  cambia mañana, un viaje de hoy no cambia de opinión retroactivamente. */
-    requiresCashReturn: boolean("requires_cash_return").notNull(),
+    requiresCashReturn: boolean("requires_cash_return").notNull().default(false),
+    /** Lo que el motorizado debe saber y no es un campo: "billete de 100
+     *  mil", "torre A apto 705", "2 hamburguesas". */
+    notes: text("notes"),
+    /** El mensaje de WhatsApp del restaurante que abrió el pedido. Los avisos
+     *  sobre el viaje le responden citándolo. */
+    sourceWaMessageId: text("source_wa_message_id"),
+    /** Cuándo está lista la comida, como hora exacta: el restaurante dice
+     *  "listo en 15" y se guarda la hora, para que el engine sepa cuánto
+     *  falta cada vez que evalúa. Nulo en los viajes anteriores a este dato. */
+    readyAt: timestamp("ready_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

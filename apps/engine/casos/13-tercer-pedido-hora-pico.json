@@ -1,0 +1,84 @@
+{
+  "nombre": "Hora pico: tercer pedido del mismo restaurante",
+  "descripcion": "Ana va al Restaurante A a recoger 2 pedidos. Entra un tercero del mismo restaurante para la misma zona. En hora pico se permiten hasta 3 por ruta (dato del cliente).",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3586,
+      "lon": -76.5222,
+      "entregas": 4,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.373,
+            -76.5186
+          ],
+          "listo_en": 6,
+          "recogido": false
+        },
+        {
+          "restaurante": [
+            3.355,
+            -76.524
+          ],
+          "cliente": [
+            3.3757,
+            -76.5168
+          ],
+          "listo_en": 6,
+          "recogido": false
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.355,
+      "lon": -76.5114,
+      "entregas": 4,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Carla",
+      "lat": 3.3334,
+      "lon": -76.524,
+      "entregas": 4,
+      "min_sin_pedido": 10
+    },
+    {
+      "id": "Dani",
+      "lat": 3.355,
+      "lon": -76.5492,
+      "entregas": 4,
+      "min_sin_pedido": 10
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante A → cliente vecino de los otros dos",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3748,
+        -76.5204
+      ],
+      "listo_en": 6
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "por": "Recoge los tres juntos y los entrega en la misma zona, sin desvío"
+    }
+  ]
+}

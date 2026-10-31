@@ -32,6 +32,8 @@ jobs:
           - { name: portal, target: runtime, app: portal }
           - { name: migrate, target: migrate, app: bot }
           - { name: worker, target: worker, app: bot }
+          # Python, con su propio Dockerfile y contexto.
+          - { name: engine, context: apps/engine }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -42,7 +44,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context || '.' }}
           target: ${{ matrix.target }}
           build-args: |
             APP=${{ matrix.app }}

@@ -9,6 +9,8 @@
   "scripts": {
     "dev:bot": "npm run dev --workspace=@dispatch/bot",
     "dev:portal": "npm run dev --workspace=@dispatch/portal",
+    "bot:chat": "npm run chat --workspace=@dispatch/bot --",
+    "bot:mensajes": "npm run mensajes --workspace=@dispatch/bot --",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "tsc --build --verbose",
@@ -16,7 +18,8 @@
     "db:generate": "npm run db:generate --workspace=@dispatch/shared",
     "db:migrate": "npm run db:migrate --workspace=@dispatch/shared",
     "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared",
-    "user:create": "npm run user:create --workspace=@dispatch/shared --"
+    "user:create": "npm run user:create --workspace=@dispatch/shared --",
+    "restaurant:create": "npm run restaurant:create --workspace=@dispatch/bot --"
   },
   "devDependencies": {
     "@types/node": "^20",

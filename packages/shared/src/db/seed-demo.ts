@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db, schema } from "./client";
+import { saveFareRanges } from "./fares";
 
 /**
  * Deja la base lista para mostrar: `npm run db:seed:demo`.
@@ -23,6 +24,15 @@ const COURIERS = [
   { name: "Jhon Fredy Martínez", phone: "573005556677", lat: 3.4012, lng: -76.5468 },
   { name: "Sebastián Cruz", phone: "573006667788", lat: 3.4583, lng: -76.5172 },
 ];
+
+/** Restaurante de prueba: el número es el que usa `npm run bot:chat` por
+ *  defecto, así el chat de la terminal escribe como un restaurante registrado. */
+const DEMO_RESTAURANT = {
+  phone: "573000000001",
+  name: "Donde Lucho",
+  knownPickupAddress: "Cra 83 # 42-15, El Caney",
+  knownPickupLocation: { lat: 3.4012, lng: -76.5285 },
+};
 
 /**
  * Zonas del sur de Cali y la matriz de precios de ejemplo. Más cerca, más
@@ -49,6 +59,15 @@ const PRICES = [
 ];
 
 const DEFAULT_FARE_VALUE = 7000;
+
+/** Tabla de precios por distancia (la que se edita en el portal). */
+const FARE_RANGES = [
+  { upToKm: 2, price: 5000 },
+  { upToKm: 4, price: 6000 },
+  { upToKm: 6, price: 7000 },
+  { upToKm: 8, price: 8000 },
+  { upToKm: null, price: 10000 },
+];
 
 // Pedidos de ejemplo entre esas zonas. `courier` es una posición en la flota.
 const DELIVERED = [
@@ -79,7 +98,14 @@ export async function seedDemo() {
   await db.delete(schema.assignments);
   await db.delete(schema.trips);
   // Los chats se quedan, pero sin un pedido a medio armar ni un asesor pendiente.
-  await db.update(schema.conversations).set({ draft: null, failedAttempts: 0, botPaused: false, escalationReason: null });
+  // Lo ya conversado se da por respondido, para que el bot no lo retome.
+  await db.update(schema.conversations).set({
+    draft: null,
+    failedAttempts: 0,
+    botPaused: false,
+    escalationReason: null,
+    processedThroughMessageId: sql`(select max(${schema.messages.id}) from ${schema.messages} where ${schema.messages.conversationId} = ${schema.conversations.id})`,
+  });
 
   // Zonas y tarifas (idempotente: por nombre de zona y par origen/destino).
   const zoneIds: number[] = [];
@@ -103,6 +129,12 @@ export async function seedDemo() {
     .insert(schema.settings)
     .values({ key: "default_fare", value: DEFAULT_FARE_VALUE })
     .onConflictDoUpdate({ target: schema.settings.key, set: { value: DEFAULT_FARE_VALUE } });
+  await saveFareRanges(FARE_RANGES);
+
+  await db
+    .insert(schema.restaurants)
+    .values(DEMO_RESTAURANT)
+    .onConflictDoUpdate({ target: schema.restaurants.phone, set: DEMO_RESTAURANT });
 
   // Flota: se respeta la que haya (los celulares reales que el equipo agregó
   // en Flota). Solo si está vacía se crean los motorizados de ejemplo.
@@ -188,7 +220,8 @@ export async function seedDemo() {
     await db.update(schema.couriers).set({ status: "busy" }).where(eq(schema.couriers.id, t.courierId));
   }
 
-  console.log(`✓ Tarifas: ${ZONES.length} zonas, ${ZONES.length ** 2} precios`);
+  console.log(`✓ Restaurante de prueba: ${DEMO_RESTAURANT.name} (${DEMO_RESTAURANT.phone})`);
+  console.log(`✓ Tarifas: ${ZONES.length} zonas, ${ZONES.length ** 2} precios y ${FARE_RANGES.length} rangos por km`);
   console.log(`✓ Flota: ${ids.length} motorizados (${ids.length - enRoute.length} libres, ${ids.length - fakeIds.length} con celular real)`);
   console.log(`✓ Viajes: ${DELIVERED.length} entregados, ${enRoute.length} en ruta, 0 por asignar`);
 }
