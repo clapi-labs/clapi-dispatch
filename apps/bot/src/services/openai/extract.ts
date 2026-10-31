@@ -8,7 +8,7 @@ import type { DownloadedImage } from "@/services/whatsapp/client";
 /** `query`: el mensaje pregunta algo en vez de pedir (docs/BOT.md, consultas). */
 export type ExtractionOutcome = { fields: Interpretation; query: "estado" | "cobertura" | null; confirms: boolean; confused: boolean; failed: boolean };
 
-const NOTHING: Interpretation = { origenRestaurante: null, zonaRecogida: null, entregas: [] };
+const NOTHING: Interpretation = { origenRestaurante: null, entregas: [] };
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -52,7 +52,7 @@ function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"]
     notas: text(raw.notas),
     detalleDireccion: text(raw.detalleDireccion),
     esConjunto: typeof raw.esConjunto === "boolean" ? raw.esConjunto : null,
-    zonaEntrega: text(raw.zonaEntrega),
+    barrio: text(raw.barrio),
   };
 }
 
@@ -82,7 +82,6 @@ const MAX_LISTO_MIN = 180;
 export async function interpretMessage(
   messageText: string,
   known: OrderDraft,
-  zoneNames: string[],
   images: DownloadedImage[] = [],
 ): Promise<ExtractionOutcome> {
   const prompt = `Hora actual: ${horaCali()}\n\nDatos ya capturados:\n${JSON.stringify(knownForModel(known))}\n\nMensaje nuevo del restaurante:\n${messageText || "(sin texto)"}`;
@@ -99,7 +98,7 @@ export async function interpretMessage(
     response_format: { type: "json_object" },
     temperature: 0,
     messages: [
-      { role: "system", content: buildExtractionPrompt(zoneNames) },
+      { role: "system", content: buildExtractionPrompt() },
       { role: "user", content: userContent },
     ],
   });
@@ -136,7 +135,7 @@ export async function interpretMessage(
       : [];
 
     return {
-      fields: { origenRestaurante: text(raw.origenRestaurante), zonaRecogida: text(raw.zonaRecogida), entregas },
+      fields: { origenRestaurante: text(raw.origenRestaurante), entregas },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       confirms: raw.confirma === true,
       confused: raw.confuso === true,

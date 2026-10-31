@@ -91,11 +91,6 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
       {trip.deliveryFee > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
           <span className="rounded-full bg-clapi-soft px-2.5 py-0.5 font-semibold text-clapi-ink">Domicilio {formatCOP(trip.deliveryFee)}</span>
-          {(trip.pickupZone || trip.deliveryZone) && (
-            <span>
-              {trip.pickupZone ?? "Fuera de zona"} → {trip.deliveryZone ?? "Fuera de zona"}
-            </span>
-          )}
         </div>
       )}
 

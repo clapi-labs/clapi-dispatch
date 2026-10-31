@@ -1,6 +1,6 @@
 import { haversineKm } from "../domain/dispatch/haversine";
 import type { GeoPoint } from "../domain/dispatch/types";
-import { getDefaultFare, getFareRanges, priceForDistance } from "./fares";
+import { getFareRanges, priceForDistance } from "./fares";
 
 /** La ruta por calles es ~30 % más larga que la línea recta. Mismo valor que
  *  `FACTOR_RUTA` del engine, para que precio y asignación midan igual. */
@@ -9,10 +9,8 @@ export const ROUTE_FACTOR = 1.3;
 export type Quote = {
   /** Distancia estimada por calles, con un decimal. */
   km: number;
-  price: number;
-  /** `ranges`: salió de la tabla por km. `default`: la tabla está vacía y se
-   *  cobró la tarifa por defecto. */
-  source: "ranges" | "default";
+  /** `null` si la tabla por km está vacía: no hay con qué cobrar. */
+  price: number | null;
 };
 
 /** Distancia estimada por calles entre dos puntos: Haversine × factor de ruta.
@@ -29,7 +27,5 @@ export function routeKm(from: GeoPoint, to: GeoPoint): number {
  */
 export async function quoteByDistance(from: GeoPoint, to: GeoPoint): Promise<Quote> {
   const km = routeKm(from, to);
-  const price = priceForDistance(km, await getFareRanges());
-  if (price !== null) return { km, price, source: "ranges" };
-  return { km, price: await getDefaultFare(), source: "default" };
+  return { km, price: priceForDistance(km, await getFareRanges()) };
 }

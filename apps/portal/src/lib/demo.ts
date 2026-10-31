@@ -16,7 +16,6 @@ import type {
   ConversationSummary,
   Courier,
   CourierProfile,
-  FareMatrix,
   FareRange,
   Settlement,
   SettlementRow,
@@ -61,8 +60,6 @@ function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deli
     paymentMethod: "efectivo",
     requiresCashReturn: true,
     deliveryFee: 6_000,
-    pickupZone: null,
-    deliveryZone: null,
     createdAt: ago(10),
     updatedAt: ago(5),
     courierName: null,
@@ -81,10 +78,10 @@ const courierOf = (id: number) => {
 
 const trips: Trip[] = [
   // Por asignar: uno recién llegado y uno que ya pasa de 2 min (urgente).
-  trip({ status: "pending", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Cra 66 #10-45, El Limonar", pickupZone: "San Fernando", deliveryZone: "El Limonar", createdAt: ago(0.6), valueToCollect: 52_000 }),
+  trip({ status: "pending", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Cra 66 #10-45, El Limonar", createdAt: ago(0.6), valueToCollect: 52_000 }),
   trip({ status: "pending", originRestaurantName: "Sushi Cali", deliveryAddress: "Calle 5 #38-20, Apto 502, Torre B", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(3.5), valueToCollect: 88_000, deliveryFee: 7_000 }),
   // En ruta: uno normal, uno que ya va largo (amarillo) y uno muy largo (rojo).
-  trip({ status: "en_route", originRestaurantName: "Donde Lucho", deliveryAddress: "Calle 18 #122-35, Valle del Lili", pickupZone: "Ciudad Jardín", deliveryZone: "Valle del Lili", createdAt: ago(20), assignedAt: ago(9), ...courierOf(1) }),
+  trip({ status: "en_route", originRestaurantName: "Donde Lucho", deliveryAddress: "Calle 18 #122-35, Valle del Lili", createdAt: ago(20), assignedAt: ago(9), ...courierOf(1) }),
   trip({ status: "en_route", originRestaurantName: "La Brasa Roja", deliveryAddress: "Av. 6N #28-10, Granada", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(40), assignedAt: ago(28), valueToCollect: 64_500, deliveryFee: 8_000, ...courierOf(4) }),
   // Entregados hoy.
   trip({ status: "delivered", originRestaurantName: "Donde Lucho", deliveryAddress: "Cra 100 #11-60, Ciudad Jardín", createdAt: ago(130), assignedAt: ago(125), deliveredAt: ago(104), ...courierOf(1) }),
@@ -199,12 +196,6 @@ function pushMessage(conversationId: number, role: ChatMessage["role"], text: st
 // Tarifas
 // ---------------------------------------------------------------------------
 
-const zoneNames = ["San Fernando", "Granada", "Ciudad Jardín", "Valle del Lili", "El Limonar"];
-let fareMatrix: FareMatrix = {
-  zones: zoneNames.map((name, i) => ({ id: i + 1, name, keywords: [name.toLowerCase()], sortOrder: i })),
-  fares: zoneNames.flatMap((_, o) => zoneNames.map((__, d) => ({ originZoneId: o + 1, destinationZoneId: d + 1, price: o === d ? 5_000 : 6_000 + Math.abs(o - d) * 1_000 }))),
-  defaultFare: 7_000,
-};
 let fareRanges: FareRange[] = [
   { upToKm: 2, price: 5_000 },
   { upToKm: 4, price: 6_000 },
@@ -305,10 +296,6 @@ async function handle(method: string, path: string, body: string | null): Promis
   if (path === "/api/fares/ranges") {
     if (method === "PUT") fareRanges = data.ranges;
     return json(method === "PUT" ? { ok: true } : fareRanges);
-  }
-  if (path === "/api/fares") {
-    if (method === "PUT") fareMatrix = { ...fareMatrix, fares: data.fares, defaultFare: data.defaultFare };
-    return json(method === "PUT" ? { ok: true } : fareMatrix);
   }
 
   return null;

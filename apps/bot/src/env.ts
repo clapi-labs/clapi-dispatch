@@ -71,6 +71,10 @@ export const env = {
   get whatsappSimulated() {
     return optional("WHATSAPP_SIMULADO", "false") === "true";
   },
+  /** Ubicaciones inventadas en vez de Google: solo pruebas y demostraciones. */
+  get geocodeSimulated() {
+    return optional("GEOCODE_SIMULADO", "false") === "true";
+  },
 
   get internalSecret() {
     return required("INTERNAL_SECRET");
