@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, LayoutGrid, LogOut, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -16,6 +16,8 @@ const NAV = [
   { href: "/flota", label: "Flota", short: "Flota", icon: Users },
   { href: "/arqueo", label: "Finanzas", short: "Finanzas", icon: Wallet },
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
+  // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
+  { href: "/zonas", label: "Zonas sin cobertura", short: "Zonas", icon: MapPinOff, desktopOnly: true },
 ];
 
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */
@@ -229,7 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Celular y tablet: barra de navegación abajo, al alcance del pulgar. Es el riel
             del escritorio acostado: azul noche, y la sección activa en su cápsula violeta. */}
         <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 bg-clapi-deep/95 pb-[env(safe-area-inset-bottom)] text-white backdrop-blur lg:hidden">
-          {NAV.map(({ href, short, icon: Icon }) => {
+          {NAV.filter((item) => !item.desktopOnly).map(({ href, short, icon: Icon }) => {
             const active = pathname?.startsWith(href);
             const badge = badgeFor(href, pending, needsHelp);
             return (

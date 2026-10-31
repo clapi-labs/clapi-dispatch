@@ -36,6 +36,13 @@
       "when": 1793403810843,
       "tag": "0004_bot_pedidos",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793418449039,
+      "tag": "0005_zonas_sin_cobertura",
+      "breakpoints": true
     }
   ]
 }
