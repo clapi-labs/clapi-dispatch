@@ -1,12 +1,9 @@
 "use client";
 
-import { Check, ChevronDown, Info, MapPinned, Plus, Route, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, Info, Plus, Route, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { formatCOP } from "@/lib/format";
-import type { FareMatrix, FareRange } from "@/lib/types";
-
-const key = (o: number, d: number) => `${o}-${d}`;
+import type { FareRange } from "@/lib/types";
 
 /** Una fila del formulario de rangos, como texto mientras se escribe. En la última `upToKm` no se usa. */
 type RangeRow = { upToKm: string; price: string };
@@ -57,17 +54,11 @@ function readRows(rows: RangeRow[]): { ranges: FareRange[] } | { error: string; 
 }
 
 /**
- * Tarifas: el precio del domicilio por rangos de kilómetros, más la tarifa
- * por defecto. Nada se guarda hasta "Guardar", así un dedo que se resbala en
- * el celular no cambia un precio de verdad.
- *
- * La matriz por zonas sigue abajo, plegada: es la que usa el bot hasta que
- * pueda medir la distancia entre direcciones (ver FareRange en shared).
+ * Tarifas: el precio del domicilio por rangos de kilómetros, la única forma
+ * de cobrar. Nada se guarda hasta "Guardar", así un dedo que se resbala en el
+ * celular no cambia un precio de verdad.
  */
 export default function TarifasPage() {
-  const [matrix, setMatrix] = useState<FareMatrix | null>(null);
-  const [prices, setPrices] = useState<Record<string, string>>({});
-  const [defaultFare, setDefaultFare] = useState("");
   const [savedRanges, setSavedRanges] = useState<FareRange[] | null>(null);
   const [rows, setRows] = useState<RangeRow[]>(STARTER_ROWS);
   const [saving, setSaving] = useState(false);
@@ -75,13 +66,6 @@ export default function TarifasPage() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    fetch("/api/fares", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: FareMatrix) => {
-        setMatrix(data);
-        setPrices(Object.fromEntries(data.fares.map((f) => [key(f.originZoneId, f.destinationZoneId), String(f.price)])));
-        setDefaultFare(String(data.defaultFare));
-      });
     fetch("/api/fares/ranges", { cache: "no-store" })
       .then((r) => r.json())
       .then((data: FareRange[]) => {
@@ -90,45 +74,22 @@ export default function TarifasPage() {
       });
   }, []);
 
-  const matrixDirty = useMemo(() => {
-    if (!matrix) return false;
-    const original = Object.fromEntries(matrix.fares.map((f) => [key(f.originZoneId, f.destinationZoneId), String(f.price)]));
-    return Object.entries(prices).some(([k, v]) => original[k] !== v) || String(matrix.defaultFare) !== defaultFare;
-  }, [matrix, prices, defaultFare]);
-
   const rangesDirty = savedRanges !== null && JSON.stringify(toRows(savedRanges)) !== JSON.stringify(rows);
   const read = readRows(rows);
   const rangeError = rangesDirty && "error" in read ? read : null;
-  const dirty = matrixDirty || rangesDirty;
+  const dirty = rangesDirty;
 
   async function save() {
-    if (!matrix || rangeError) return;
+    if (rangeError || !("ranges" in read)) return;
     setSaving(true);
     setFailed(false);
-    const requests: Promise<Response>[] = [];
-
-    if (rangesDirty && "ranges" in read) {
-      requests.push(fetch("/api/fares/ranges", { method: "PUT", body: JSON.stringify({ ranges: read.ranges }) }));
-    }
-
-    const fares = matrix.zones.flatMap((o) =>
-      matrix.zones
-        .map((d) => ({ originZoneId: o.id, destinationZoneId: d.id, price: parseInt(prices[key(o.id, d.id)] ?? "", 10) }))
-        .filter((f) => Number.isInteger(f.price)),
-    );
-    const fallback = parseInt(defaultFare, 10) || 0;
-    if (matrixDirty) {
-      requests.push(fetch("/api/fares", { method: "PUT", body: JSON.stringify({ fares, defaultFare: fallback }) }));
-    }
-
-    const results = await Promise.all(requests);
+    const result = await fetch("/api/fares/ranges", { method: "PUT", body: JSON.stringify({ ranges: read.ranges }) });
     setSaving(false);
-    if (results.some((r) => !r.ok)) {
+    if (!result.ok) {
       setFailed(true);
       return;
     }
-    if (matrixDirty) setMatrix({ ...matrix, fares, defaultFare: fallback });
-    if (rangesDirty && "ranges" in read) setSavedRanges(read.ranges);
+    setSavedRanges(read.ranges);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -149,8 +110,6 @@ export default function TarifasPage() {
   function removeRow(i: number) {
     setRows((prev) => prev.filter((_, j) => j !== i));
   }
-
-  const zones = matrix?.zones ?? [];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-5 lg:px-8 lg:py-7">
@@ -251,102 +210,15 @@ export default function TarifasPage() {
           </div>
         </section>
 
-        <section className="card flex flex-col gap-3 p-5">
-          <h2 className="text-sm font-semibold">Tarifa por defecto</h2>
-          <p className="text-xs text-ink-3">Se cobra cuando no se logra ubicar la dirección.</p>
-          <label className="flex h-12 items-center gap-1 rounded-xl bg-sunken px-4 focus-within:ring-2 focus-within:ring-clapi/30">
-            <span className="text-ink-3">$</span>
-            <input
-              inputMode="numeric"
-              value={defaultFare ? Number(defaultFare).toLocaleString("es-CO") : ""}
-              onChange={(e) => setDefaultFare(e.target.value.replace(/\D/g, ""))}
-              className="w-full bg-transparent text-lg font-bold tabular-nums outline-none"
-            />
-          </label>
-          {defaultFare && <p className="text-xs text-ink-3">{formatCOP(Number(defaultFare))} por domicilio</p>}
-        </section>
+        <div className="flex gap-3 rounded-2xl bg-gold-soft p-4 text-sm text-gold-ink">
+          <Info size={18} className="mt-0.5 shrink-0" />
+          <p>
+            El bot ubica la recogida y la entrega en el mapa y cobra según la distancia por calles. Si no logra ubicar una
+            dirección, no inventa un precio: pide corregirla o pasa el pedido a la central.
+          </p>
+        </div>
       </div>
 
-      <div className="flex gap-3 rounded-2xl bg-gold-soft p-4 text-sm text-gold-ink">
-        <Info size={18} className="mt-0.5 shrink-0" />
-        <p>
-          <strong>El bot todavía cobra por zona.</strong> Para cobrar por kilómetros tiene que medir la distancia entre la recogida y la
-          entrega, y eso aún no está conectado. Mientras tanto usa la tabla por zonas de abajo.
-        </p>
-      </div>
-
-      {/* La matriz por zonas: la que usa el bot hoy. Plegada para que no compita con la de distancia. */}
-      <details className="card group overflow-hidden">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-4 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-          <MapPinned size={16} className="text-clapi" /> Tarifas por zona
-          <span className="text-xs font-normal text-ink-3">· las que usa el bot hoy</span>
-          <ChevronDown size={16} className="ease-ui ml-auto text-ink-3 group-open:rotate-180" />
-        </summary>
-
-        <div className="overflow-x-auto border-t border-line">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-sunken px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">
-                  Recoge ↓ / Entrega →
-                </th>
-                {zones.map((z) => (
-                  <th key={z.id} className="bg-sunken px-2 py-3 text-center text-xs font-semibold text-ink-2">
-                    {z.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {zones.map((origin) => (
-                <tr key={origin.id} className="border-t border-line">
-                  <th className="sticky left-0 z-10 bg-surface px-4 py-2 text-left text-sm font-semibold">{origin.name}</th>
-                  {zones.map((dest) => {
-                    const k = key(origin.id, dest.id);
-                    const same = origin.id === dest.id;
-                    return (
-                      <td key={dest.id} className={`px-1.5 py-1.5 text-center ${same ? "bg-clapi-soft/40" : ""}`}>
-                        <label className="ease-ui flex h-11 items-center justify-center rounded-lg ring-1 ring-transparent focus-within:bg-surface focus-within:ring-clapi/50 can-hover:hover:bg-sunken">
-                          <span className="text-xs text-ink-3">$</span>
-                          <input
-                            inputMode="numeric"
-                            value={prices[k] ? Number(prices[k]).toLocaleString("es-CO") : ""}
-                            onChange={(e) => setPrices((p) => ({ ...p, [k]: e.target.value.replace(/\D/g, "") }))}
-                            placeholder="—"
-                            aria-label={`De ${origin.name} a ${dest.name}`}
-                            className="w-16 bg-transparent text-center font-semibold tabular-nums outline-none"
-                          />
-                        </label>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {!matrix && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-ink-3">
-                    Cargando tarifas…
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-col gap-2 border-t border-line px-5 py-4">
-          <p className="text-xs font-semibold text-ink-2">Cómo se reconoce cada zona</p>
-          {zones.map((z) => (
-            <div key={z.id} className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="w-32 shrink-0 font-semibold text-ink">{z.name}</span>
-              {z.keywords.map((k) => (
-                <span key={k} className="rounded-md bg-sunken px-2 py-0.5 text-ink-2">
-                  {k}
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      </details>
     </div>
   );
 }

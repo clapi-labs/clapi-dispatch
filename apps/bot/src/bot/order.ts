@@ -11,18 +11,7 @@ import {
   type OrderDraft,
   type OrderFieldKey,
 } from "@dispatch/shared";
-import {
-  assignNextCourier,
-  findZoneByName,
-  getBotConfig,
-  listZones,
-  matchZone,
-  quoteByDistance,
-  quoteFare,
-  type BotConfig,
-  type Restaurant,
-  type Zone,
-} from "@dispatch/shared/db";
+import { assignNextCourier, getBotConfig, quoteByDistance, type BotConfig, type Restaurant } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
@@ -85,6 +74,18 @@ async function save(ctx: Context, draft: OrderDraft | null, failedAttempts = 0) 
   await updateConversation(ctx.conversation.id, { draft, failedAttempts });
 }
 
+/** Google caído: el borrador se guarda (el asesor lo ve en el portal) y la
+ *  conversación pasa a la central. */
+async function escalateLocationDown(ctx: Context, draft: OrderDraft) {
+  await updateConversation(ctx.conversation.id, {
+    botPaused: true,
+    escalationReason: "No se pudo ubicar la dirección: Google no respondió o no está configurado.",
+    draft,
+    failedAttempts: 0,
+  });
+  await say(ctx.conversation.id, ctx.message.phone, LOCATION_DOWN_MESSAGE, { replyTo: draft.mensajeOrigen });
+}
+
 async function escalate(ctx: Context, reason: string) {
   await updateConversation(ctx.conversation.id, { botPaused: true, escalationReason: reason, draft: null, failedAttempts: 0 });
   await say(ctx.conversation.id, ctx.message.phone, ESCALATION_MESSAGE);
@@ -102,18 +103,14 @@ async function countAttempt(ctx: Context, draft: OrderDraft, progressed: boolean
   return true;
 }
 
-function pickupZone(draft: OrderDraft, restaurant: Restaurant | null, zones: Zone[]) {
-  return findZoneByName(draft.zonaRecogida, zones) ?? matchZone(restaurant?.knownPickupAddress ?? draft.origenRestaurante ?? "", zones);
-}
-
-function deliveryZone(delivery: DeliveryDraft, zones: Zone[]) {
-  return findZoneByName(delivery.zonaEntrega, zones) ?? matchZone(delivery.direccionEntrega ?? "", zones);
-}
-
 /** Cómo se nombra una entrega en los mensajes: su barrio, o la dirección. */
-function deliveryLabel(delivery: DeliveryDraft, zones: Zone[]) {
-  return deliveryZone(delivery, zones)?.name ?? delivery.direccionEntrega ?? "la entrega";
+function deliveryLabel(delivery: DeliveryDraft) {
+  return delivery.barrio ?? delivery.direccionEntrega?.split(",")[0] ?? "la entrega";
 }
+
+/** Sin ubicación no hay precio, y Google no respondió (o no está
+ *  configurado): no es culpa del restaurante, lo resuelve una persona. */
+const LOCATION_DOWN_MESSAGE = "No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central.";
 
 /**
  * La primera entrega del mensaje que trae algo distinto de lo que ya se
@@ -130,33 +127,28 @@ function changedDelivery(fields: Interpretation, known: OrderDraft) {
 }
 
 /** Lo que falta para despachar, en palabras: del pedido y de cada entrega. */
-function missingParts(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft, zones: Zone[]) {
+function missingParts(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft) {
   const missingOrigin = !restaurant && !draft.origenRestaurante;
   const missing = quoted.map((d) => ({ d, keys: missingFields(d, config.requiredFields) })).filter((m) => m.keys.length);
   return [
     ...(missingOrigin ? [FIELD_LABEL.origenRestaurante] : []),
     ...missing.map((m) => {
       const labels = joinLabels(m.keys.map((k) => FIELD_LABEL[k]));
-      return quoted.length === 1 ? labels : `${labels} del de ${deliveryLabel(m.d, zones)}`;
+      return quoted.length === 1 ? labels : `${labels} del de ${deliveryLabel(m.d)}`;
     }),
   ];
 }
 
-/** Lo que cuesta una entrega: por distancia si están las dos ubicaciones; si
- *  no, por zona. `outOfRange` si pasa del tope de la agencia. */
-async function quoteDelivery(delivery: DeliveryDraft, restaurant: Restaurant | null, zones: Zone[], pickup: Zone | null, config: BotConfig) {
-  const pickupLocation = restaurant?.knownPickupLocation ?? null;
-  if (pickupLocation && delivery.ubicacionEntrega) {
-    const quote = await quoteByDistance(pickupLocation, delivery.ubicacionEntrega);
-    const outOfRange = config.maxKm !== null && quote.km > config.maxKm;
-    return { precio: quote.price, km: quote.km, outOfRange };
-  }
-  return { precio: await quoteFare(pickup, deliveryZone(delivery, zones)), km: null, outOfRange: false };
+/** Lo que cuesta una entrega, por distancia desde la recogida. `outOfRange`
+ *  si pasa del tope de la agencia; `precio` null si la tabla por km está vacía. */
+async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig) {
+  const quote = await quoteByDistance(pickup, delivery);
+  return { precio: quote.price, km: quote.km, outOfRange: config.maxKm !== null && quote.km > config.maxKm };
 }
 
 export async function handleRestaurant(ctx: Context) {
   const { conversation, message, restaurant } = ctx;
-  const [config, zones] = await Promise.all([getBotConfig(), listZones()]);
+  const config = await getBotConfig();
 
   const known = normalizeDraft(conversation.draft);
   if (restaurant) known.origenRestaurante = restaurant.name;
@@ -189,7 +181,7 @@ export async function handleRestaurant(ctx: Context) {
       await say(conversation.id, message.phone, "No pude abrir la imagen 🙏 ¿Me escribes la dirección de entrega?");
       return;
     }
-    const extraction = await interpretMessage(message.text, draft, zones.map((z) => z.name), images);
+    const extraction = await interpretMessage(message.text, draft, images);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
     // escala y el borrador queda como estaba. Solo se le pide reenviar.
     if (extraction.failed) {
@@ -273,19 +265,45 @@ export async function handleRestaurant(ctx: Context) {
   if (!draft.mensajeOrigen) draft.mensajeOrigen = message.waMessageId;
   const replyTo = draft.mensajeOrigen;
 
-  // 3. Ubicar cada dirección, una sola vez por dirección.
+  // 3. Ubicar la recogida (si el restaurante no está registrado) y cada
+  // dirección de entrega, una sola vez por dirección. Sin ubicación no hay precio.
+  let pickupLocation = restaurant?.knownPickupLocation ?? draft.ubicacionRecogida ?? null;
+  if (!restaurant?.knownPickupLocation && draft.origenRestaurante && draft.origenRestaurante !== draft.recogidaUbicada) {
+    const geocoded = await geocodeAddress(draft.origenRestaurante);
+    if (geocoded.kind === "failed" || geocoded.kind === "disabled") {
+      await escalateLocationDown(ctx, draft);
+      return;
+    }
+    pickupLocation = geocoded.kind === "found" ? geocoded.location : null;
+    draft.ubicacionRecogida = pickupLocation;
+    draft.recogidaUbicada = draft.origenRestaurante;
+    draft.entregas.forEach((d) => (d.cotizacion = null));
+  }
+  if (!pickupLocation) {
+    const asked = draft.origenRestaurante
+      ? `No encuentro «${draft.origenRestaurante}» en el mapa 🗺️ ¿Me escribes la dirección de recogida con el número completo y el barrio?`
+      : "¿Desde qué dirección se recoge? (con el número completo y el barrio)";
+    if (await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin dirección de recogida que se pueda ubicar.`)) {
+      await say(conversation.id, message.phone, asked, { replyTo: draft.mensajeOrigen });
+    }
+    return;
+  }
+
   const notFound: DeliveryDraft[] = [];
   for (const d of deliveries) {
-    if (d.direccionEntrega === d.direccionUbicada) continue;
+    if (d.direccionEntrega === d.direccionUbicada && d.ubicacionEntrega) continue;
     const geocoded = await geocodeAddress(d.direccionEntrega!);
+    if (geocoded.kind === "failed" || geocoded.kind === "disabled") {
+      await escalateLocationDown(ctx, draft);
+      return;
+    }
     if (geocoded.kind === "not_found") {
       d.direccionUbicada = null;
       notFound.push(d);
       continue;
     }
-    // Si Google falla o no hay llave, se sigue sin coordenadas: se cobra por
-    // zona y el despachador lo ve en el portal.
-    d.ubicacionEntrega = geocoded.kind === "found" ? geocoded.location : null;
+    d.ubicacionEntrega = geocoded.location;
+    if (geocoded.neighborhood) d.barrio = geocoded.neighborhood;
     d.direccionUbicada = d.direccionEntrega;
     d.cotizacion = null;
   }
@@ -301,12 +319,15 @@ export async function handleRestaurant(ctx: Context) {
 
   // 4. Cotizar lo que no tenga precio. Un precio nuevo siempre se muestra y se
   // confirma, aunque el restaurante ya hubiera confirmado lo anterior.
-  const pickup = pickupZone(draft, restaurant, zones);
   const outOfRange: { delivery: DeliveryDraft; km: number }[] = [];
   let newQuote = false;
   for (const d of deliveries) {
     if (d.cotizacion) continue;
-    const quote = await quoteDelivery(d, restaurant, zones, pickup, config);
+    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config);
+    if (quote.precio === null) {
+      await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
+      return;
+    }
     if (quote.outOfRange) {
       outOfRange.push({ delivery: d, km: quote.km! });
       continue;
@@ -318,7 +339,7 @@ export async function handleRestaurant(ctx: Context) {
     draft.entregas = draft.entregas.filter((d) => !outOfRange.some((o) => o.delivery === d));
   }
   const coverageNote = outOfRange
-    .map((o) => `Hasta ${deliveryLabel(o.delivery, zones)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`)
+    .map((o) => `Hasta ${deliveryLabel(o.delivery)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`)
     .join("\n");
   const quoted = draft.entregas.filter((d) => d.cotizacion);
 
@@ -334,11 +355,11 @@ export async function handleRestaurant(ctx: Context) {
     const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
     const body =
       quoted.length === 1
-        ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0], zones)} 🛵`
-        : `Serían ${quoted.length} domicilios 🛵\n${quoted.map((d) => `• ${deliveryLabel(d, zones)}: ${cop(d.cotizacion!.precio)}`).join("\n")}\nTotal: ${cop(total)}`;
+        ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵`
+        : `Serían ${quoted.length} domicilios 🛵\n${quoted.map((d) => `• ${deliveryLabel(d)}: ${cop(d.cotizacion!.precio)}`).join("\n")}\nTotal: ${cop(total)}`;
     // Lo que falte se pide en la misma cotización: el restaurante confirma y
     // completa en una sola respuesta, sin un mensaje más de ida y vuelta.
-    const pending = missingParts(quoted, config, restaurant, draft, zones);
+    const pending = missingParts(quoted, config, restaurant, draft);
     const ask = pending.length ? `\nPara despacharlo envíame ${joinLabels(pending)}.` : "";
     const text = [body + ask, coverageNote].filter(Boolean).join("\n\n");
     await say(conversation.id, message.phone, text, {
@@ -362,7 +383,7 @@ export async function handleRestaurant(ctx: Context) {
   }
 
   // 6. Confirmado: lo que falte según la agencia, entrega por entrega.
-  const parts = missingParts(quoted, config, restaurant, draft, zones);
+  const parts = missingParts(quoted, config, restaurant, draft);
   if (parts.length) {
     if (await countAttempt(ctx, draft, progressed || confirms, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin los datos que faltan.`)) {
       await say(conversation.id, message.phone, `Listo ✅ Para pedir la moto me falta ${joinLabels(parts)}.`, { replyTo });
@@ -377,7 +398,8 @@ export async function handleRestaurant(ctx: Context) {
       conversation.id,
       { origenRestaurante: draft.origenRestaurante!, mensajeOrigen: draft.mensajeOrigen ?? null },
       d,
-      { price: d.cotizacion!.precio, pickupZone: pickup?.name ?? null, deliveryZone: deliveryZone(d, zones)?.name ?? null },
+      d.cotizacion!.precio,
+      restaurant ? null : { address: draft.origenRestaurante!, location: pickupLocation },
       restaurant,
     );
     const courierAssigned = await assignNextCourier(trip.id);

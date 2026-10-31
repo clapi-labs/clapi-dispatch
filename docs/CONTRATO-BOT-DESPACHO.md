@@ -72,11 +72,11 @@ El precio del domicilio por distancia. La usa el bot al cotizar y al crear el vi
 function quoteByDistance(from: GeoPoint, to: GeoPoint): Promise<Quote>;
 
 type GeoPoint = { lat: number; lng: number };
-type Quote = { km: number; price: number; source: "ranges" | "default" };
+type Quote = { km: number; price: number | null };
 ```
 
 - `km` es la distancia en línea recta (Haversine) por el factor de ruta (1,3, el mismo `FACTOR_RUTA` del engine). Gratis, sin red.
-- `price` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`). Si la tabla está vacía, la tarifa por defecto (`source: "default"`).
+- `price` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`). Si la tabla está vacía, `null`: no hay tarifa por defecto ni cobro por zonas, y el bot pasa el pedido a la central.
 - Si más adelante el engine ofrece una distancia mejor, cambia el interior de la función, no su forma.
 
 ## 3. Lo que el bot deja en la base para el engine

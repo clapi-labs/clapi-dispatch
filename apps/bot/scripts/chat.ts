@@ -22,6 +22,9 @@
 import { createInterface } from "node:readline/promises";
 
 process.env.WHATSAPP_SIMULADO = "true";
+// Ubicaciones inventadas, salvo `npm run bot:chat -- --google` para probar con Google de verdad.
+if (process.argv.includes("--google")) process.env.GEOCODE_SIMULADO = "false";
+else process.env.GEOCODE_SIMULADO ??= "true";
 
 const DEFAULT_PHONE = "573000000001";
 
@@ -29,7 +32,7 @@ async function main() {
   const { handleIncoming } = await import("../src/bot/intake");
   type Incoming = Parameters<typeof handleIncoming>[0];
 
-  let phone = process.argv[2] ?? DEFAULT_PHONE;
+  let phone = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? DEFAULT_PHONE;
   let counter = 0;
 
   // El bot espera unos segundos antes de responder y junta los mensajes

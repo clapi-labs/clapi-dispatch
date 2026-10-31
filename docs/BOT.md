@@ -41,7 +41,7 @@ El cliente quiere sistematizar los datos: que el restaurante se acomode al forma
 - **Conjunto, unidad, edificio o condominio:** se exige **torre y apartamento** (o casa). El modelo marca `esConjunto` y guarda la torre y el apto en `detalleDireccion`, aparte de la dirección, para no volver a ubicar ni cotizar cuando llegan después.
 - En la ficha sale `Calle 5 # 66-20, Edificio Torre Alta, El Refugio · Apto 1203`; el enlace de Waze usa solo la calle (o las coordenadas, si las hay).
 
-Zonas sin cobertura y franja gris: ver [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md).
+**Precio solo por distancia.** No hay cobro por zonas ni tarifa por defecto: sin la dirección ubicada en el mapa no se cotiza. Si Google falla, el pedido pasa a la central; si la tabla de rangos por km está vacía, también. Detalle, ubicación simulada para pruebas y zonas sin cobertura: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md).
 
 ## Mensajes por servicio
 

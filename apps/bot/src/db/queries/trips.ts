@@ -18,7 +18,9 @@ export async function createTrip(
   conversationId: number,
   order: { origenRestaurante: string; mensajeOrigen: string | null },
   draft: DeliveryDraft,
-  fare: { price: number; pickupZone: string | null; deliveryZone: string | null },
+  price: number,
+  /** La recogida de un restaurante sin registrar, ubicada desde lo que escribió. */
+  pickup: { address: string; location: { lat: number; lng: number } } | null,
   restaurant: Restaurant | null,
 ) {
   const readyAt =
@@ -37,8 +39,8 @@ export async function createTrip(
       status: "pending",
       originRestaurantName: order.origenRestaurante,
       // Del registro del restaurante: ya geocodificada una vez, no por pedido.
-      pickupAddress: restaurant?.knownPickupAddress ?? null,
-      pickupLocation: restaurant?.knownPickupLocation ?? null,
+      pickupAddress: restaurant?.knownPickupAddress ?? pickup?.address ?? null,
+      pickupLocation: restaurant?.knownPickupLocation ?? pickup?.location ?? null,
       deliveryAddress: fullAddress(draft),
       deliveryLocation: draft.ubicacionEntrega ?? null,
       customerPhone: draft.telefonoCliente,
@@ -49,9 +51,7 @@ export async function createTrip(
       notes: draft.notas ?? null,
       sourceWaMessageId: order.mensajeOrigen,
       readyAt,
-      deliveryFee: fare.price,
-      pickupZone: fare.pickupZone,
-      deliveryZone: fare.deliveryZone,
+      deliveryFee: price,
     })
     .returning();
   return trip;

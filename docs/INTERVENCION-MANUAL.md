@@ -13,7 +13,7 @@ Mientras él atiende una novedad, **todo lo demás sigue solo**: los otros motor
 1. **El motorizado la reporta escribiendo** («me accidenté», «el cliente no baja», «no puedo ir»). No hay botón de problema en la ficha: sería un mensaje más por servicio, y las novedades son la excepción.
 2. Queda **en pausa**: no se le asigna nada más, pero no se desconecta; sus pedidos siguen siendo suyos hasta que William decida.
 3. **Su chat pasa a la central** (el bot deja de responderle) con el motivo: «Novedad de Camilo (D-TY3PF): Se accidentó».
-4. **A William le suena el celular** (ver «Alertas»).
+4. **A William le suena el celular** con una notificación del portal (ver «Alertas»).
 5. William también puede abrir una novedad él mismo, si se entera por una llamada.
 
 ## Las acciones
@@ -63,19 +63,24 @@ Camilo se accidenta llevando un pedido que ya recogió y tiene otro asignado.
 
 Ningún paso lo impone el sistema.
 
-## Alertas al celular
+## Alertas al celular: por el portal
 
-- **Principal: WhatsApp al número personal de William.** El bot le manda «⚠️ Novedad: Camilo, D-TY3PF, se accidentó» con el enlace al portal. Llega siempre y en WhatsApp puede ponerle **un tono propio a ese contacto**. Si William no le ha escrito al número del bot en las últimas 24 h, tiene que salir como plantilla aprobada por Meta (de pago, unos centavos).
-- **Respaldo: notificación push del portal.** Funciona en Android con Chrome aunque el navegador esté cerrado, si el portal se instala como app («Agregar a pantalla de inicio»). En iPhone, solo instalado en la pantalla de inicio (iOS 16.4+). El sonido no se puede personalizar desde la web.
+Todo pasa por el portal; no hace falta el WhatsApp personal de William.
 
-Falta: **el número de WhatsApp de William.**
+- **El portal instalado como app** en su celular («Agregar a pantalla de inicio»). Funciona en Android con Chrome aunque el navegador esté cerrado; en iPhone, solo instalado así (iOS 16.4+).
+- Cuando algo necesita a una persona (novedad de un motorizado, chat que pide asesor, franja gris de una zona sin cobertura, Google caído), el servidor le manda una **notificación push**: le suena el celular como cualquier app, con el motivo («⚠️ Novedad: Camilo, D-TY3PF, se accidentó»), y al tocarla abre esa conversación o ese pedido.
+- Con el portal abierto, además, suena una alerta propia y la tarjeta se marca.
+- Sin costo por mensaje (no pasa por Meta) y sin plantillas que aprobar.
+
+Límites: el sonido de la notificación es el del celular (la web no lo puede cambiar); si William bloquea las notificaciones del portal o el celular está en «No molestar», no suena. Por eso el portal debe mostrar en pantalla si las notificaciones están activas.
+
+Alternativa descartada por ahora: avisarle por WhatsApp a su número personal. Llega siempre y se le puede poner un tono propio a ese contacto, pero cada aviso fuera de la ventana de 24 h es una plantilla de pago, y obliga a mantener el número. Si las push no resultan confiables en su celular, se retoma.
 
 ## Fases
 
 1. ~~Novedad del motorizado: pausa y chat a la central.~~ Hecho.
-2. Alerta por WhatsApp a William (plantilla en Meta).
+2. Alertas en el portal: notificación push (PWA) y sonido con el portal abierto.
 3. Acciones del portal: reasignar con la lista sugerida, devolver a la cola, cancelar con cobro, pausar y reactivar, registro.
 4. Liquidación: que cuente los cancelados según lo elegido.
-5. Notificación push del portal (PWA).
 
 La 3 y la 4 tocan el portal y la liquidación: coordinar con quien lleve el algoritmo (la reasignación debe pasar por el mismo despacho, ver [CONTRATO-BOT-DESPACHO.md](CONTRATO-BOT-DESPACHO.md)).

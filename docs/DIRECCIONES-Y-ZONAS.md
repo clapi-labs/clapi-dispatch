@@ -4,10 +4,15 @@
 
 - **Dirección escrita:** se geocodifica una sola vez con Google Geocoding (`apps/bot/src/services/google/geocode.ts`), limitado a un rectángulo que va de Cali a Jamundí (sur 3.2, oeste −76.65, norte 3.6, este −76.4).
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
-- **Con coordenadas** se cotiza por distancia (Haversine × 1,3, tabla de rangos por km). **Sin ellas** (Google falla o sin facturación) se cotiza por zona, adivinada por palabras del barrio: menos precisa.
+- **Recogida:** la del restaurante registrado (ubicada una vez al registrarlo); si no está registrado, se ubica lo que escribió como origen.
+- **Se cobra solo por distancia** (Haversine × 1,3, tabla de rangos por km del portal). El cobro por zonas se eliminó: sin ubicación no hay precio.
+- **Si Google no encuentra la dirección**, se pide corregirla (número completo y barrio) o mandar la ubicación; a los 2 intentos pasa a la central.
+- **Si Google falla** (caído, sin llave o sin facturación), el bot responde «No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central» y la conversación queda en el portal con el pedido a medio armar.
+- **Ubicación simulada** para pruebas y demostraciones: `GEOCODE_SIMULADO=true` (la misma dirección siempre cae en el mismo punto de Cali). El chat de prueba la usa por defecto; `npm run bot:chat -- --google` usa Google de verdad. Nunca en producción.
+- El nombre del barrio en la cotización sale de Google (o, si no lo trae, de lo que leyó el modelo).
 - Formato exigido (torre y apto en conjuntos, etc.): [BOT.md](BOT.md), «La dirección».
 
-**Pendiente: Google.** La cuenta tiene la facturación apagada (`REQUEST_DENIED: You must enable Billing`). Mientras tanto todo sale por zona. Costos: 1 geocodificación por pedido; Geocoding es SKU Essentials, 10.000 gratis al mes.
+**Pendiente: Google.** La cuenta tiene la facturación apagada (`REQUEST_DENIED: You must enable Billing`). Mientras tanto, en staging y producción todo pedido pasa a la central; para probar, ubicación simulada. Costos: 1 geocodificación por pedido; Geocoding es SKU Essentials, 10.000 gratis al mes.
 
 Idea para después (no decidida): un geocodificador propio con los datos de OpenStreetMap del mapa de zonas, y Google solo cuando el propio no encuentre.
 
@@ -18,7 +23,7 @@ Lugares adonde la agencia no entra (ni a recoger ni a entregar). Decisiones del 
 - **Permanentes** y **las mismas para todos los restaurantes**.
 - Aplican a **recogida y entrega**.
 - Dentro de una zona, el bot responde: «Qué pena, pero hasta esa dirección no manejamos domicilio».
-- **Franja gris de 100 m** alrededor de cada zona: el bot le pregunta a William por WhatsApp con botones **Sí / No**. «No» cancela el pedido; «Sí» sigue el flujo normal.
+- **Franja gris de 100 m** alrededor de cada zona: el pedido queda en espera y se le pregunta a William **en el portal** (aviso con sonido y botones **Sí / No**). «No» cancela el pedido; «Sí» sigue el flujo normal.
 
 ### El mapa para marcarlas
 
@@ -44,5 +49,5 @@ Para actualizar las calles: `./descargar.sh osm-raw && python3 empaquetar.py osm
 
 1. Leer la colección `zonas` y guardarla en una tabla `restricted_zones` (polígono como lista de puntos).
 2. En `order.ts`, después de ubicar la entrega (y con la recogida del restaurante): punto dentro de un polígono → mensaje de no cobertura; a menos de 100 m del borde → franja gris.
-3. Franja gris: mensaje a William con botones Sí / No y el pedido en espera; al restaurante, «Déjame confirmar si llegamos hasta allá». Falta **el número de WhatsApp de William**.
-4. Sin coordenadas (Google apagado) no se puede revisar: el pedido sigue y el despachador lo ve en el portal.
+3. Franja gris: el pedido queda en espera y le aparece a William en el portal con Sí / No (ver las alertas en [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md)); al restaurante, «Déjame confirmar si llegamos hasta allá».
+4. Sin coordenadas no hay revisión posible, pero tampoco precio: el pedido ya pasa a la central.
