@@ -25,6 +25,7 @@ import { QuickReplies } from "@/components/QuickReplies";
 import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKEOVER_REASON } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
 import { useSwipePanes } from "@/lib/use-swipe-panes";
+import { useBusiness } from "@/lib/business";
 import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
 import { useLive } from "@/lib/live";
@@ -320,6 +321,9 @@ export default function ConversacionesPage() {
     setTimeout(() => setHighlight((current) => (current === messageId ? null : current)), 1600);
   }, []);
   const panes = useSwipePanes(TAB_KEYS, tab, switchTab);
+  // Pausa general: el bot no responde a nadie y todos los chats se escriben
+  // directo, como un WhatsApp normal, sin intervenir uno por uno.
+  const { paused: businessPaused } = useBusiness();
 
   const [draftText, setDraftText] = useState("");
   const [sending, setSending] = useState(false);
@@ -521,7 +525,7 @@ export default function ConversacionesPage() {
                 <ChatContactActions phone={selected.phone} onCopy={(text) => copy(text, "Número copiado")} />
                 {/* En celular el encabezado es del contacto: "Intervenir" baja a la barra del pie,
                     y "Tú atiendes" ya lo dice la franja amarilla. */}
-                {selected.botPaused ? (
+                {businessPaused ? null : selected.botPaused ? (
                   <span className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-gold-soft px-2.5 py-1.5 text-xs font-semibold text-gold-ink sm:flex">
                     <Headset size={13} /> Tú atiendes
                   </span>
@@ -532,7 +536,7 @@ export default function ConversacionesPage() {
                 )}
               </header>
 
-              {selected.botPaused && (
+              {selected.botPaused && !businessPaused && (
                 <div className="flex flex-wrap items-center gap-3 border-b border-gold/30 bg-gold-soft px-4 py-3">
                   <Headset size={18} className="shrink-0 text-gold-ink" />
                   <p className="min-w-0 flex-1 text-sm text-gold-ink">
@@ -548,7 +552,7 @@ export default function ConversacionesPage() {
                 </div>
               )}
 
-              {!selected.botPaused && selected.draft && <DraftPanel draft={selected.draft} />}
+              {!selected.botPaused && !businessPaused && selected.draft && <DraftPanel draft={selected.draft} />}
 
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
               <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 py-4 lg:px-6">
@@ -576,7 +580,7 @@ export default function ConversacionesPage() {
                 <div ref={bottomRef} />
               </div>
 
-              {selected.botPaused ? (
+              {selected.botPaused || businessPaused ? (
                 <form onSubmit={send} className="border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
                   {sendError && <p className="mb-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{sendError}</p>}
                   <div className="flex items-end gap-2">

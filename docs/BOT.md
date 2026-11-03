@@ -84,6 +84,7 @@ Lo normal es que no escriban. Cuando escriben, el bot clasifica el mensaje (`app
 | «Mándame la dirección», «la ficha» | Se le reenvía la ficha |
 | Novedad: «me accidenté», «no puedo ir», «el cliente no baja», «cancelo» | Queda **en emergencia** (rojo en Flota: no se le asigna nada más, conserva lo que lleva), su chat pasa a la central con el motivo, y se le responde «Recibido 🙏 La central ya te contacta». Ante la duda, se trata como novedad |
 | Estados en Flota | **Gris** (desconectado): recién agregado o desconectado; se conecta escribiéndole al bot. **Verde**: libre. **Amarillo**: en un viaje. **Rojo** (emergencia): la marca la central desde Flota o la pone una novedad; no recibe pedidos, su bot queda pausado y su chat fijado arriba en Conversaciones. Al quitarla vuelve el bot y queda libre, o en viaje si todavía lleva algo |
+| Pausa general | Botón «Pausar operación» del portal (`settings.business`), por ejemplo por lluvia. El bot no le responde a nadie y no entran pedidos nuevos; lo que está en curso sigue (el despacho asigna los pendientes, salen los avisos y el «Terminé el servicio» funciona). En Conversaciones todos los chats se escriben directo, sin intervenir, y al reanudar vuelven al bot |
 | Escribe estando desconectado y sin viajes | Queda conectado |
 
 **Sin base:** si el motorizado no tiene cambio y le toca volver al restaurante, el servicio no ha terminado: toca «Terminé el servicio» al volver. Mientras tanto sigue ocupado y no se le asigna otro.

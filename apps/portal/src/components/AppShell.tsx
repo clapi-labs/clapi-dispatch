@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, CirclePause, CirclePlay, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import logotipo from "@/assets/logotipo-clapi.svg";
 import { useTrips } from "@/components/TripsProvider";
 import { BRAND } from "@/lib/brand";
+import { setBusinessPaused, useBusiness } from "@/lib/business";
 
 const NAV = [
   { href: "/viajes", label: "Despachos", short: "Despachos", icon: LayoutGrid },
@@ -179,6 +180,72 @@ function badgeFor(href: string, pending: number, needsHelp: number) {
   return 0;
 }
 
+/**
+ * Pausa general (lluvia, por ejemplo): el bot deja de responder y no entran
+ * pedidos nuevos; lo que ya está en la calle sigue. Pausar pide confirmar;
+ * reanudar no, porque es volver a lo normal.
+ */
+function PauseButton({ compact }: { compact?: boolean }) {
+  const { paused } = useBusiness();
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <span className={`flex items-center gap-1.5 ${compact ? "" : "flex-col items-stretch"}`}>
+        {!compact && <span className="px-1 text-xs text-white/70">El bot deja de responder y no entran pedidos nuevos.</span>}
+        <span className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setConfirming(false);
+              setBusinessPaused(true);
+            }}
+            className="ease-ui flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-danger px-3 text-xs font-semibold text-white"
+          >
+            <CirclePause size={15} /> {compact ? "Pausar" : "Sí, pausar todo"}
+          </button>
+          <button type="button" onClick={() => setConfirming(false)} className="ease-ui h-10 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white">
+            {compact ? "No" : "Cancelar"}
+          </button>
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => (paused ? setBusinessPaused(false) : setConfirming(true))}
+      aria-label={paused ? "Reanudar la operación" : "Pausar la operación"}
+      title={paused ? "Reanudar la operación" : "Pausar la operación"}
+      className={`ease-ui flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl text-xs font-semibold text-white focus-visible:outline-gold ${
+        compact ? "w-10" : "px-3"
+      } ${paused ? "bg-ok" : "bg-white/10 hover:bg-white/15"}`}
+    >
+      {paused ? <CirclePlay size={16} /> : <CirclePause size={16} />}
+      {!compact && (paused ? "Reanudar operación" : "Pausar operación")}
+    </button>
+  );
+}
+
+/** La franja que avisa, en todas las pantallas, que la operación está en pausa. */
+function PausedBanner() {
+  const { paused, pausedAt } = useBusiness();
+  if (!paused) return null;
+  const since = pausedAt ? new Date(pausedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : null;
+  return (
+    <div role="status" className="flex items-center gap-2 bg-danger px-4 py-2 text-xs font-semibold text-white">
+      <CirclePause size={15} className="shrink-0" />
+      <span className="min-w-0 flex-1">
+        Operación en pausa{since && ` desde las ${since}`}: el bot no responde y no entran pedidos nuevos. Lo que está en curso sigue.
+      </span>
+      <button type="button" onClick={() => setBusinessPaused(false)} className="shrink-0 rounded-lg bg-white/20 px-2.5 py-1 hover:bg-white/30">
+        Reanudar
+      </button>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { trips, needsHelp } = useTrips();
@@ -215,6 +282,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Abajo: el estado del bot, las alertas y, al pie, el cliente (con "Cerrar sesión"). */}
         <div className="mt-auto flex flex-col gap-3">
           <LiveStatus />
+          <PauseButton />
           <SoundButton />
           <ClientMenu variant="rail" />
         </div>
@@ -227,11 +295,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <PlatformLogo size="sm" />
           <div className="flex min-w-0 items-center gap-2">
             <LiveStatus compact />
+            <PauseButton compact />
             <SoundButton compact />
             <ClientMenu variant="header" />
           </div>
         </header>
 
+        <PausedBanner />
         <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-tabbar lg:pb-0">{children}</main>
 
         {/* Celular y tablet: barra de navegación abajo, al alcance del pulgar. Es el riel

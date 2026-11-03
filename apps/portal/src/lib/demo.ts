@@ -48,6 +48,8 @@ const profiles = new Map<number, CourierProfile>([
 // Viajes
 // ---------------------------------------------------------------------------
 
+let business: { paused: boolean; pausedAt: string | null } = { paused: false, pausedAt: null };
+
 let nextTripId = 200;
 function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deliveryAddress" | "status">): Trip {
   const id = nextTripId++;
@@ -246,6 +248,10 @@ async function handle(method: string, path: string, body: string | null): Promis
   const data = body ? JSON.parse(body) : {};
   let m: RegExpMatchArray | null;
 
+  if (path === "/api/business") {
+    if (method === "PUT") business = { paused: !!data.paused, pausedAt: data.paused ? new Date().toISOString() : null };
+    return json(business);
+  }
   if (path === "/api/trips" && method === "GET") return json(trips);
   if (path === "/api/dispatch/auto-assign") return json({ assigned: 0 });
   if ((m = path.match(/^\/api\/trips\/(\d+)\/deliver$/))) {
