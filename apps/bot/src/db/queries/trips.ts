@@ -12,6 +12,12 @@ function generateTripCode(): string {
   return `D-${code}`;
 }
 
+/** La recogida de un restaurante registrado, con su detalle ("Local 12") si lo tiene. */
+function restaurantPickup(restaurant: Restaurant | null) {
+  if (!restaurant?.knownPickupAddress) return null;
+  return [restaurant.knownPickupAddress, restaurant.pickupDetail].filter(Boolean).join(", ");
+}
+
 /** El viaje de una entrega del pedido confirmado. Quien llama ya comprobó
  *  que trae los datos obligatorios de la agencia. */
 export async function createTrip(
@@ -39,7 +45,7 @@ export async function createTrip(
       status: "pending",
       originRestaurantName: order.origenRestaurante,
       // Del registro del restaurante: ya geocodificada una vez, no por pedido.
-      pickupAddress: restaurant?.knownPickupAddress ?? pickup?.address ?? null,
+      pickupAddress: restaurantPickup(restaurant) ?? pickup?.address ?? null,
       pickupLocation: restaurant?.knownPickupLocation ?? pickup?.location ?? null,
       deliveryAddress: fullAddress(draft),
       deliveryLocation: draft.ubicacionEntrega ?? null,
