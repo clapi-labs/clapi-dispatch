@@ -74,7 +74,7 @@ export async function handleCourier(courier: Courier, conversation: Conversation
   }
 
   if (intent.kind === "ficha" && trips.length) {
-    for (const trip of trips) await sendCourierTicket(message.phone, trip);
+    for (const trip of trips) await sendCourierTicket(message.phone, trip, courier.name);
     return;
   }
 

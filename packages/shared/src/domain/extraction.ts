@@ -174,8 +174,25 @@ export function missingFields(delivery: DeliveryDraft, required: OrderFieldKey[]
   const missing = required.filter((k): k is Exclude<OrderFieldKey, "origenRestaurante"> => k !== "origenRestaurante" && delivery[k] == null);
   // En un conjunto o edificio la torre y el apartamento son obligatorios para
   // toda agencia: sin ellos el motorizado llega a la portería y no sabe a quién.
-  if (delivery.esConjunto && !delivery.detalleDireccion && !missing.includes("detalleDireccion")) missing.push("detalleDireccion");
+  // Además de lo que diga el modelo, se revisa la dirección: si nombra un
+  // conjunto, edificio o torre y no trae el detalle, se pide igual.
+  const multiUnit = delivery.esConjunto || looksLikeMultiUnit(delivery.direccionEntrega);
+  if (multiUnit && !delivery.detalleDireccion && !missing.includes("detalleDireccion")) missing.push("detalleDireccion");
   return missing;
+}
+
+/** Palabras que dicen que en esa dirección vive más de una familia, así que
+ *  hace falta la torre, el apartamento o la casa para llegar a la puerta. */
+const MULTI_UNIT_WORDS =
+  /\b(conjunto|conj|unidad(?!\s+(deportiva|m[eé]dica|de\b))|edificio|edif|edf|torres?|bloques?|apto|apartamentos?|condominio|multifamiliar(es)?|residencias)\b/iu;
+
+/** «apto 302», «torre 2», «casa 14», «bloque C»: la puerta ya viene en el texto. */
+const UNIT_NUMBER = /\b(apto|apartamento|torre|bloque|casa|interior|int)\b\.?\s*(n[°º.o]?\s*)?#?\s*([a-z]?\d+|[a-z]\b)/iu;
+
+/** La dirección nombra un conjunto, edificio o torre pero no dice a qué
+ *  puerta ir. */
+export function looksLikeMultiUnit(address: string | null | undefined): boolean {
+  return !!address && MULTI_UNIT_WORDS.test(address) && !UNIT_NUMBER.test(address);
 }
 
 /** La dirección tal como la lee el motorizado: calle y, si hay, torre y apto. */
@@ -257,7 +274,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "origenRestaurante": string | null,   // dónde se recoge, si lo dice (nombre, dirección y barrio)
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados
     {
-      "direccionEntrega": string | null,  // todo lo que escribió (calle, número, nombre del conjunto o edificio, barrio, referencias) MENOS torre y apto, que van en detalleDireccion
+      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio y barrio; SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
@@ -292,8 +309,10 @@ Reglas:
 - "listoEnMinutos": "en 10", "listo en 15", "sale en 15 min" = ese número. "Ya está", "ya está listo", "pueden venir", "ya sale" = 0. Si da un rango ("10 a 15 min"), usa el menor. Si da una hora ("lista a las 7:40"), calcula los minutos desde la "Hora actual" que te paso. Si no dice nada del tiempo, null: nunca lo supongas.
 - "detalleDireccion": SOLO lo que identifica la puerta (torre, bloque, interior, apartamento, casa, piso, oficina, local, o un código como "C202"); el barrio y las indicaciones ("dejar en portería") nunca van ahí. Copia completos la torre Y el apartamento: "Torre 1 apto 604" → "Torre 1 apto 604", nunca solo "Apto 604".  Si llega después en un mensaje suelto ("torre 2 apto 301", "casa 14"), va a la entrega que no lo tenga. No lo repitas en "direccionEntrega" ni en "notas" (si ya va en "valorACobrar" o "metodoPago", tampoco en notas), pero no quites de "direccionEntrega" nada más: el nombre del conjunto o edificio y el barrio se quedan ahí.
   Ejemplo: "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio" → direccionEntrega "Calle 5 # 66-20, Edificio Torre Alta, El Refugio", detalleDireccion "Apto 1203", esConjunto true.
-- "esConjunto": true si la dirección nombra un conjunto, unidad residencial, edificio, condominio, torres o urbanización cerrada ("Conjunto Bosques del Lili", "Unidad Alameda", "Edificio Ceibas", "Torres de Comfandi"). false si es una casa en una calle, un local o un lugar público (clínica, centro comercial, universidad). null si no se sabe. Conserva el valor ya capturado si el mensaje no dice nada nuevo de la dirección.
-- "notas": TODO lo que le sirva al domiciliario y no tenga otro campo; no descartes nada útil aunque a la agencia no le importe: instrucciones de entrega, con cuánto paga el cliente ("billete de 100 mil"), si hay que llevar cambio o datáfono, qué lleva el pedido (bebidas, algo frágil o caliente), horarios, referencias del lugar ("casa esquinera", "portón negro", "dejar en portería", "llamar al llegar"). Ordénalo en frases cortas separadas por " · ". No repitas lo que ya va en otro campo ni lo que ya estaba en las notas. Saludos, agradecimientos y los productos con sus precios no van.
+- Puntos de referencia y descripciones del lugar ("frente a la panadería El Sebas", "al lado hay un puesto de arepas", "casa esquinera de rejas negras", "aquí me encuentro yo") NO van en "direccionEntrega": van en "notas", completos y bien redactados, porque son lo que el domiciliario usa para encontrar el sitio. Nunca los resumas ni los descartes.
+  Ejemplo: "A nombre de Laura Gómez mi número 3001234567 dirección es por toda la 42 con 83E -15 panadería el Sebas. El punto de referencia es la panadería y justo al lado hay un puesto de arepas de choclo en toda una esquina. aquí me encuentro yo" → direccionEntrega "La 42 con 83E-15" (no dice si es calle o carrera: no lo inventes), nombreCliente "Laura Gómez", telefonoCliente "3001234567", notas "Punto de referencia: panadería El Sebas · Justo al lado hay un puesto de arepas de choclo, en la esquina · El cliente espera ahí".
+- "esConjunto": true si la dirección nombra un conjunto, unidad residencial, edificio, condominio, torres o urbanización cerrada ("Conjunto Bosques del Lili", "Unidad Alameda", "Edificio Ceibas", "Torres de Comfandi"). false si es una casa en una calle, un local o un lugar público (clínica, centro comercial, universidad). También true si el restaurante menciona torre, bloque o apartamento aunque no dé el número. null si no se sabe. Conserva el valor ya capturado si el mensaje no dice nada nuevo de la dirección.
+- "notas": TODO lo que le sirva al domiciliario y no tenga otro campo; no descartes nada útil aunque a la agencia no le importe: instrucciones de entrega, con cuánto paga el cliente ("billete de 100 mil"), si hay que llevar cambio o datáfono, qué lleva el pedido (bebidas, algo frágil o caliente), horarios, puntos de referencia y cómo es el lugar ("casa esquinera", "portón negro", "al lado de la panadería", "dejar en portería", "llamar al llegar"). Ordénalo en frases cortas separadas por " · ". No repitas lo que ya va en otro campo ni lo que ya estaba en las notas. Saludos, agradecimientos y los productos con sus precios no van.
 - "intencion": qué quiere el restaurante con ESTE mensaje.
   "cotizar" = SOLO pregunta cuánto vale o si llegan, sin pedir que lo manden: "¿cuánto a Valle del Lili?", "¿qué vale un domi hasta Pance?", "¿cuánto cobran a la Cra 50 # 10-20?", "cotízame a…", "¿llegan a Jamundí y cuánto?".
   "pedir" = pide el servicio: manda el pedido o datos del cliente (nombre, teléfono, tiempo, valor, torre y apto), reenvía el pedido de su cliente, "necesito un domi para…", "envíame una moto", "para la Cra 50…", una dirección sola sin preguntar el precio, o decide mandar lo que ya cotizó ("dale, mándalo", "pídelo").
@@ -303,7 +322,7 @@ Reglas:
 - Nunca inventes un valor: lo que no sepas va en null.
 - "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), o un dato que no queda claro a qué entrega pertenece. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
-- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
+- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto, o se contradice sin aclarar cuál dato es el bueno. Saludos, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;
 }

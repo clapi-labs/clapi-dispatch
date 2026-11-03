@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 
-import { codesForNumber, db, nextTripCode, schema, tripNumbersInText, type Restaurant } from "@dispatch/shared/db";
+import { db, nextTripCode, schema, tripCodesInText, type Restaurant } from "@dispatch/shared/db";
 import { fullAddress, requiresCashReturn, type DeliveryDraft } from "@dispatch/shared";
 
 /** La recogida de un restaurante registrado, con su detalle ("Local 12") si lo tiene. */
@@ -96,15 +96,17 @@ export async function tripFromQuote(conversationId: number, quotedWaMessageId: s
 
 /**
  * El pedido que el restaurante nombra por su código en el texto («¿ya llegó
- * el A1042?», «el pedido 1042 ya está listo»), si es suyo. Con varios
+ * el B-12?», «el pedido b12 ya está listo»), si es suyo. Los códigos se
+ * repiten cada 2.600 pedidos, así que gana el más reciente. Con varios
  * códigos en el mismo mensaje, el primero que exista.
  */
 export async function tripFromCodeInText(conversationId: number, text: string): Promise<Trip | null> {
-  for (const number of tripNumbersInText(text)) {
+  for (const code of tripCodesInText(text)) {
     const [trip] = await db
       .select()
       .from(schema.trips)
-      .where(and(eq(schema.trips.conversationId, conversationId), inArray(schema.trips.code, codesForNumber(number))))
+      .where(and(eq(schema.trips.conversationId, conversationId), eq(schema.trips.code, code)))
+      .orderBy(desc(schema.trips.createdAt))
       .limit(1);
     if (trip) return trip;
   }

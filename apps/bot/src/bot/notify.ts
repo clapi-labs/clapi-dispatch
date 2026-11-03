@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, getBotConfig, schema } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
+import { confirmedText } from "@/bot/status";
 import { conversationForOutbound } from "@/db/queries/conversation";
 import type { SendResult } from "@/services/whatsapp/client";
 
@@ -46,37 +47,42 @@ function formatPhone(phone: string) {
 /** El cobro es entre el restaurante, el cliente y el motorizado: la agencia
  *  no lo exige ni lo liquida. Si el restaurante lo dijo, va informativo. */
 function moneyLine(trip: typeof schema.trips.$inferSelect) {
-  if (trip.paymentMethod === "transferencia") return "💳 Ya pagado, no cobrar.";
+  if (trip.paymentMethod === "transferencia") return "Ya está pagado, no cobres.";
   const value = trip.valueToCollect ? ` ${cop(trip.valueToCollect)}` : "";
-  if (trip.paymentMethod === "efectivo") return `💵 Cobrar en efectivo${value}`;
-  return value ? `💵 Valor del pedido:${value}` : null;
+  if (trip.paymentMethod === "efectivo") return `Cobra en efectivo${value}.`;
+  return value ? `Valor del pedido:${value}.` : null;
 }
 
-/** La ficha que le llega al motorizado, con el botón de confirmar entrega. */
-export function courierTicket(trip: typeof schema.trips.$inferSelect) {
+/** La ficha que le llega al motorizado, con el botón de confirmar entrega.
+ *  Una idea por párrafo, separados por una línea en blanco, para leerla
+ *  rápido desde la moto. */
+export function courierTicket(trip: typeof schema.trips.$inferSelect, courierName?: string | null) {
+  const firstName = courierName?.trim().split(/\s+/)[0];
   const customer = [trip.customerName, trip.customerPhone && formatPhone(trip.customerPhone)].filter(Boolean).join(" · ");
-  const lines: (string | null | false | undefined)[] = [
-    `🛵 *Nuevo viaje ${trip.code}*`,
-    "",
-    `📍 Recoge: ${trip.originRestaurantName}${trip.pickupAddress ? ` · ${trip.pickupAddress}` : ""}`,
-    `🏁 Entrega: ${trip.deliveryAddress}`,
-    customer ? `📞 Cliente: ${customer}` : null,
+  const waze = trip.deliveryLocation
+    ? `https://waze.com/ul?ll=${trip.deliveryLocation.lat},${trip.deliveryLocation.lng}&navigate=yes`
+    : // Solo la calle: la torre y el apto («· Torre 4 apto 302») confunden la búsqueda.
+      `https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress.split(" · ")[0]}, Cali`)}&navigate=yes`;
+  const paragraphs: (string | null | false | undefined)[] = [
+    `🛵 *${firstName ? `${firstName}, tienes` : "Tienes"} un nuevo viaje ${trip.code}*`,
+    `*Recoge en:* ${trip.originRestaurantName}${trip.pickupAddress ? ` · ${trip.pickupAddress}` : ""}`,
+    `*Entrega en:* ${trip.deliveryAddress}`,
+    customer ? `*Cliente:* ${customer}` : null,
     moneyLine(trip),
-    trip.notes && `📝 ${trip.notes}`,
-    "",
-    trip.deliveryLocation
-      ? `🗺️ https://waze.com/ul?ll=${trip.deliveryLocation.lat},${trip.deliveryLocation.lng}&navigate=yes`
-      : // Solo la calle: la torre y el apto («· Torre 4 apto 302») confunden la búsqueda.
-        `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress.split(" · ")[0]}, Cali`)}&navigate=yes`,
-    "",
-    "Toca el botón cuando termines. Si te toca volver al restaurante (por el cambio, por ejemplo), tócalo al volver 👇",
+    trip.notes && `*Indicaciones:* ${trip.notes}`,
+    `*Ruta en Waze:* ${waze}`,
+    "Cuando termines, toca el botón. Si tienes que volver al restaurante (por el cambio, por ejemplo), tócalo al volver.",
   ];
-  return lines.filter((l): l is string => typeof l === "string").join("\n");
+  return paragraphs.filter((p): p is string => typeof p === "string" && p.length > 0).join("\n\n");
 }
 
-export async function sendCourierTicket(phone: string, trip: typeof schema.trips.$inferSelect): Promise<SendResult> {
+export async function sendCourierTicket(
+  phone: string,
+  trip: typeof schema.trips.$inferSelect,
+  courierName?: string | null,
+): Promise<SendResult> {
   const conversation = await conversationOf(phone);
-  return say(conversation.id, phone, courierTicket(trip), {
+  return say(conversation.id, phone, courierTicket(trip, courierName), {
     tripId: trip.id,
     buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "Terminé el servicio" }],
   });
@@ -88,11 +94,12 @@ export async function notifyAssigned(tripId: number) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
 
-  await sendCourierTicket(row.courier.phone, row.trip);
+  await sendCourierTicket(row.courier.phone, row.trip, row.courier.name);
 
   const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
-    const text = `🛵 Pedido ${row.trip.code} · ${cop(row.trip.deliveryFee)}\nVa ${row.courier.name} · ${formatPhone(row.courier.phone)}`;
+    // Sin el número del domiciliario: el restaurante habla siempre con la agencia.
+    const text = confirmedText(row.trip.code, row.courier.name, row.trip.readyAt, cop(row.trip.deliveryFee));
     await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }

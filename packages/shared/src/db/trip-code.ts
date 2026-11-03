@@ -3,55 +3,52 @@ import { sql } from "drizzle-orm";
 import { db } from "./client";
 
 /**
- * El código de un pedido: una letra por día de la semana y un número global
- * que nunca se repite. `A1042` es el pedido 1042, hecho un lunes.
+ * El código de un pedido: una letra y dos cifras, como `B-12`.
  *
- * El número basta para identificarlo (es único); la letra ayuda a ubicarlo a
- * simple vista: A lunes, B martes, C miércoles, D jueves, E viernes, F sábado
- * y G domingo, en hora de Colombia. Así lo dicen el restaurante, el
- * motorizado y la central sin confundirse.
+ * El contador sube las cifras de 00 a 99 y, al pasar de 99, cambia de letra y
+ * vuelve a 00: A-00 … A-99, B-00 … B-99, … Z-99, y de ahí otra vez A-00. Son
+ * 2.600 códigos por vuelta; lo lleva la secuencia cíclica `trip_code_seq`
+ * (0 a 2599). Un código se repite cada 2.600 pedidos, así que no identifica un
+ * pedido para siempre: cuando el restaurante lo nombra se busca el más
+ * reciente de su conversación.
  */
 
-const DAY_LETTER: Record<string, string> = { Mon: "A", Tue: "B", Wed: "C", Thu: "D", Fri: "E", Sat: "F", Sun: "G" };
+export const TRIP_CODE_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+export const TRIP_CODES_PER_CYCLE = TRIP_CODE_LETTERS.length * 100;
 
-export const TRIP_CODE_LETTERS = "ABCDEFG";
-
-/** La letra del día en Colombia. */
-export function dayLetter(at: Date = new Date()): string {
-  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "America/Bogota" }).format(at);
-  return DAY_LETTER[weekday] ?? "A";
+/** El código del valor `n` del contador: 0 → A-00, 99 → A-99, 100 → B-00. */
+export function formatTripCode(n: number): string {
+  const index = ((Math.trunc(n) % TRIP_CODES_PER_CYCLE) + TRIP_CODES_PER_CYCLE) % TRIP_CODES_PER_CYCLE;
+  return `${TRIP_CODE_LETTERS[Math.floor(index / 100)]}-${String(index % 100).padStart(2, "0")}`;
 }
 
-export function formatTripCode(number: number, at: Date = new Date()): string {
-  return `${dayLetter(at)}${number}`;
-}
-
-/** El siguiente código, con el número de la secuencia `trip_code_seq`. */
-export async function nextTripCode(at: Date = new Date()): Promise<string> {
-  const result = (await db.execute(sql`select nextval('trip_code_seq')::int as n`)) as unknown as { rows?: { n: number }[] } | { n: number }[];
+/** El siguiente código, con el valor de la secuencia `trip_code_seq`. */
+export async function nextTripCode(): Promise<string> {
+  const result = (await db.execute(sql`select nextval('trip_code_seq')::int as n`)) as unknown as
+    | { rows?: { n: number }[] }
+    | { n: number }[];
   const rows = Array.isArray(result) ? result : (result.rows ?? []);
-  return formatTripCode(Number(rows[0].n), at);
+  return formatTripCode(Number(rows[0].n));
 }
 
 /**
- * Los números de pedido que menciona un texto: «¿ya llegó el A1042?»,
- * «el b1043 ya está listo», «pedido 1042», «#1042». Una cifra suelta no
- * cuenta (podría ser una dirección o un valor): tiene que ir con la letra,
- * con «#» o después de «pedido». Quien llama confirma que el pedido exista y
- * sea de esa conversación.
+ * Los códigos de pedido que menciona un texto, ya normalizados: «¿ya llegó el
+ * B-12?», «el b12 ya está listo», «pedido B 12», «#B12» → `B-12`.
+ *
+ * Letra y cifras van pegadas o con guion; con un espacio solo cuentan después
+ * de «pedido» o «#», porque «a 20 minutos» o «y 15» no son códigos. También
+ * reconoce los códigos del formato anterior (`B1005`) de los pedidos viejos.
+ * Quien llama confirma que el pedido exista y sea de esa conversación.
  */
-export function tripNumbersInText(text: string): number[] {
-  const found = new Set<number>();
-  const patterns = [
-    new RegExp(`(?<![\\p{L}\\d])[${TRIP_CODE_LETTERS}]\\s?-?(\\d{4,6})(?!\\d)`, "giu"),
-    /#\s?(\d{4,6})(?!\d)/g,
-    /pedido\s+(?:n[°º.o]?\s*)?#?\s?(\d{4,6})(?!\d)/giu,
-  ];
-  for (const pattern of patterns) for (const match of text.matchAll(pattern)) found.add(Number(match[1]));
-  return [...found];
-}
+export function tripCodesInText(text: string): string[] {
+  const found = new Set<string>();
+  const add = (letter: string, digits: string) =>
+    found.add(digits.length === 2 ? `${letter.toUpperCase()}-${digits}` : `${letter.toUpperCase()}${digits}`);
 
-/** Los códigos posibles para un número (uno por letra del día). */
-export function codesForNumber(number: number): string[] {
-  return [...TRIP_CODE_LETTERS].map((letter) => `${letter}${number}`);
+  const patterns = [
+    /(?<![\p{L}\d])([a-z])-?(\d{2}|\d{4,6})(?![\p{L}\d])/giu,
+    /(?:#|pedido\s+(?:n[°º.o]?\s*)?#?)\s*([a-z])\s*-?\s*(\d{2}|\d{4,6})(?![\p{L}\d])/giu,
+  ];
+  for (const pattern of patterns) for (const match of text.matchAll(pattern)) add(match[1], match[2]);
+  return [...found];
 }

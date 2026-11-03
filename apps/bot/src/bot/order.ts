@@ -17,7 +17,7 @@ import { assignNextCourier, getBotConfig, quoteByDistance, saveRestaurant, type 
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
-import { answerStatus, PICKUP_WINDOW } from "@/bot/status";
+import { answerStatus, waitingText } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
@@ -139,13 +139,6 @@ export function readBack(d: DeliveryDraft) {
     .join("\n");
 }
 
-/** La confirmación del pedido. Si la comida tarda más que la ventana
- *  estándar, el domiciliario llega para cuando esté lista. */
-export function confirmationText(code: string, readyIn: number | null) {
-  const eta = readyIn != null && readyIn > 15 ? `para cuando esté lista (en ${readyIn} min)` : `en ${PICKUP_WINDOW}`;
-  return `✅ Pedido ${code} confirmado.\n🛵 El domiciliario estará ahí ${eta}.`;
-}
-
 /** El resumen de todas las entregas, para revisar. */
 export function readBackAll(deliveries: DeliveryDraft[], fromImage: boolean) {
   const intro = fromImage ? "Esto leí en la imagen 👇" : "Esto entendí del pedido 👇";
@@ -262,7 +255,7 @@ export async function handleRestaurant(ctx: Context) {
     }
 
     // De qué pedido habla: el que citó o, si no citó, el que nombra por su
-    // código («¿ya llegó el A1042?»).
+    // código («¿ya llegó el B-12?»).
     const quoted =
       (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, message.text));
 
@@ -534,12 +527,13 @@ export async function handleRestaurant(ctx: Context) {
       restaurant ? null : { address: draft.origenRestaurante!, location: pickupLocation },
       restaurant,
     );
-    // El restaurante siempre recibe la confirmación con el tiempo estándar,
-    // haya moto libre o no: la espera por eficiencia del despacho no es suya.
-    await say(conversation.id, message.phone, confirmationText(trip.code, d.listoEnMinutos), {
-      replyTo: trip.sourceWaMessageId,
-      tripId: trip.id,
-    });
-    if (await assignNextCourier(trip.id)) await notifyAssigned(trip.id);
+    // Con moto libre, un solo mensaje: «servicio motorizado confirmado» con
+    // quién va. Sin moto, el servicio queda en espera y el aviso de
+    // confirmado llega cuando el despacho se la asigne (notifyAssigned).
+    if (await assignNextCourier(trip.id)) {
+      await notifyAssigned(trip.id);
+    } else {
+      await say(conversation.id, message.phone, waitingText(trip.code), { replyTo: trip.sourceWaMessageId, tripId: trip.id });
+    }
   }
 }

@@ -118,7 +118,7 @@ export async function seedDemo() {
     const [trip] = await db
       .insert(schema.trips)
       .values({
-        code: await nextTripCode(createdAt),
+        code: await nextTripCode(),
         status: deliveredAt ? "delivered" : "en_route",
         originRestaurantName: t.restaurant,
         deliveryAddress: t.address,
