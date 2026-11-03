@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Inbox } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 import { useState } from "react";
 
@@ -32,7 +32,7 @@ function SkeletonCard() {
 }
 
 export default function ViajesPage() {
-  const { trips, loaded, online, deliver } = useTrips();
+  const { trips, loaded, deliver } = useTrips();
   // En el celular se ve una columna a la vez. Arranca en "En ruta": es lo
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
@@ -41,25 +41,7 @@ export default function ViajesPage() {
 
   return (
     <div className="mx-auto flex h-full max-w-[1500px] flex-col gap-5 px-4 py-5 lg:gap-4 lg:px-8 lg:py-7">
-      <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight lg:text-2xl">Despachos</h1>
-          <p className="text-sm text-ink-3">
-            {groups.route.length} en la calle · {groups.done.length} entregados hoy
-          </p>
-        </div>
-        {/* El robot dice de quién se habla: es el bot el que está en vivo o caído. */}
-        <span
-          role="status"
-          className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${
-            online ? "bg-clapi-soft text-clapi-ink" : "bg-danger-soft text-danger"
-          }`}
-        >
-          <Bot size={16} />
-          {online ? "En vivo" : "Sin conexión"}
-          <span className={`h-2 w-2 rounded-full ${online ? "animate-live bg-ok" : "bg-danger"}`} />
-        </span>
-      </div>
+      {/* Sin título: los contadores de cada columna ya dicen cuántos hay. "En vivo" vive en la navegación. */}
 
       {/* Celular: control segmentado. Escritorio: no hace falta, se ven las tres.
           Cada pestaña toma el ancho de su texto, no un tercio fijo. En celulares angostos

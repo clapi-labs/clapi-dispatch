@@ -1,5 +1,5 @@
 {
-  "id": "ed2ba36a-2bba-4749-bf94-5fe3089d4679",
+  "id": "4771befd-026e-4301-9aec-1cb1f1ed4302",
   "prevId": "84c000c5-b216-4632-95ea-f099619fb074",
   "version": "7",
   "dialect": "postgresql",
@@ -914,12 +914,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "ready_at": {
-          "name": "ready_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -956,6 +950,21 @@
           "columns": [
             {
               "expression": "restaurant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "trips_updated_idx": {
+          "name": "trips_updated_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -67,6 +67,15 @@ export const env = {
     return optional("BOT_ACTIVE", "false") === "true";
   },
 
+  /** Pruebas locales: los envíos se imprimen en vez de ir a Meta. */
+  get whatsappSimulated() {
+    return optional("WHATSAPP_SIMULADO", "false") === "true";
+  },
+  /** Ubicaciones inventadas en vez de Google: solo pruebas y demostraciones. */
+  get geocodeSimulated() {
+    return optional("GEOCODE_SIMULADO", "false") === "true";
+  },
+
   get internalSecret() {
     return required("INTERNAL_SECRET");
   },

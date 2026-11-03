@@ -36,11 +36,6 @@ export default function ArqueoPage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-5 lg:px-8 lg:py-7">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight lg:text-2xl">Finanzas y arqueo</h1>
-        <p className="text-sm text-ink-3">Cierre del día, al minuto · {new Date().toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" })}</p>
-      </div>
-
       {/* La cifra que importa, grande y en el violeta de CLAPI. */}
       <section className="relative overflow-hidden rounded-2xl bg-clapi p-5 text-white shadow-sm lg:p-6">
         <span className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />

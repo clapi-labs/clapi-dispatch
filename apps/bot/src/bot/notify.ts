@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
-import { ASSIGNED_MESSAGE } from "@dispatch/shared";
-import { db, schema } from "@dispatch/shared/db";
+import { db, getBotConfig, schema } from "@dispatch/shared/db";
 
-import { recordMessage } from "@/db/queries/conversation";
-import { sendButtons, sendText, type SendResult } from "@/services/whatsapp/client";
+import { say } from "@/bot/messaging";
+import { conversationForOutbound } from "@/db/queries/conversation";
+import type { SendResult } from "@/services/whatsapp/client";
 
 /**
  * Los avisos que salen cuando un viaje cambia de manos. Viven en el bot (el
@@ -28,81 +28,116 @@ async function loadTrip(tripId: number) {
   return row ?? null;
 }
 
-async function conversationOf(phone: string) {
-  const [c] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, phone));
-  return c ?? null;
-}
+/** El hilo del motorizado; se crea si nunca ha escrito, para que su ficha
+ *  quede guardada y los avisos posteriores la puedan citar. */
+const conversationOf = conversationForOutbound;
 
-async function restaurantPhone(conversationId: number | null) {
+async function restaurantConversation(conversationId: number | null) {
   if (!conversationId) return null;
   const [c] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId));
   return c ?? null;
 }
 
+function formatPhone(phone: string) {
+  const d = phone.replace(/\D/g, "").slice(-10);
+  return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : phone;
+}
+
+/** El cobro es entre el restaurante, el cliente y el motorizado: la agencia
+ *  no lo exige ni lo liquida. Si el restaurante lo dijo, va informativo. */
+function moneyLine(trip: typeof schema.trips.$inferSelect) {
+  if (trip.paymentMethod === "transferencia") return "💳 Ya pagado, no cobrar.";
+  const value = trip.valueToCollect ? ` ${cop(trip.valueToCollect)}` : "";
+  if (trip.paymentMethod === "efectivo") return `💵 Cobrar en efectivo${value}`;
+  return value ? `💵 Valor del pedido:${value}` : null;
+}
+
 /** La ficha que le llega al motorizado, con el botón de confirmar entrega. */
 export function courierTicket(trip: typeof schema.trips.$inferSelect) {
-  const money =
-    trip.paymentMethod === "efectivo"
-      ? `💵 COBRAR en efectivo: *${cop(trip.valueToCollect)}*`
-      : `💳 Ya pagado. *NO cobrar* al cliente.`;
-  return [
+  const customer = [trip.customerName, trip.customerPhone && formatPhone(trip.customerPhone)].filter(Boolean).join(" · ");
+  const lines: (string | null | false | undefined)[] = [
     `🛵 *Nuevo viaje ${trip.code}*`,
     "",
-    `📍 Recoge: ${trip.originRestaurantName}`,
+    `📍 Recoge: ${trip.originRestaurantName}${trip.pickupAddress ? ` · ${trip.pickupAddress}` : ""}`,
     `🏁 Entrega: ${trip.deliveryAddress}`,
-    `📞 Cliente: ${trip.customerPhone}`,
-    money,
+    customer ? `📞 Cliente: ${customer}` : null,
+    moneyLine(trip),
+    trip.notes && `📝 ${trip.notes}`,
     "",
-    `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress}, Cali`)}&navigate=yes`,
+    trip.deliveryLocation
+      ? `🗺️ https://waze.com/ul?ll=${trip.deliveryLocation.lat},${trip.deliveryLocation.lng}&navigate=yes`
+      : // Solo la calle: la torre y el apto («· Torre 4 apto 302») confunden la búsqueda.
+        `🗺️ https://waze.com/ul?q=${encodeURIComponent(`${trip.deliveryAddress.split(" · ")[0]}, Cali`)}&navigate=yes`,
     "",
-    "Cuando entregues, toca el botón 👇",
-  ].join("\n");
+    "Toca el botón cuando termines. Si te toca volver al restaurante (por el cambio, por ejemplo), tócalo al volver 👇",
+  ];
+  return lines.filter((l): l is string => typeof l === "string").join("\n");
 }
 
 export async function sendCourierTicket(phone: string, trip: typeof schema.trips.$inferSelect): Promise<SendResult> {
-  const text = courierTicket(trip);
-  const result = await sendButtons(phone, text, [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "✅ Confirmar entrega" }]);
   const conversation = await conversationOf(phone);
-  if (conversation) {
-    await recordMessage(conversation.id, "bot", result.ok ? text : `${text}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`);
-  }
-  return result;
+  return say(conversation.id, phone, courierTicket(trip), {
+    tripId: trip.id,
+    buttons: [{ id: `${DELIVER_BUTTON_PREFIX}${trip.id}`, title: "Terminé el servicio" }],
+  });
 }
 
-/** Moto asignada: ficha al motorizado + confirmación al restaurante. */
+/** Moto asignada: ficha al motorizado + aviso al restaurante, citando el
+ *  mensaje con que pidió ese domicilio. */
 export async function notifyAssigned(tripId: number) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
 
   await sendCourierTicket(row.courier.phone, row.trip);
 
-  const restaurant = await restaurantPhone(row.trip.conversationId);
+  const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
-    const text = `✅ ${ASSIGNED_MESSAGE}\n\n🛵 ${row.courier.name}\n📦 Pedido ${row.trip.code} · Domicilio ${cop(row.trip.deliveryFee)}`;
-    await recordMessage(restaurant.id, "bot", text);
-    await sendText(restaurant.phone, text);
+    const text = `✅ Pedido ${row.trip.code} confirmado · ${cop(row.trip.deliveryFee)}\n🛵 Va ${row.courier.name} · ${formatPhone(row.courier.phone)}`;
+    await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }
 
-/** Entregado: confirmación al motorizado y aviso al restaurante. */
+/** Servicio terminado: los avisos que la agencia tenga encendidos. */
 export async function notifyDelivered(tripId: number) {
-  const row = await loadTrip(tripId);
+  const [row, config] = await Promise.all([loadTrip(tripId), getBotConfig()]);
   if (!row) return;
 
-  if (row.courier) {
-    const text =
-      row.trip.paymentMethod === "efectivo"
-        ? `✅ Entrega ${row.trip.code} registrada. Recuerda entregar ${cop(row.trip.valueToCollect)} en base.\nQuedas libre en la cola 🛵`
-        : `✅ Entrega ${row.trip.code} registrada. Quedas libre en la cola 🛵`;
+  if (row.courier && config.confirmDeliveryToCourier) {
     const conversation = await conversationOf(row.courier.phone);
-    if (conversation) await recordMessage(conversation.id, "bot", text);
-    await sendText(row.courier.phone, text);
+    await say(conversation.id, row.courier.phone, `✅ ${row.trip.code} terminado. Quedas libre 🛵`, { tripId });
   }
 
-  const restaurant = await restaurantPhone(row.trip.conversationId);
+  const restaurant = config.notifyRestaurantOnDelivery ? await restaurantConversation(row.trip.conversationId) : null;
   if (restaurant) {
-    const text = `📦 Pedido ${row.trip.code} entregado a las ${new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" })} ✅`;
-    await recordMessage(restaurant.id, "bot", text);
-    await sendText(restaurant.phone, text);
+    const time = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" });
+    await say(restaurant.id, restaurant.phone, `📦 Pedido ${row.trip.code} entregado a las ${time} ✅`, {
+      replyTo: row.trip.sourceWaMessageId,
+      tripId,
+    });
   }
+}
+
+/** El último mensaje que el bot le mandó a un número sobre un viaje: para
+ *  responder citándolo (la ficha del motorizado, por ejemplo). */
+async function lastBotMessageAbout(tripId: number, phone: string) {
+  const [row] = await db
+    .select({ waMessageId: schema.messages.waMessageId })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(and(eq(schema.messages.tripId, tripId), eq(schema.messages.role, "bot"), eq(schema.conversations.phone, phone)))
+    .orderBy(desc(schema.messages.id))
+    .limit(1);
+  return row?.waMessageId ?? null;
+}
+
+/** El restaurante cambió algo de un pedido ya asignado: se le avisa al
+ *  motorizado citando su ficha. Sin moto asignada no hay a quién avisar. */
+export async function notifyTripUpdated(tripId: number, change: string) {
+  const row = await loadTrip(tripId);
+  if (!row?.courier) return;
+  const conversation = await conversationOf(row.courier.phone);
+  await say(conversation.id, row.courier.phone, `📢 ${row.trip.code}: ${change}`, {
+    replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
+    tripId,
+  });
 }

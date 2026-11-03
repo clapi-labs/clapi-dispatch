@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { AddCourierForm } from "@/components/AddCourierForm";
 import { CourierCard } from "@/components/CourierCard";
 import type { Courier } from "@/lib/types";
-import { usePolling } from "@/lib/use-polling";
+import { useLive } from "@/lib/live";
 
 /** El mismo orden que usa la cola del servidor: nunca asignado primero,
  *  después el que hace más tiempo no recibe un viaje. */
@@ -28,7 +28,8 @@ export default function FlotaPage() {
     if (res.ok) setCouriers(await res.json());
   }, []);
 
-  usePolling(refresh, 3000);
+  // Estado, turno y última asignación cambian con la moto o con sus viajes.
+  useLive(refresh, ["couriers", "assignments", "trips"]);
 
   async function setStatus(id: number, status: Courier["status"]) {
     setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
@@ -63,27 +64,24 @@ export default function FlotaPage() {
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-5 px-4 py-5 lg:px-8 lg:py-7">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight lg:text-2xl">Flota</h1>
-          <p className="text-sm text-ink-3">El próximo viaje es del turno 1 · cada uno lo recibe en su WhatsApp</p>
+      {/* Sin título: arriba van los contadores y, a la derecha, agregar un motorizado. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* En celular ocupan la fila entera y el botón baja; desde tableta van lado a lado. */}
+        <div className="grid w-full grid-cols-3 gap-2 sm:w-md sm:max-w-full">
+          {[
+            { label: "Libres", value: counts.available, dot: "bg-ok" },
+            { label: "En viaje", value: counts.busy, dot: "bg-gold" },
+            { label: "Fuera", value: counts.off, dot: "bg-danger" },
+          ].map((s) => (
+            <div key={s.label} className="card px-3 py-2.5">
+              <p className="flex items-center gap-1.5 text-xs text-ink-3">
+                <span className={`h-2 w-2 rounded-full ${s.dot}`} /> {s.label}
+              </p>
+              <p className="text-xl font-bold tabular-nums">{s.value}</p>
+            </div>
+          ))}
         </div>
         <AddCourierForm onCreated={refresh} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-        {[
-          { label: "Libres", value: counts.available, dot: "bg-ok" },
-          { label: "En viaje", value: counts.busy, dot: "bg-gold" },
-          { label: "Fuera", value: counts.off, dot: "bg-danger" },
-        ].map((s) => (
-          <div key={s.label} className="card px-3 py-2.5">
-            <p className="flex items-center gap-1.5 text-xs text-ink-3">
-              <span className={`h-2 w-2 rounded-full ${s.dot}`} /> {s.label}
-            </p>
-            <p className="text-xl font-bold tabular-nums">{s.value}</p>
-          </div>
-        ))}
       </div>
 
       {/* `items-start`: abrir "Ver más" en una tarjeta no estira a sus vecinas de fila. */}

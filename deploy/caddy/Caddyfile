@@ -17,7 +17,10 @@
 {$PORTAL_HOST} {
 	import seguridad
 	header X-Frame-Options "DENY"
-	encode zstd gzip
+	# Los avisos en vivo (/api/events) van sin comprimir: comprimidos se quedan
+	# en el búfer y llegan tarde.
+	@comprimible not path /api/events
+	encode @comprimible zstd gzip
 	reverse_proxy portal:3002
 }
 

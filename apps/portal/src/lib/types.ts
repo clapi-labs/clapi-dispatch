@@ -9,13 +9,11 @@ export type Trip = {
   originRestaurantName: string;
   pickupAddress: string | null;
   deliveryAddress: string;
-  customerPhone: string;
-  valueToCollect: number;
-  paymentMethod: PaymentMethod;
+  customerPhone: string | null;
+  valueToCollect: number | null;
+  paymentMethod: PaymentMethod | null;
   requiresCashReturn: boolean;
   deliveryFee: number;
-  pickupZone: string | null;
-  deliveryZone: string | null;
   createdAt: string;
   updatedAt: string;
   courierName: string | null;
@@ -66,12 +64,8 @@ export type Settlement = {
   couriers: SettlementRow[];
 };
 
-export type Zone = { id: number; name: string; keywords: string[]; sortOrder: number };
-export type FareMatrix = {
-  zones: Zone[];
-  fares: { originZoneId: number; destinationZoneId: number; price: number }[];
-  defaultFare: number;
-};
+/** Un tramo de la tarifa por distancia; el último no tiene tope ("más de X km"). */
+export type FareRange = { upToKm: number | null; price: number };
 
 export type DraftFields = {
   origenRestaurante: string | null;

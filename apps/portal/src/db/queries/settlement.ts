@@ -53,7 +53,7 @@ export async function getSettlement(): Promise<Settlement> {
     netEarnings += row.deliveryFee;
     const method = row.paymentMethod === "efectivo" ? byMethod.cash : byMethod.transfer;
     method.orders += 1;
-    method.amount += row.valueToCollect;
+    method.amount += row.valueToCollect ?? 0;
 
     const entry = byCourier.get(row.courierName) ?? {
       courierId: row.courierId ?? 0,
@@ -64,7 +64,7 @@ export async function getSettlement(): Promise<Settlement> {
     };
     entry.deliveredCount += 1;
     entry.netEarnings += row.deliveryFee;
-    if (row.paymentMethod === "efectivo") entry.cashToDeliver += row.valueToCollect;
+    if (row.paymentMethod === "efectivo") entry.cashToDeliver += row.valueToCollect ?? 0;
     byCourier.set(row.courierName, entry);
   }
 
