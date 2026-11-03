@@ -317,6 +317,45 @@ export const dispatchOffers = pgTable(
   ],
 );
 
+/**
+ * Modo sombra del engine (docs/ALGORITMO.md): a quién y cuándo habría
+ * asignado cada viaje, sin asignar. Una fila por viaje que se actualiza en
+ * cada tick mientras el pedido "espera" (faltan minutos para despacharlo) y
+ * se congela al decidir. La asignación real está en `assignments`: se
+ * comparan con un join por `trip_id`.
+ *
+ * - `waiting`: aún no es hora de despachar, faltan datos o no hay motos.
+ * - `decided`: llegó la hora y el engine eligió (`courier_id`).
+ * - `expired`: se dejó de evaluar sin decidir (viaje cerrado o muy viejo).
+ */
+export type EngineEvaluationStatus = "waiting" | "decided" | "expired";
+
+export const engineEvaluations = pgTable(
+  "engine_evaluations",
+  {
+    id: serial("id").primaryKey(),
+    tripId: integer("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    status: text("status").notNull().$type<EngineEvaluationStatus>().default("waiting"),
+    /** Por qué sigue esperando o expiró: faltan datos, sin motos, engine caído… */
+    reason: text("reason"),
+    courierId: integer("courier_id").references(() => couriers.id, { onDelete: "set null" }),
+    faltanMin: real("faltan_min"),
+    dispatchAt: timestamp("dispatch_at", { withTimezone: true }),
+    engineVersion: text("engine_version"),
+    /** La última petición y respuesta de /evaluar, tal cual: sirven para
+     *  explicar la decisión y para repetirla con otra versión del engine. */
+    request: jsonb("request"),
+    response: jsonb("response"),
+    evaluations: integer("evaluations").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("engine_evaluations_trip_idx").on(t.tripId), index("engine_evaluations_status_idx").on(t.status)],
+);
+
 // ---------------------------------------------------------------------------
 // Tarifas por zona
 // ---------------------------------------------------------------------------

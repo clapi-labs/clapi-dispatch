@@ -23,7 +23,7 @@ flowchart LR
 
 - **El bot arma la foto y decide qué hacer con el resultado.** El engine solo calcula. Ofertas, reintentos y WhatsApp quedan fuera del algoritmo.
 - **Google Maps solo mide** (minutos y km). El algoritmo decide.
-- `ASSIGNMENT_MODE = queue | shadow | auto` en la tabla `settings`, cambiable sin redesplegar. Se empieza en `shadow`. La lógica actual en TypeScript convive como respaldo hasta pasar a `auto`.
+- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Se empieza en `shadow`. La lógica actual en TypeScript convive como respaldo hasta pasar a `auto`.
 
 ## Cómo calcula los tiempos
 
@@ -157,7 +157,39 @@ Hoy no existe y el engine lo necesita:
 4. Guardar el `plan` de cada asignación, para armar las `paradas`.
 5. Llevar la `cuota` por moto y la hora de la última entrega o conexión.
 6. Recibir las posiciones de Traccar y marcar `sin_senal` tras 2 min sin reporte.
-7. `ASSIGNMENT_MODE`, `radio_km` y `multipedido` en `settings`.
+7. ~~El modo, `radio_km` y `multipedido` en `settings`.~~ Hecho: `settings.engine_config` (ver «Modo sombra»).
+
+## Modo sombra
+
+Implementado en `apps/bot/src/dispatch/` y corriendo en cada tick del worker, después de la asignación real (`/api/internal/tick`). La cola sigue asignando; el engine calcula al lado y no envía nada.
+
+- **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
+- **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
+- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true) y `sinSenalMin` (2).
+- **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
+
+Comparar con lo que pasó de verdad:
+
+```sql
+select t.code, sombra.name as engine_habria, a.courier_name as asignado_real,
+       e.faltan_min, e.decided_at, e.engine_version
+from engine_evaluations e
+join trips t on t.id = e.trip_id
+left join couriers sombra on sombra.id = e.courier_id
+left join assignments a on a.trip_id = e.trip_id
+where e.status = 'decided'
+order by e.decided_at desc;
+```
+
+Lo que todavía se aproxima, hasta que el bot aporte el dato:
+
+| Falta | Mientras tanto |
+|---|---|
+| Posición real de las motos (Traccar) | Sin GPS reciente toda moto cuenta como `sin_senal`: el engine no elige a nadie y la fila queda `waiting` con «Sin motos elegibles» |
+| Botón «Recogido» | Todo viaje en curso cuenta como por recoger (paradas R y C) |
+| `plan` guardado | Las paradas van en el orden en que se asignaron |
+| Cuota 1/N del turno | Promedio de entregas del grupo |
+| Decisiones encadenadas | Cada viaje se evalúa contra las asignaciones reales: lo que el engine «habría asignado» antes no ocupa a esa moto para el siguiente |
 
 ## Cómo se prueba
 
@@ -185,7 +217,7 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 
 1. ~~Escribir y acordar el contrato JSON.~~ Hecho (ver «Contrato»).
 2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
-3. El bot llama al engine en modo `shadow` y guarda el ranking. **Primera versión útil.**
+3. ~~El bot llama al engine en modo `shadow` y guarda el ranking.~~ Hecho (ver «Modo sombra»). Decide de verdad cuando haya GPS.
 4. Google Maps para las 3 mejores, con respaldo a Haversine.
 5. GPS real (Traccar): identificadores aleatorios por moto (`moto-7f3k9q`); el receptor descarta los no registrados.
 6. Comparar con la realidad y pasar a `queue` o `auto` cuando los números convenzan.

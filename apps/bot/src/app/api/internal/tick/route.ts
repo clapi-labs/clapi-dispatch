@@ -1,6 +1,7 @@
 import { assignPendingTrips } from "@dispatch/shared/db";
 
 import { notifyAssigned } from "@/bot/notify";
+import { runShadow } from "@/dispatch/shadow";
 
 import { isInternal } from "../auth";
 
@@ -8,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Lo que tiene que pasar "cada tanto" aunque nadie esté mirando. Lo llama el
- * worker (scripts/worker.mjs) cada pocos segundos: por ahora le da moto a los
- * viajes que quedaron esperando y avisa por WhatsApp.
+ * worker (scripts/worker.mjs) cada pocos segundos: le da moto a los viajes
+ * que quedaron esperando, avisa por WhatsApp y corre el modo sombra del engine.
  *
  * Es seguro llamarlo seguido y en paralelo: cada viaje se reclama con un
  * UPDATE condicional, así que dos ticks nunca asignan el mismo.
@@ -24,6 +25,13 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error(`[tick] no se pudo avisar del viaje ${id}:`, error);
     }
+  }
+
+  // Después de la asignación real, y sin poder romperla.
+  try {
+    await runShadow();
+  } catch (error) {
+    console.error("[tick] el modo sombra falló:", error);
   }
 
   return Response.json({ assigned });
