@@ -24,6 +24,7 @@ import { MessageMenu } from "@/components/MessageMenu";
 import { QuickReplies } from "@/components/QuickReplies";
 import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKEOVER_REASON } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
+import { useSwipePanes } from "@/lib/use-swipe-panes";
 import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
 import { useLive } from "@/lib/live";
@@ -64,6 +65,8 @@ const TABS: { key: Tab; label: string; empty: string }[] = [
   { key: "restaurant", label: "Restaurantes", empty: "Cuando un restaurante escriba por WhatsApp, el chat aparece acá." },
   { key: "courier", label: "Motorizados", empty: "Cuando un motorizado escriba por WhatsApp, el chat aparece acá." },
 ];
+
+const TAB_KEYS = TABS.map((t) => t.key);
 
 function inTab(c: ConversationSummary, tab: Tab) {
   return tab === "all" || c.kind === tab;
@@ -316,7 +319,7 @@ export default function ConversacionesPage() {
     setHighlight(messageId);
     setTimeout(() => setHighlight((current) => (current === messageId ? null : current)), 1600);
   }, []);
-  const visible = list.filter((c) => inTab(c, tab));
+  const panes = useSwipePanes(TAB_KEYS, tab, switchTab);
 
   const [draftText, setDraftText] = useState("");
   const [sending, setSending] = useState(false);
@@ -423,60 +426,68 @@ export default function ConversacionesPage() {
               })}
             </div>
           </div>
-          <div className="no-scrollbar flex-1 overflow-y-auto">
-            {loaded && visible.length === 0 && (
-              <div className="flex flex-col items-center gap-2 px-6 py-16 text-center text-sm text-ink-3">
-                <MessagesSquare size={22} className="opacity-60" />
-                {TABS.find((t) => t.key === tab)?.empty}
-              </div>
-            )}
-            {visible.map((c) => {
-              const help = needsHelp(c);
+          {/* Un panel por pestaña, en carrusel: se pasa de una a otra deslizando. */}
+          <div ref={panes} className="no-scrollbar flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain">
+            {TABS.map((t) => {
+              const visible = list.filter((c) => inTab(c, t.key));
               return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => open(c.id)}
-                  className={`ease-ui relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
-                    c.id === selectedId ? KINDS[c.kind].selected : help ? "bg-gold-soft/70 can-hover:hover:bg-gold-soft" : "can-hover:hover:bg-sunken"
-                  }`}
-                >
-                  {/* Franja amarilla a la izquierda: este chat pide ayuda. */}
-                  {help && <span className="absolute inset-y-0 left-0 w-1 bg-gold" />}
-                  <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
-                    {initials(name(c)) || "#"}
-                    {c.botPaused && (
-                      <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
-                        {help ? <TriangleAlert size={11} className="text-clapi-deep" /> : <Headset size={11} className="text-clapi-deep" />}
-                      </span>
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-semibold">{name(c)}</span>
-                      <span className="flex shrink-0 items-center gap-1 text-[11px] text-ink-3">
-                        {/* Fijado arriba hasta que vuelva al bot. */}
-                        {c.botPaused && <Pin size={11} className={help ? "fill-gold text-gold-ink" : ""} aria-label="Fijado" />}
-                        {timeLabel(c.lastMessageAt)}
-                      </span>
-                    </span>
-                    <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
-                      <KindChip kind={c.kind} />
-                      <span className="min-w-0 truncate">
-                        {help ? (
-                          <span className="font-semibold text-gold-ink">Necesita tu ayuda</span>
-                        ) : c.botPaused ? (
-                          <span className="font-medium text-gold-ink">Tú atiendes</span>
-                        ) : (
-                          <>
-                            {c.lastRole === "bot" && "Bot: "}
-                            {c.lastText}
-                          </>
+                <div key={t.key} className="no-scrollbar h-full w-full shrink-0 snap-start snap-always overflow-y-auto">
+                {loaded && visible.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 px-6 py-16 text-center text-sm text-ink-3">
+                    <MessagesSquare size={22} className="opacity-60" />
+                    {t.empty}
+                  </div>
+                )}
+                {visible.map((c) => {
+                  const help = needsHelp(c);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => open(c.id)}
+                      className={`ease-ui relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
+                        c.id === selectedId ? KINDS[c.kind].selected : help ? "bg-gold-soft/70 can-hover:hover:bg-gold-soft" : "can-hover:hover:bg-sunken"
+                      }`}
+                    >
+                      {/* Franja amarilla a la izquierda: este chat pide ayuda. */}
+                      {help && <span className="absolute inset-y-0 left-0 w-1 bg-gold" />}
+                      <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
+                        {initials(name(c)) || "#"}
+                        {c.botPaused && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
+                            {help ? <TriangleAlert size={11} className="text-clapi-deep" /> : <Headset size={11} className="text-clapi-deep" />}
+                          </span>
                         )}
                       </span>
-                    </span>
-                  </span>
-                </button>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-sm font-semibold">{name(c)}</span>
+                          <span className="flex shrink-0 items-center gap-1 text-[11px] text-ink-3">
+                            {/* Fijado arriba hasta que vuelva al bot. */}
+                            {c.botPaused && <Pin size={11} className={help ? "fill-gold text-gold-ink" : ""} aria-label="Fijado" />}
+                            {timeLabel(c.lastMessageAt)}
+                          </span>
+                        </span>
+                        <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
+                          <KindChip kind={c.kind} />
+                          <span className="min-w-0 truncate">
+                            {help ? (
+                              <span className="font-semibold text-gold-ink">Necesita tu ayuda</span>
+                            ) : c.botPaused ? (
+                              <span className="font-medium text-gold-ink">Tú atiendes</span>
+                            ) : (
+                              <>
+                                {c.lastRole === "bot" && "Bot: "}
+                                {c.lastText}
+                              </>
+                            )}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                </div>
               );
             })}
           </div>
