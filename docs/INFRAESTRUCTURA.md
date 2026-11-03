@@ -15,7 +15,7 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
 | Servidor de producción (separado de staging) | Pendiente |
 | Backups | Pendiente (desactivados a propósito por ahora) |
-| Motor de asignación (`engine`) | Imagen y servicio listos, con casos en CI; el bot todavía no lo llama |
+| Motor de asignación (`engine`) | En modo sombra: el bot lo llama en cada tick y guarda a quién habría asignado (`engine_evaluations`); la cola sigue asignando. Sin GPS todavía no elige a nadie |
 | GPS (Traccar) | Pendiente |
 
 ## Arquitectura de un entorno
@@ -64,7 +64,7 @@ flowchart TB
     PORTAL --> PG
     PORTAL -- "/api/internal" --> BOT
     WORKER -- "/api/internal/tick" --> BOT
-    BOT -.-> ENGINE
+    BOT -- "modo sombra" --> ENGINE
     ENGINE -.-> GM
 
     REPO --> GHCR

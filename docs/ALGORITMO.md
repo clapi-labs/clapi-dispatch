@@ -23,7 +23,7 @@ flowchart LR
 
 - **El bot arma la foto y decide qué hacer con el resultado.** El engine solo calcula. Ofertas, reintentos y WhatsApp quedan fuera del algoritmo.
 - **Google Maps solo mide** (minutos y km). El algoritmo decide.
-- `ASSIGNMENT_MODE = queue | shadow | auto` en la tabla `settings`, cambiable sin redesplegar. Se empieza en `shadow`. La lógica actual en TypeScript convive como respaldo hasta pasar a `auto`.
+- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Se empieza en `shadow`. La lógica actual en TypeScript convive como respaldo hasta pasar a `auto`.
 
 ## Cómo calcula los tiempos
 
@@ -37,7 +37,7 @@ La función `tiempo(a, b)` es intercambiable:
 Flujo por pedido para gastar poco en Google:
 1. Filtro por radio con Haversine (gratis).
 2. Preselección de candidatas, no solo por cercanía, para no dejar fuera a quien la equidad favorece.
-3. **Una** matriz a Google para las 3 mejores.
+3. **Una** matriz a Google para las 3 mejores (`FINALISTAS_GOOGLE`, ajustable en `config`). Con 2 elegibles, para esas 2; con una sola no se consulta: se le asigna directo.
 4. El algoritmo puntúa.
 
 Si Google falla o se supera el tope diario, se usa Haversine. OSRM queda fuera del sistema: solo fue un sustituto gratuito dentro del simulador.
@@ -142,8 +142,8 @@ Códigos de `motivo`: `sin_senal`, `fuera_radio`, `cliente_no_contesta`, `ocupad
 
 - **`faltan_min = 0`**: asigna a `ganador`, guarda el `plan` y arma la ficha del motorizado con ese orden.
 - **`faltan_min > 0`**: no asigna, gane una moto libre u ocupada (la espera es del pedido, como en el simulador). Programa una revisión unos 2 min antes de `despachar_ts`, para dar tiempo a que el motorizado acepte la oferta.
-- **Mientras espera**, solo recalcula con `haversine` cuando cambia algo: se libera una moto, entra otro pedido, el restaurante cambia el tiempo. Si el resultado adelanta `despachar_ts`, adelanta la revisión.
-- **En la revisión**, consulta con `google` y asigna a la que gane en ese momento. Son unas 2 consultas a Google por pedido.
+- **Mientras espera**, recalcula con `haversine` en cada tick del worker (cada 5 s), con las posiciones actuales del GPS. No cuesta nada y cubre que una moto libre se aleje: el engine supone que las libres esperan quietas, y en la calle no es así. Si el resultado adelanta `despachar_ts`, adelanta la revisión; si ya llegó, asigna en ese tick.
+- **En la revisión**, una sola consulta con `google` para las finalistas y asigna a la que gane en ese momento, aunque vaya un poco tarde: no se vuelve a preguntar. Si la ganadora no acepta, se ofrece a la siguiente con los mismos tiempos; solo si ninguna de las finalistas acepta se consulta otra vez.
 - Al restaurante solo se le informa el costo del domicilio (`especificaciones.md`, sección 1), así que la espera no cambia nada para él.
 - En modo `shadow` hace todo lo anterior, pero solo guarda a quién y cuándo habría asignado.
 
@@ -157,7 +157,39 @@ Hoy no existe y el engine lo necesita:
 4. Guardar el `plan` de cada asignación, para armar las `paradas`.
 5. Llevar la `cuota` por moto y la hora de la última entrega o conexión.
 6. Recibir las posiciones de Traccar y marcar `sin_senal` tras 2 min sin reporte.
-7. `ASSIGNMENT_MODE`, `radio_km` y `multipedido` en `settings`.
+7. ~~El modo, `radio_km` y `multipedido` en `settings`.~~ Hecho: `settings.engine_config` (ver «Modo sombra»).
+
+## Modo sombra
+
+Implementado en `apps/bot/src/dispatch/` y corriendo en cada tick del worker, después de la asignación real (`/api/internal/tick`). La cola sigue asignando; el engine calcula al lado y no envía nada.
+
+- **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
+- **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
+- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true) y `sinSenalMin` (2).
+- **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
+
+Comparar con lo que pasó de verdad:
+
+```sql
+select t.code, sombra.name as engine_habria, a.courier_name as asignado_real,
+       e.faltan_min, e.decided_at, e.engine_version
+from engine_evaluations e
+join trips t on t.id = e.trip_id
+left join couriers sombra on sombra.id = e.courier_id
+left join assignments a on a.trip_id = e.trip_id
+where e.status = 'decided'
+order by e.decided_at desc;
+```
+
+Lo que todavía se aproxima, hasta que el bot aporte el dato:
+
+| Falta | Mientras tanto |
+|---|---|
+| Posición real de las motos (Traccar) | Sin GPS reciente toda moto cuenta como `sin_senal`: el engine no elige a nadie y la fila queda `waiting` con «Sin motos elegibles» |
+| Botón «Recogido» | Todo viaje en curso cuenta como por recoger (paradas R y C) |
+| `plan` guardado | Las paradas van en el orden en que se asignaron |
+| Cuota 1/N del turno | Promedio de entregas del grupo |
+| Decisiones encadenadas | Cada viaje se evalúa contra las asignaciones reales: lo que el engine «habría asignado» antes no ocupa a esa moto para el siguiente |
 
 ## Cómo se prueba
 
@@ -185,7 +217,7 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 
 1. ~~Escribir y acordar el contrato JSON.~~ Hecho (ver «Contrato»).
 2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
-3. El bot llama al engine en modo `shadow` y guarda el ranking. **Primera versión útil.**
+3. ~~El bot llama al engine en modo `shadow` y guarda el ranking.~~ Hecho (ver «Modo sombra»). Decide de verdad cuando haya GPS.
 4. Google Maps para las 3 mejores, con respaldo a Haversine.
 5. GPS real (Traccar): identificadores aleatorios por moto (`moto-7f3k9q`); el receptor descarta los no registrados.
 6. Comparar con la realidad y pasar a `queue` o `auto` cuando los números convenzan.
@@ -193,7 +225,9 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 ## Pendientes por decidir
 
 - Si el simulador sigue con OSRM o pasa a Google para calibrar.
-- Si las ofertas rechazadas o vencidas cuentan en la equidad (`p_r` en la sección 4.B de `especificaciones.md`; hoy no entran en el contrato).
+- Si una oferta que vence sin respuesta cuenta en la equidad (`especificaciones.md`, 4.B, dice que sí). Se decide con el flujo de ofertas, que el bot todavía no tiene: hoy asigna directo.
 - Los pendientes con el cliente de la sección 7 de `especificaciones.md` (base de efectivo, zonas por domiciliario, reasignaciones, capacidad en valle).
+
+Resuelto: los rechazos justificados no cuentan en la equidad (`p_r = 0`), como dice `especificaciones.md`.
 
 Resuelto: la lógica actual en TypeScript convive con el engine durante el modo sombra y queda como respaldo hasta pasar a `auto`.
