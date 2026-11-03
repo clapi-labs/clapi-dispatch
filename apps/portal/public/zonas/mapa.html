@@ -86,6 +86,10 @@ textarea { resize: vertical; min-height: 54px; }
 .leaflet-grab { cursor: grab; } .leaflet-dragging .leaflet-grab { cursor: grabbing; }
 .leaflet-crosshair, .leaflet-crosshair .leaflet-interactive { cursor: crosshair; }
 .leaflet-marker-icon { display: block; }
+.leaflet-tile { visibility: hidden; } .leaflet-tile-loaded { visibility: inherit; }
+.leaflet-container img.leaflet-tile { max-width: none !important; max-height: none !important; user-select: none; }
+.leaflet-control-attribution { margin: 0; padding: 0 5px; font-size: 11px; background: rgba(255,255,255,.8); color: #333; }
+.leaflet-control-attribution a { color: #0b6bcb; }
 .leaflet-control-container .leaflet-top, .leaflet-control-container .leaflet-bottom { position: absolute; z-index: 800; pointer-events: none; }
 .leaflet-top { top: 0; } .leaflet-left { left: 0; } .leaflet-right { right: 0; } .leaflet-bottom { bottom: 0; }
 .leaflet-control { position: relative; z-index: 800; pointer-events: auto; float: left; clear: both; margin: 12px 0 0 12px; }
@@ -192,9 +196,14 @@ textarea { resize: vertical; min-height: 54px; }
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const $ = (id) => document.getElementById(id);
 
-  const map = L.map("map", { preferCanvas: true, zoomControl: true, doubleClickZoom: false, minZoom: 11, maxZoom: 19 })
+  // Solo Cali y lo que la rodea (Jamundí al sur): el mapa no deja salir de ahí.
+  const AREA = L.latLngBounds([3.2, -76.63], [3.53, -76.42]);
+  const map = L.map("map", { preferCanvas: true, zoomControl: true, doubleClickZoom: false, minZoom: 12, maxZoom: 19, maxBounds: AREA.pad(0.05), maxBoundsViscosity: 1 })
     .setView([3.4372, -76.5225], 13);
   const roadRenderer = L.canvas({ padding: 0.3 });
+  // El mapa base son las calles de OpenStreetMap, con sus nombres y barrios.
+  // cali.json se sigue cargando para el letrero de calle y barrio y el buscador.
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, bounds: AREA.pad(0.1), attribution: "© OpenStreetMap" }).addTo(map);
 
   // ---------- Mapa base: vías y barrios de OpenStreetMap ----------
   let segIndex = new Map(); // celda -> [[lat1,lng1,lat2,lng2,nameIdx]]
@@ -213,9 +222,6 @@ textarea { resize: vertical; min-height: 54px; }
       let lat = flat[0], lng = flat[1];
       const pts = [[lat / q, lng / q]];
       for (let i = 2; i < flat.length; i += 2) { lat += flat[i]; lng += flat[i + 1]; pts.push([lat / q, lng / q]); }
-      const line = L.polyline(pts, { ...styles[cls], renderer: roadRenderer, interactive: false, smoothFactor: 1.2 });
-      (cls === 4 ? minor : major).addLayer(line);
-      if (names[ni]) streetLabels.push({ name: names[ni], cls, pts, s: Math.min(...pts.map((p) => p[0])), n: Math.max(...pts.map((p) => p[0])), w: Math.min(...pts.map((p) => p[1])), e: Math.max(...pts.map((p) => p[1])) });
       if (names[ni]) for (let i = 1; i < pts.length; i++) {
         const [a, b] = [pts[i - 1], pts[i]];
         const k = cellKey((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
@@ -225,7 +231,6 @@ textarea { resize: vertical; min-height: 54px; }
     }
     places = data.places.map(([name, lat, lng, kind]) => ({ name, lat: lat / q, lng: lng / q, kind }));
     for (const p of places) labels.addLayer(L.marker([p.lat, p.lng], { interactive: false, icon: L.divIcon({ className: "", html: `<div class="place-label"></div>`, iconSize: null }) }).on("add", function () { this.getElement().firstChild.textContent = p.name; }));
-    major.addTo(map); syncZoomLayers(); drawLabels();
     setReadout("Mueve el mouse sobre el mapa para ver la calle y el barrio.");
   }).catch(() => setReadout("No se pudo cargar el mapa. Recarga la página."));
 
@@ -234,7 +239,6 @@ textarea { resize: vertical; min-height: 54px; }
     z >= 14 ? minor.addTo(map) : minor.remove();
     z >= 14 ? labels.addTo(map) : labels.remove();
   }
-  map.on("zoomend", syncZoomLayers);
 
   // ---------- Nombres sobre las vías, como en un mapa de calles ----------
   // Un lienzo encima del mapa: cada vía con nombre se rotula sobre su tramo
@@ -294,8 +298,6 @@ textarea { resize: vertical; min-height: 54px; }
       }
     });
   }
-  map.on("move zoom resize", drawLabels);
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", drawLabels);
 
   // ---------- Geometría ----------
   const R = 6371000, rad = Math.PI / 180;
