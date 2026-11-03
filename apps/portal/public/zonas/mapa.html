@@ -5,27 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zonas sin cobertura · Cali y Jamundí</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: herramienta de pantalla completa. Panel lateral (instrucciones, zonas) + mapa vectorial de Cali. En teléfono, el panel va debajo del mapa. */
 :root {
-  --bg: #f3f4f1; --panel: #fbfbf9; --fg: #1d2420; --muted: #5f6a64; --line: #d9ddd7;
-  --road: #9aa59f; --road-major: #6f7b74; --road-minor: #c6ccc7; --map: #eceee9;
-  --zone: #c2410c; --zone-fill: rgba(194, 65, 12, 0.18); --grey: #b45309;
-  --accent: #0f766e; --accent-fg: #ffffff; --ok: #15803d; --warn: #b45309; --bad: #b91c1c;
-  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* La paleta del portal (globals.css): violeta CLAPI, lavanda y amarillo. Sin modo oscuro, como el portal. */
+  --bg: #f7f7f7; --panel: #ffffff; --fg: #0d0b14; --muted: #57526b; --line: #e9e6f1;
+  --road: #8b869c; --road-major: #57526b; --road-minor: #d6d2e3; --map: #f1eff7;
+  --zone: #dc2626; --zone-fill: rgba(220, 38, 38, 0.16); --grey: #c2710c;
+  --accent: #532ce1; --accent-fg: #ffffff; --accent-soft: #ede6ff; --ok: #059669; --warn: #c2710c; --bad: #dc2626;
+  --font-body: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #141816; --panel: #1b201d; --fg: #e6ebe7; --muted: #9aa59f; --line: #2f3632;
-  --road: #59645e; --road-major: #7d8983; --road-minor: #333b37; --map: #181d1a;
-  --zone: #fb923c; --zone-fill: rgba(251, 146, 60, 0.20); --grey: #fbbf24;
-  --accent: #2dd4bf; --accent-fg: #062a26; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #141816; --panel: #1b201d; --fg: #e6ebe7; --muted: #9aa59f; --line: #2f3632;
-  --road: #59645e; --road-major: #7d8983; --road-minor: #333b37; --map: #181d1a;
-  --zone: #fb923c; --zone-fill: rgba(251, 146, 60, 0.20); --grey: #fbbf24;
-  --accent: #2dd4bf; --accent-fg: #062a26; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; color-scheme: dark }
 
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font-body); }
@@ -108,8 +99,8 @@ textarea { resize: vertical; min-height: 54px; }
 }
 @media (prefers-reduced-motion: reduce) { .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; } }
 * { box-sizing: border-box; } body { margin: 0; }
-.back { display: inline-flex; align-items: center; gap: 4px; width: fit-content; font-size: 12px; color: var(--muted); text-decoration: none; margin-bottom: 4px; }
-.back:hover { color: var(--fg); }
+.back { display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 40px; padding: 0 16px; border-radius: 12px; font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-soft); text-decoration: none; margin-bottom: 8px; transition: background .15s, color .15s; }
+.back:hover { color: var(--accent-fg); background: var(--accent); }
 </style>
 </head>
 <body>

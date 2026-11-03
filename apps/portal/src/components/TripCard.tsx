@@ -29,7 +29,7 @@ function Timer({ trip }: { trip: Trip }) {
     const tone = s > 35 * 60 ? "bg-danger-soft text-danger" : s > 25 * 60 ? "bg-warn-soft text-warn" : "bg-clapi-soft text-clapi-ink";
     return (
       <span className={`${pill} ${tone}`}>
-        <span className="h-1.5 w-1.5 animate-live rounded-full bg-current" />
+        <span className="h-1.5 w-1.5 rounded-full bg-current" />
         {clock(s)}
       </span>
     );
@@ -130,7 +130,7 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
         ) : (
           <div className="flex items-center gap-2 text-sm text-ink-3">
             <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-ink-3/40">
-              <span className="h-1.5 w-1.5 animate-live rounded-full bg-warn" />
+              <span className="h-1.5 w-1.5 rounded-full bg-warn" />
             </span>
             Buscando moto libre…
           </div>

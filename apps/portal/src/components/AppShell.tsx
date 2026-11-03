@@ -24,6 +24,11 @@ const NAV = [
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */
 function ClientLogo({ round }: { round?: boolean }) {
   const box = round ? "h-9 w-9 rounded-full" : "h-8 w-8 rounded-xl";
+  if (BRAND.client.logo) {
+    // Un PNG pequeño servido tal cual: no vale la pena el optimizador de imágenes.
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={BRAND.client.logo} alt={BRAND.client.name} className={`${round ? "h-9 w-9" : "h-8 w-8"} shrink-0 rounded-full object-contain`} />;
+  }
   return (
     <span className={`flex shrink-0 items-center justify-center bg-client text-xs font-extrabold tracking-tight text-white ${box}`}>
       {BRAND.client.initials}
@@ -78,7 +83,7 @@ function LiveStatus({ compact }: { compact?: boolean }) {
     >
       <Bot size={16} className={compact ? "hidden sm:block" : ""} />
       {online ? "En vivo" : "Sin conexión"}
-      <span className={`h-2 w-2 rounded-full ${online ? "animate-live bg-ok" : "bg-danger"}`} />
+      <span className={`h-2 w-2 rounded-full ${online ? "bg-ok" : "bg-danger"}`} />
     </span>
   );
 }

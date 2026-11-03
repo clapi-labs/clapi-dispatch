@@ -87,12 +87,10 @@ export default function FlotaPage() {
       {/* `items-start`: abrir "Ver más" en una tarjeta no estira a sus vecinas de fila. */}
       <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {sorted.map((courier) => {
-          const pos = queue.indexOf(courier.id);
           return (
             <CourierCard
               key={courier.id}
               courier={courier}
-              queuePosition={pos >= 0 ? pos + 1 : null}
               onChange={(status) => setStatus(courier.id, status)}
               onRemove={() => remove(courier.id)}
             />
