@@ -1,16 +1,7 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 
-import { db, schema, type Restaurant } from "@dispatch/shared/db";
+import { codesForNumber, db, nextTripCode, schema, tripNumbersInText, type Restaurant } from "@dispatch/shared/db";
 import { fullAddress, requiresCashReturn, type DeliveryDraft } from "@dispatch/shared";
-
-/** "D-7F3K2": un prefijo que distingue un código de viaje a simple vista de
- *  un `#PEDIDO` de catálogo, por si algún día conviven en el mismo número. */
-function generateTripCode(): string {
-  const alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // sin 0/O/1/I: se lee por WhatsApp
-  let code = "";
-  for (let i = 0; i < 5; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return `D-${code}`;
-}
 
 /** El viaje de una entrega del pedido confirmado. Quien llama ya comprobó
  *  que trae los datos obligatorios de la agencia. */
@@ -33,7 +24,7 @@ export async function createTrip(
   const [trip] = await db
     .insert(schema.trips)
     .values({
-      code: generateTripCode(),
+      code: await nextTripCode(),
       conversationId,
       restaurantId: restaurant?.id ?? null,
       status: "pending",
@@ -95,6 +86,23 @@ export async function tripFromQuote(conversationId: number, quotedWaMessageId: s
     .where(and(eq(schema.trips.conversationId, conversationId), eq(schema.trips.sourceWaMessageId, quotedWaMessageId)))
     .limit(1);
   return bySource ?? null;
+}
+
+/**
+ * El pedido que el restaurante nombra por su código en el texto («¿ya llegó
+ * el A1042?», «el pedido 1042 ya está listo»), si es suyo. Con varios
+ * códigos en el mismo mensaje, el primero que exista.
+ */
+export async function tripFromCodeInText(conversationId: number, text: string): Promise<Trip | null> {
+  for (const number of tripNumbersInText(text)) {
+    const [trip] = await db
+      .select()
+      .from(schema.trips)
+      .where(and(eq(schema.trips.conversationId, conversationId), inArray(schema.trips.code, codesForNumber(number))))
+      .limit(1);
+    if (trip) return trip;
+  }
+  return null;
 }
 
 export async function getTrip(tripId: number): Promise<Trip | null> {

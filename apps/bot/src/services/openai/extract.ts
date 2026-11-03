@@ -1,4 +1,4 @@
-import { buildExtractionPrompt, type Interpretation, type OrderDraft } from "@dispatch/shared";
+import { buildExtractionPrompt, DOUBTFUL_FIELDS, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
 
 import { env } from "@/env";
 import type { DownloadedImage } from "@/services/whatsapp/client";
@@ -6,7 +6,15 @@ import type { DownloadedImage } from "@/services/whatsapp/client";
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
  *  el código igual verifica que haya una cotización que aceptar). */
 /** `query`: el mensaje pregunta algo en vez de pedir (docs/BOT.md, consultas). */
-export type ExtractionOutcome = { fields: Interpretation; query: "estado" | "cobertura" | null; confirms: boolean; confused: boolean; failed: boolean };
+/** `intent`: «cotizar» si solo pregunta el precio, «pedir» si pide el servicio (null: ninguno). */
+export type ExtractionOutcome = {
+  fields: Interpretation;
+  query: "estado" | "cobertura" | null;
+  intent: "cotizar" | "pedir" | null;
+  confirms: boolean;
+  confused: boolean;
+  failed: boolean;
+};
 
 const NOTHING: Interpretation = { origenRestaurante: null, entregas: [] };
 
@@ -17,8 +25,9 @@ const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : nul
 function knownForModel(known: OrderDraft) {
   return {
     etapa: known.etapa,
+    soloPrecio: known.soloPrecio ?? false,
     origenRestaurante: known.origenRestaurante,
-    entregas: known.entregas.map(({ direccionEntrega, detalleDireccion, esConjunto, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas }) => ({
+    entregas: known.entregas.map(({ direccionEntrega, detalleDireccion, esConjunto, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas, dudas }) => ({
       direccionEntrega,
       detalleDireccion,
       esConjunto,
@@ -28,12 +37,26 @@ function knownForModel(known: OrderDraft) {
       metodoPago,
       listoEnMinutos,
       notas,
+      dudas: dudas ?? [],
     })),
   };
 }
 
+/**
+ * El teléfono del cliente en la forma que se guarda: los 10 dígitos de un
+ * celular colombiano, sin el indicativo («+57 300 2637169» → «3002637169»).
+ * `doubtful` si no da 10 dígitos (le falta o le sobra uno, o es un fijo
+ * viejo): se guarda igual, pero el restaurante lo confirma.
+ */
+export function customerPhone(raw: unknown): { phone: string | null; doubtful: boolean } {
+  let digits = typeof raw === "string" || typeof raw === "number" ? String(raw).replace(/\D/g, "") : "";
+  if (digits.length === 12 && digits.startsWith("57")) digits = digits.slice(2);
+  if (digits.length < 7) return { phone: null, doubtful: false };
+  return { phone: digits, doubtful: digits.length !== 10 };
+}
+
 /** Una entrega tal como la devolvió el modelo, validada campo por campo. */
-function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"][number] {
+export function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"][number] {
   const valor =
     typeof raw.valorACobrar === "number"
       ? raw.valorACobrar
@@ -41,10 +64,12 @@ function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"]
         ? Number(raw.valorACobrar.replace(/\D/g, ""))
         : null;
   const listo = typeof raw.listoEnMinutos === "number" ? Math.round(raw.listoEnMinutos) : null;
-  const phone = typeof raw.telefonoCliente === "string" ? raw.telefonoCliente.replace(/\D/g, "") : "";
+  const phone = customerPhone(raw.telefonoCliente);
+  const doubts = Array.isArray(raw.dudas) ? raw.dudas.filter((k): k is DoubtfulField => (DOUBTFUL_FIELDS as readonly unknown[]).includes(k)) : [];
+  if (phone.doubtful) doubts.push("telefonoCliente");
   return {
     direccionEntrega: text(raw.direccionEntrega),
-    telefonoCliente: phone.length >= 7 ? phone : null,
+    telefonoCliente: phone.phone,
     nombreCliente: text(raw.nombreCliente),
     valorACobrar: valor && valor > 0 ? valor : null,
     metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
@@ -53,6 +78,8 @@ function parseDelivery(raw: Record<string, unknown>): Interpretation["entregas"]
     detalleDireccion: text(raw.detalleDireccion),
     esConjunto: typeof raw.esConjunto === "boolean" ? raw.esConjunto : null,
     barrio: text(raw.barrio),
+    // Solo los nombres conocidos y que tengan un valor: dudar de un null no aporta.
+    dudas: doubts.length ? [...new Set(doubts)] : null,
   };
 }
 
@@ -124,7 +151,7 @@ export async function interpretMessage(
 
     if (!response.ok) {
       console.error(`[openai] error ${response.status}: ${(await response.text()).slice(0, 200)}`);
-      return { fields: NOTHING, query: null, confirms: false, confused: false, failed: true };
+      return { fields: NOTHING, query: null, intent: null, confirms: false, confused: false, failed: true };
     }
 
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
@@ -134,15 +161,21 @@ export async function interpretMessage(
       ? raw.entregas.filter((e: unknown): e is Record<string, unknown> => !!e && typeof e === "object").map(parseDelivery)
       : [];
 
+    for (const e of entregas) {
+      const real = e.dudas?.filter((k: DoubtfulField) => e[k] != null) ?? [];
+      e.dudas = real.length ? real : null;
+    }
+
     return {
       fields: { origenRestaurante: text(raw.origenRestaurante), entregas },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
+      intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : null,
       confirms: raw.confirma === true,
       confused: raw.confuso === true,
       failed: false,
     };
   } catch (error) {
     console.error("[openai] no se pudo extraer el pedido:", error instanceof Error ? error.message : error);
-    return { fields: NOTHING, query: null, confirms: false, confused: false, failed: true };
+    return { fields: NOTHING, query: null, intent: null, confirms: false, confused: false, failed: true };
   }
 }

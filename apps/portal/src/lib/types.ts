@@ -96,4 +96,8 @@ export type ChatMessage = {
   role: "restaurant" | "bot" | "agent";
   text: string;
   createdAt: string;
+  /** El mensaje que este cita, como en WhatsApp. */
+  quote?: { id: number; role: "restaurant" | "bot" | "agent"; text: string } | null;
+  /** Los códigos de los pedidos que salieron de este mensaje del restaurante. */
+  tripCodes?: string[];
 };

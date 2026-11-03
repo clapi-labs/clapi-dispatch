@@ -1,0 +1,2 @@
+CREATE SEQUENCE "public"."trip_code_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1001 CACHE 1;--> statement-breakpoint
+ALTER TABLE "messages" ADD COLUMN "reply_to_wa_message_id" text;

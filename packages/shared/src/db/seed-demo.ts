@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { db, schema } from "./client";
 import { saveFareRanges } from "./fares";
+import { nextTripCode } from "./trip-code";
 
 /**
  * Deja la base lista para mostrar: `npm run db:seed:demo`.
@@ -57,13 +58,6 @@ const EN_ROUTE = [
   { courier: 2, restaurant: "Crepes Express · Pance", address: "Calle 36 #98-12, Valle del Lili", fee: 7500, value: 52000, cash: false, minutesAgo: 9 },
   { courier: 3, restaurant: "Wok to Go · Valle del Lili", address: "Calle 50 #83-22, El Caney", fee: 6000, value: 29000, cash: true, minutesAgo: 4 },
 ];
-
-function code() {
-  const alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-  let c = "";
-  for (let i = 0; i < 5; i++) c += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return `D-${c}`;
-}
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000);
 
@@ -124,7 +118,7 @@ export async function seedDemo() {
     const [trip] = await db
       .insert(schema.trips)
       .values({
-        code: code(),
+        code: await nextTripCode(createdAt),
         status: deliveredAt ? "delivered" : "en_route",
         originRestaurantName: t.restaurant,
         deliveryAddress: t.address,

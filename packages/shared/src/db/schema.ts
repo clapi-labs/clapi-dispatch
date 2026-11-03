@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   real,
   serial,
@@ -94,6 +95,10 @@ export const messages = pgTable(
      *  restaurante responde citando un mensaje nuestro, por aquí se sabe a
      *  qué pedido se refiere. */
     tripId: integer("trip_id"),
+    /** El wamid del mensaje que este cita (solo los que envía el bot o un
+     *  asesor; lo que cita el restaurante va en `incoming.replyTo`). El portal
+     *  lo muestra encima de la burbuja, como WhatsApp. */
+    replyToWaMessageId: text("reply_to_wa_message_id"),
     /** El mensaje entrante tal como llegó (texto, botón o ubicación), para
      *  procesarlo después de la espera aunque `text` sea solo su resumen. */
     incoming: jsonb("incoming").$type<IncomingPayload>(),
@@ -147,6 +152,10 @@ export const restaurants = pgTable(
 // ---------------------------------------------------------------------------
 
 export type TripStatus = "pending" | "assigned" | "en_route" | "delivered" | "cancelled";
+
+/** El número del código de cada pedido (`A1042`): global, nunca se repite.
+ *  Arranca en 1001 para que todos los códigos tengan al menos 4 cifras. */
+export const tripCodeSeq = pgSequence("trip_code_seq", { startWith: 1001 });
 
 export const trips = pgTable(
   "trips",

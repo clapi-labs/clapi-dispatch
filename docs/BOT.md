@@ -21,17 +21,31 @@ Regla para construir: si algo solo aplica a un cliente, va a la configuración, 
 El restaurante ya está registrado: por su número se conoce su nombre, su dirección y sus coordenadas de recogida.
 
 1. **Todo empieza con una dirección de entrega.** Cotizar o pedir, siempre llega una dirección. Si el mensaje no la trae (y no es solo un saludo), se le pide.
-2. **Siempre se cotiza primero.** Con la dirección se geocodifica una vez, se calcula la distancia desde el restaurante y se responde con el precio y un botón **«Confirmar servicio»**.
-   Si falta algún dato obligatorio, se pide **en el mismo mensaje de la cotización** («Para despacharlo envíame…»): el restaurante confirma y completa en una sola respuesta.
+2. **Siempre se cotiza primero.** Con la dirección se geocodifica una vez y se calcula la distancia desde el restaurante. La respuesta depende de lo que quiere el restaurante (el modelo lo dice en `intencion`):
+   - **Pide el servicio** (manda la dirección, los datos del cliente, «necesito un domi», un pin): «Serían $10.000 hasta El Refugio 🛵 ¿Queda confirmado?» con el botón **«Confirmar servicio»**. Si falta algún dato obligatorio, se pide **en la misma línea** («Si es así, envíame también…»): el restaurante confirma y completa en una sola respuesta.
+   - **Solo pregunta el precio** («¿cuánto a Valle del Lili?», «¿qué vale hasta Pance?», «¿llegan a…?»): «Hasta Valle del Lili el domicilio vale $10.000 🛵», sin botón, sin pedir datos ni confirmación. A un «gracias» u «ok» no se le responde. Si pregunta por otra dirección, es otra cotización (no un segundo domicilio). Si después decide mandarlo («dale, mándalo», los datos del cliente, el tiempo), se vuelve pedido con el precio ya dado. Un pin después de un precio es un pedido aparte.
 3. **Al confirmar** con todo, se crea un viaje por entrega y se despacha. Si todavía falta algo, se le dice exactamente qué.
 4. **Despacho y avisos:** se asigna la moto y se avisa al restaurante (nombre y teléfono del domiciliario) y al motorizado (ficha del viaje).
 5. **Motorizado:** recibe la ficha y toca **«Terminé el servicio»** cuando termina. No acepta ni rechaza: si no puede, lo escribe (ver «Motorizados»).
 
-Datos obligatorios del primer cliente: **dirección de entrega** y **tiempo de preparación**. Además, para toda agencia: si la dirección es un conjunto, unidad o edificio, **torre y apartamento** (o número de casa).
+Datos obligatorios por defecto: **dirección de entrega**, **nombre del cliente**, **teléfono del cliente** y **tiempo de preparación**. Además, para toda agencia: si la dirección es un conjunto, unidad o edificio, **torre y apartamento** (o número de casa). El teléfono se guarda en los 10 dígitos del celular, sin el +57; si no da 10 dígitos, se marca ❓ para que el restaurante lo confirme.
+
+Un pedido perfecto trae todo en un mensaje y sale sin preguntas:
+
+```
+Carrera 85d #48-180, Comuna 17, Cali, Valle del Cauca, Colombia . Apto 401 torre C
++57 300 2637169
+Lorena Mora
+en 10
+```
 
 **El cobro no es asunto de la agencia.** Cuánto se le cobra al cliente, si ya pagó o si paga en efectivo es entre el restaurante, el cliente y el motorizado: no se exige ni se liquida. Si el restaurante lo dice, va informativo en la ficha. Los motorizados manejan su propia plata y su base.
 
 **Imágenes:** un pedido puede llegar como foto o captura. Se lee con el modelo (visión) junto con el texto que la acompañe; si no se puede abrir, se le pide que lo escriba. En el chat de prueba: `/imagen <ruta> [texto]`.
+
+**Lo leído se confirma antes de pedir la moto.** Si el pedido vino en una imagen, o el modelo no está seguro de algún dato (letra borrosa, un celular con dígitos de menos, «Cra 15 o 16»), la cotización empieza con lo que entendió («Esto leí en la imagen 👇»: dirección, cliente, teléfono, cobro, tiempo, notas) y marca con ❓ lo dudoso. El restaurante confirma con el botón o escribe el dato correcto. Con cada corrección se le muestra de nuevo cómo quedó, y la duda de ese dato desaparece. Confirmar acepta el precio y los datos. Un pedido escrito claro se cotiza directo, sin el resumen.
+
+**El número es el restaurante.** El bot reconoce al restaurante por el número que escribe (tabla `restaurants`) y asume su dirección de recogida. Un número nuevo dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. También se puede registrar a mano: `npm run restaurant:create`.
 
 ## La dirección: el formato lo pone la agencia
 
@@ -81,13 +95,15 @@ Qué hace la central con una novedad: [INTERVENCION-MANUAL.md](INTERVENCION-MANU
 | Confirmación | Botón «Confirmar servicio» o escrita: el tiempo de preparación, "sí", "dale", "ya está". Dar el tiempo después de la cotización también confirma |
 | Tono | Corto con lo esencial: «Serían $6.000 hasta Valle del Lili 🛵» |
 | Cobertura | Km máximo por calles desde el restaurante (`settings.bot_config.maxKm`, 15 por defecto) |
-| Datos obligatorios | `settings.bot_config.requiredFields`; por defecto dirección de entrega y tiempo de preparación |
+| Datos obligatorios | `settings.bot_config.requiredFields`; por defecto dirección de entrega, nombre y teléfono del cliente, y tiempo de preparación. Lo que falte se pide en la misma cotización y otra vez al confirmar |
 | Ubicación | Dirección escrita (se geocodifica una vez) o pin de WhatsApp (coordenadas exactas, sin costo) |
 | Notas | Lo que no es un campo (con cuánto paga el cliente, qué lleva, referencias) va en `trips.notes` y sale en la ficha del motorizado. La torre y el apto van en la dirección |
-| Citar mensajes | Todo aviso sobre un pedido responde citando el mensaje con que el restaurante lo pidió. Cada mensaje guarda su wamid y su viaje, para saber de qué pedido habla el restaurante cuando cita uno nuestro |
+| Código del pedido | Letra del día + número global que nunca se repite: `A1042` es el pedido 1042, hecho un lunes (A lunes … G domingo, hora de Colombia). Sale en todos los avisos, en la ficha y en el portal. Lo genera `packages/shared/src/db/trip-code.ts` con la secuencia `trip_code_seq` |
+| Citar mensajes | Todo aviso sobre un pedido responde citando el mensaje con que el restaurante lo pidió. Cada mensaje guarda su wamid, su viaje y el mensaje que cita (`reply_to_wa_message_id`), para saber de qué pedido habla el restaurante cuando cita uno nuestro. El portal muestra la cita encima de la burbuja, como WhatsApp; tocarla lleva al mensaje citado |
+| De qué pedido habla | El que citó; si no citó, el que nombra por su código («¿ya llegó el A1042?», «pedido 1042», «#1042»). Una cifra suelta no cuenta: podría ser una dirección o un valor |
 | Varias entregas | Un pedido puede traer varias direcciones (dos clientes en un mensaje, o «y otro para…»). Se cotizan en un solo mensaje con el total y un botón «Confirmar los N», se confirman juntas y cada una sale en su propio viaje. Una corrección («perdón, el de Pance es…») reemplaza la dirección, no agrega otra |
 | Cambios a un pedido creado | «Ya está listo», «se demora 5 más», «paga con 50» cambian el pedido, no abren otro. Cuál: el que citó; si no citó y hay uno abierto, ese; con varios, se pregunta con botones. Se le avisa al motorizado citando su ficha. Cambiar la dirección de un pedido creado pasa a un asesor |
-| Consultas | «¿Ya llegó?», «¿quién va?»: el estado de cada pedido (buscando moto, quién va con su teléfono, entregado a qué hora), del que citó o de todos los abiertos y entregados en las últimas 3 horas. «¿Domis acá?» sin dirección: se le pide la dirección o la ubicación; con dirección, se cotiza (la cobertura sale del km máximo) |
+| Consultas | «¿Ya llegó?», «¿quién va?»: el estado de cada pedido (buscando moto, quién va con su teléfono, entregado a qué hora), del que citó o nombró, o de todos los abiertos y entregados en las últimas 3 horas. Con varios, un mensaje por pedido citando el mensaje con que se pidió (uno más por pedido, a cambio de que se entienda cuál es cuál). «¿Domis acá?» sin dirección: se le pide la dirección o la ubicación; con dirección, se cotiza (la cobertura sale del km máximo) |
 | Espera antes de responder | 6 s desde el último mensaje (`REPLY_DELAY_MS` en `apps/bot/src/bot/intake.ts`). Leído al 25 % y «escribiendo…» al 50 % del tiempo, para que se sienta natural. Junta los mensajes partidos en uno |
 
 ## Para después

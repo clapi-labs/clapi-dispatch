@@ -116,6 +116,22 @@ function DraftPanel({ draft }: { draft: DraftFields }) {
   );
 }
 
+/** La cita encima de la burbuja, como en WhatsApp: quién escribió el
+ *  mensaje citado y su comienzo. Tocarla lleva hasta ese mensaje. */
+function Quote({ quote, contactName, onClick }: { quote: NonNullable<ChatMessage["quote"]>; contactName: string; onClick: () => void }) {
+  const author = quote.role === "bot" ? "Bot" : quote.role === "agent" ? "Asesor" : contactName;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mb-1 block w-full min-w-0 rounded-lg border-l-4 border-clapi bg-ink/5 px-2.5 py-1.5 text-left can-hover:hover:bg-ink/10"
+    >
+      <span className="block text-[11px] font-semibold text-clapi-ink">{author}</span>
+      <span className="line-clamp-2 whitespace-pre-wrap text-xs text-ink-2">{quote.text}</span>
+    </button>
+  );
+}
+
 /**
  * `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
  * escribe un motorizado. Colores de WhatsApp: lo que llega va en blanco y lo
@@ -128,7 +144,21 @@ function DraftPanel({ draft }: { draft: DraftFields }) {
  * hay botón: se mantiene presionada la burbuja. `onMenu` recibe el botón para
  * anclar el menú, o nada.
  */
-function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: ChatMessage, anchor: DOMRect | null) => void }) {
+function Bubble({
+  message,
+  contactName,
+  highlighted,
+  onMenu,
+  onQuote,
+}: {
+  message: ChatMessage;
+  /** Cómo se llama quien escribe del otro lado, para la cita. */
+  contactName: string;
+  /** Recién señalado desde una cita: se ilumina un momento. */
+  highlighted: boolean;
+  onMenu: (message: ChatMessage, anchor: DOMRect | null) => void;
+  onQuote: (messageId: number) => void;
+}) {
   const mine = message.role !== "restaurant";
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touched = useRef(false);
@@ -139,7 +169,7 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
   }
 
   return (
-    <div className={`group flex items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+    <div id={`msg-${message.id}`} className={`group flex scroll-my-24 items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
       <div
         onPointerDown={(e) => {
           touched.current = e.pointerType === "touch";
@@ -154,12 +184,24 @@ function Bubble({ message, onMenu }: { message: ChatMessage; onMenu: (message: C
         }}
         className={`relative max-w-[85%] min-w-0 select-none whitespace-pre-wrap wrap-anywhere rounded-2xl px-3.5 py-2 text-sm leading-relaxed text-ink shadow-sm [-webkit-touch-callout:none] can-hover:select-text ${
           mine ? "rounded-br-md bg-chat-out" : "rounded-bl-md bg-surface"
-        }`}
+        } ${highlighted ? "ring-2 ring-clapi" : ""}`}
       >
         {mine && (
           <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${message.role === "bot" ? "text-clapi-ink" : "text-ink"}`}>
             {message.role === "bot" ? <Bot size={12} /> : <Headset size={12} />}
             {message.role === "bot" ? "Bot" : "Asesor"}
+          </p>
+        )}
+        {message.quote && (
+          <Quote quote={message.quote} contactName={contactName} onClick={() => onQuote(message.quote!.id)} />
+        )}
+        {!!message.tripCodes?.length && (
+          <p className="mb-1 flex flex-wrap gap-1">
+            {message.tripCodes.map((code) => (
+              <span key={code} className="rounded-md bg-clapi-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-clapi-ink">
+                Pedido {code}
+              </span>
+            ))}
           </p>
         )}
         {/* La hora al lado del texto, como en WhatsApp: una copia invisible le guarda el
@@ -266,6 +308,14 @@ export default function ConversacionesPage() {
 
 
   const selected = list.find((c) => c.id === selectedId) ?? null;
+
+  // Tocar una cita lleva al mensaje citado y lo ilumina un momento.
+  const [highlight, setHighlight] = useState<number | null>(null);
+  const goToMessage = useCallback((messageId: number) => {
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlight(messageId);
+    setTimeout(() => setHighlight((current) => (current === messageId ? null : current)), 1600);
+  }, []);
   const visible = list.filter((c) => inTab(c, tab));
 
   const [draftText, setDraftText] = useState("");
@@ -503,8 +553,11 @@ export default function ConversacionesPage() {
                       )}
                       <Bubble
                         message={m}
+                        contactName={name(selected)}
+                        highlighted={highlight === m.id}
                         // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
                         onMenu={(message, anchor) => setMenu({ message, anchor: isDesktop() ? anchor : null })}
+                        onQuote={goToMessage}
                       />
                     </Fragment>
                   );

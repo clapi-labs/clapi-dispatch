@@ -3,7 +3,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
 
-import type { DraftFields } from "@/lib/types";
+import type { ChatMessage, DraftFields } from "@/lib/types";
 
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
 
@@ -80,12 +80,52 @@ export async function countNeedingHelp(): Promise<number> {
   return row?.n ?? 0;
 }
 
-export async function getThread(conversationId: number) {
-  return db
-    .select({ id: schema.messages.id, role: schema.messages.role, text: schema.messages.text, createdAt: schema.messages.createdAt })
-    .from(schema.messages)
-    .where(eq(schema.messages.conversationId, conversationId))
-    .orderBy(asc(schema.messages.id));
+/**
+ * El hilo como en WhatsApp: cada mensaje con el que cita (si cita uno) y los
+ * códigos de los pedidos que salieron de él o de los que habla. Así, en el
+ * portal se ve a qué pedido responde cada aviso, igual que en el celular.
+ */
+export async function getThread(conversationId: number): Promise<ChatMessage[]> {
+  const [rows, trips] = await Promise.all([
+    db
+      .select({
+        id: schema.messages.id,
+        role: schema.messages.role,
+        text: schema.messages.text,
+        createdAt: schema.messages.createdAt,
+        waMessageId: schema.messages.waMessageId,
+        replyTo: schema.messages.replyToWaMessageId,
+        incoming: schema.messages.incoming,
+        tripId: schema.messages.tripId,
+      })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId))
+      .orderBy(asc(schema.messages.id)),
+    db
+      .select({ id: schema.trips.id, code: schema.trips.code, source: schema.trips.sourceWaMessageId })
+      .from(schema.trips)
+      .where(eq(schema.trips.conversationId, conversationId)),
+  ]);
+
+  const byWaId = new Map(rows.filter((m) => m.waMessageId).map((m) => [m.waMessageId!, m]));
+  const codesBySource = new Map<string, string[]>();
+  for (const t of trips) if (t.source) codesBySource.set(t.source, [...(codesBySource.get(t.source) ?? []), t.code]);
+
+  return rows.map((m) => {
+    const quotedId = m.replyTo ?? m.incoming?.replyTo ?? null;
+    const quoted = quotedId ? byWaId.get(quotedId) : undefined;
+    // La etiqueta va en el mensaje con que el restaurante pidió: ahí nace el
+    // pedido. Los avisos del bot ya dicen el código en el texto.
+    const own = m.role === "restaurant" && m.waMessageId ? (codesBySource.get(m.waMessageId) ?? []) : [];
+    return {
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      createdAt: m.createdAt.toISOString(),
+      quote: quoted ? { id: quoted.id, role: quoted.role, text: quoted.text } : null,
+      tripCodes: own,
+    };
+  });
 }
 
 /** "Intervenir": el operador toma el chat y el bot se calla en ese número. */
