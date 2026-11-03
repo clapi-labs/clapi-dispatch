@@ -37,7 +37,7 @@ La función `tiempo(a, b)` es intercambiable:
 Flujo por pedido para gastar poco en Google:
 1. Filtro por radio con Haversine (gratis).
 2. Preselección de candidatas, no solo por cercanía, para no dejar fuera a quien la equidad favorece.
-3. **Una** matriz a Google para las 3 mejores.
+3. **Una** matriz a Google para las 3 mejores (`FINALISTAS_GOOGLE`, ajustable en `config`). Con 2 elegibles, para esas 2; con una sola no se consulta: se le asigna directo.
 4. El algoritmo puntúa.
 
 Si Google falla o se supera el tope diario, se usa Haversine. OSRM queda fuera del sistema: solo fue un sustituto gratuito dentro del simulador.
@@ -142,8 +142,8 @@ Códigos de `motivo`: `sin_senal`, `fuera_radio`, `cliente_no_contesta`, `ocupad
 
 - **`faltan_min = 0`**: asigna a `ganador`, guarda el `plan` y arma la ficha del motorizado con ese orden.
 - **`faltan_min > 0`**: no asigna, gane una moto libre u ocupada (la espera es del pedido, como en el simulador). Programa una revisión unos 2 min antes de `despachar_ts`, para dar tiempo a que el motorizado acepte la oferta.
-- **Mientras espera**, solo recalcula con `haversine` cuando cambia algo: se libera una moto, entra otro pedido, el restaurante cambia el tiempo. Si el resultado adelanta `despachar_ts`, adelanta la revisión.
-- **En la revisión**, consulta con `google` y asigna a la que gane en ese momento. Son unas 2 consultas a Google por pedido.
+- **Mientras espera**, recalcula con `haversine` en cada tick del worker (cada 5 s), con las posiciones actuales del GPS. No cuesta nada y cubre que una moto libre se aleje: el engine supone que las libres esperan quietas, y en la calle no es así. Si el resultado adelanta `despachar_ts`, adelanta la revisión; si ya llegó, asigna en ese tick.
+- **En la revisión**, una sola consulta con `google` para las finalistas y asigna a la que gane en ese momento, aunque vaya un poco tarde: no se vuelve a preguntar. Si la ganadora no acepta, se ofrece a la siguiente con los mismos tiempos; solo si ninguna de las finalistas acepta se consulta otra vez.
 - Al restaurante solo se le informa el costo del domicilio (`especificaciones.md`, sección 1), así que la espera no cambia nada para él.
 - En modo `shadow` hace todo lo anterior, pero solo guarda a quién y cuándo habría asignado.
 
@@ -193,7 +193,9 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 ## Pendientes por decidir
 
 - Si el simulador sigue con OSRM o pasa a Google para calibrar.
-- Si las ofertas rechazadas o vencidas cuentan en la equidad (`p_r` en la sección 4.B de `especificaciones.md`; hoy no entran en el contrato).
+- Si una oferta que vence sin respuesta cuenta en la equidad (`especificaciones.md`, 4.B, dice que sí). Se decide con el flujo de ofertas, que el bot todavía no tiene: hoy asigna directo.
 - Los pendientes con el cliente de la sección 7 de `especificaciones.md` (base de efectivo, zonas por domiciliario, reasignaciones, capacidad en valle).
+
+Resuelto: los rechazos justificados no cuentan en la equidad (`p_r = 0`), como dice `especificaciones.md`.
 
 Resuelto: la lógica actual en TypeScript convive con el engine durante el modo sombra y queda como respaldo hasta pasar a `auto`.
