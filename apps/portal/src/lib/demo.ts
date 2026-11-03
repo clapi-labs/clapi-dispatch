@@ -214,27 +214,24 @@ let fareRanges: FareRange[] = [
 
 function settlement(): Settlement {
   const delivered = trips.filter((t) => t.status === "delivered");
-  const byMethod = { cash: { orders: 0, amount: 0 }, transfer: { orders: 0, amount: 0 } };
   const byCourier = new Map<string, SettlementRow>();
-  let netEarnings = 0;
+  let total = 0;
   for (const t of delivered) {
-    netEarnings += t.deliveryFee;
-    const m = t.paymentMethod === "efectivo" ? byMethod.cash : byMethod.transfer;
-    m.orders += 1;
-    m.amount += t.valueToCollect ?? 0;
+    total += t.deliveryFee;
     const name = t.courierName ?? "—";
-    const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, netEarnings: 0, cashToDeliver: 0 };
+    const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, earned: 0, agencyShare: 0 };
     row.deliveredCount += 1;
-    row.netEarnings += t.deliveryFee;
-    if (t.paymentMethod === "efectivo") row.cashToDeliver += t.valueToCollect ?? 0;
+    row.earned += t.deliveryFee;
+    row.agencyShare = Math.round(row.earned * 0.1);
     byCourier.set(name, row);
   }
   return {
-    netEarnings,
+    total,
     deliveredCount: delivered.length,
-    averageFee: delivered.length ? Math.round(netEarnings / delivered.length) : 0,
-    byMethod,
-    couriers: [...byCourier.values()].sort((a, b) => b.netEarnings - a.netEarnings),
+    averageFee: delivered.length ? Math.round(total / delivered.length) : 0,
+    agencyRate: 0.1,
+    agencyShare: Math.round(total * 0.1),
+    couriers: [...byCourier.values()].sort((a, b) => b.earned - a.earned),
   };
 }
 

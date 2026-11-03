@@ -1,78 +1,53 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
-/**
- * El cierre del día, desde los viajes entregados. Tres números que el dueño
- * de la agencia necesita y que hoy saca a mano de un cuaderno:
- *
- * - **Ganancia neta**: la suma de los domicilios (`deliveryFee`) — lo que la
- *   agencia cobra por llevar. El valor del pedido es del restaurante, no suyo.
- * - **Por método**: del dinero de los pedidos, cuánto entró por
- *   transferencia y cuánto anda en efectivo en la calle.
- * - **Por moto**: viajes, ganancia que generó y efectivo que debe entregar
- *   en base.
- */
-export type SettlementRow = {
-  courierId: number;
-  courierName: string;
-  deliveredCount: number;
-  netEarnings: number;
-  cashToDeliver: number;
-};
+import type { Settlement, SettlementRow } from "@/lib/types";
 
-export type Settlement = {
-  netEarnings: number;
-  deliveredCount: number;
-  averageFee: number;
-  byMethod: {
-    cash: { orders: number; amount: number };
-    transfer: { orders: number; amount: number };
-  };
-  couriers: SettlementRow[];
-};
+/**
+ * El cierre del día, desde los viajes entregados hoy (hora de Colombia).
+ * Solo importan los domicilios: lo que el cliente le paga al restaurante y lo
+ * que se le devuelve no es de la agencia.
+ *
+ * - **Total generado**: la suma de los domicilios (`deliveryFee`).
+ * - **Para la agencia**: su porcentaje sobre ese total (`AGENCY_RATE`).
+ * - **Por moto**: viajes, lo que generó y la parte de la agencia.
+ */
+export const AGENCY_RATE = 0.1;
 
 export async function getSettlement(): Promise<Settlement> {
   const rows = await db
     .select({
       courierId: schema.assignments.courierId,
       courierName: schema.assignments.courierName,
-      paymentMethod: schema.trips.paymentMethod,
-      valueToCollect: schema.trips.valueToCollect,
       deliveryFee: schema.trips.deliveryFee,
     })
     .from(schema.assignments)
     .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
-    .where(eq(schema.trips.status, "delivered"));
+    .where(
+      and(
+        eq(schema.trips.status, "delivered"),
+        gte(schema.assignments.deliveredAt, sql`date_trunc('day', now() at time zone 'America/Bogota') at time zone 'America/Bogota'`),
+      ),
+    );
 
   const byCourier = new Map<string, SettlementRow>();
-  const byMethod = { cash: { orders: 0, amount: 0 }, transfer: { orders: 0, amount: 0 } };
-  let netEarnings = 0;
-
+  let total = 0;
   for (const row of rows) {
-    netEarnings += row.deliveryFee;
-    const method = row.paymentMethod === "efectivo" ? byMethod.cash : byMethod.transfer;
-    method.orders += 1;
-    method.amount += row.valueToCollect ?? 0;
-
-    const entry = byCourier.get(row.courierName) ?? {
-      courierId: row.courierId ?? 0,
-      courierName: row.courierName,
-      deliveredCount: 0,
-      netEarnings: 0,
-      cashToDeliver: 0,
-    };
+    total += row.deliveryFee;
+    const entry = byCourier.get(row.courierName) ?? { courierId: row.courierId ?? 0, courierName: row.courierName, deliveredCount: 0, earned: 0, agencyShare: 0 };
     entry.deliveredCount += 1;
-    entry.netEarnings += row.deliveryFee;
-    if (row.paymentMethod === "efectivo") entry.cashToDeliver += row.valueToCollect ?? 0;
+    entry.earned += row.deliveryFee;
     byCourier.set(row.courierName, entry);
   }
+  for (const entry of byCourier.values()) entry.agencyShare = Math.round(entry.earned * AGENCY_RATE);
 
   return {
-    netEarnings,
+    total,
     deliveredCount: rows.length,
-    averageFee: rows.length ? Math.round(netEarnings / rows.length) : 0,
-    byMethod,
-    couriers: Array.from(byCourier.values()).sort((a, b) => b.netEarnings - a.netEarnings),
+    averageFee: rows.length ? Math.round(total / rows.length) : 0,
+    agencyRate: AGENCY_RATE,
+    agencyShare: Math.round(total * AGENCY_RATE),
+    couriers: Array.from(byCourier.values()).sort((a, b) => b.earned - a.earned),
   };
 }

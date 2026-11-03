@@ -8,9 +8,8 @@ Hay que mejorar mucho la fluidez, la interfaz y la comodidad al escribir, y quit
 
 ## Finanzas
 
-- Solo interesan los domicilios: lo que se paga o se le devuelve al restaurante no le importa a Express Cali.
 - Métrica opcional: en vez del dinero de los pedidos por método de pago, **cuántos servicios por método** (datáfono, transferencia, efectivo).
-- Lo que importa al cierre del día: cuánto se generó en domicilios (lo que gana cada motorizado), el total generado y el 10 % de ese total, que le corresponde a la agencia.
+- El porcentaje de la agencia (10 %) está fijo en `AGENCY_RATE` (`apps/portal/src/db/queries/settlement.ts`); si cambia por cliente, pasarlo a `settings`.
 
 ## Flota
 

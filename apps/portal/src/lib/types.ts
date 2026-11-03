@@ -51,18 +51,21 @@ export type SettlementRow = {
   courierId: number;
   courierName: string;
   deliveredCount: number;
-  netEarnings: number;
-  cashToDeliver: number;
+  /** Lo que generó en domicilios hoy. */
+  earned: number;
+  /** El porcentaje de la agencia sobre lo que generó. */
+  agencyShare: number;
 };
 
+/** El cierre del día: solo los domicilios. El valor del pedido es del
+ *  restaurante y no entra. */
 export type Settlement = {
-  netEarnings: number;
+  total: number;
   deliveredCount: number;
   averageFee: number;
-  byMethod: {
-    cash: { orders: number; amount: number };
-    transfer: { orders: number; amount: number };
-  };
+  /** 0.1 = 10 %. */
+  agencyRate: number;
+  agencyShare: number;
   couriers: SettlementRow[];
 };
 
