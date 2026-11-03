@@ -17,7 +17,7 @@ import { assignNextCourier, getBotConfig, quoteByDistance, saveRestaurant, type 
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
-import { answerStatus } from "@/bot/status";
+import { answerStatus, PICKUP_WINDOW } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
@@ -127,23 +127,23 @@ export function readBack(d: DeliveryDraft) {
   ]
     .filter(Boolean)
     .join(" · ");
-  const money =
-    d.metodoPago === "transferencia"
-      ? `💳 Ya pagado${doubt("metodoPago")}`
-      : d.valorACobrar != null
-        ? `💵 Cobrar ${cop(d.valorACobrar)}${d.metodoPago === "efectivo" ? " en efectivo" : ""}${doubt("valorACobrar", "metodoPago")}`
-        : null;
   const ready =
     d.listoEnMinutos == null ? null : `⏱️ ${d.listoEnMinutos === 0 ? "Ya está lista" : `Lista en ${d.listoEnMinutos} min`}${doubt("listoEnMinutos")}`;
   return [
     `📍 ${fullAddress(d)}${doubt("direccionEntrega", "detalleDireccion")}`,
     customer ? `👤 ${customer}` : null,
-    money,
     ready,
     d.notas ? `📝 ${d.notas}${doubt("notas")}` : null,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** La confirmación del pedido. Si la comida tarda más que la ventana
+ *  estándar, el domiciliario llega para cuando esté lista. */
+export function confirmationText(code: string, readyIn: number | null) {
+  const eta = readyIn != null && readyIn > 15 ? `para cuando esté lista (en ${readyIn} min)` : `en ${PICKUP_WINDOW}`;
+  return `✅ Pedido ${code} confirmado.\n🛵 El domiciliario estará ahí ${eta}.`;
 }
 
 /** El resumen de todas las entregas, para revisar. */
@@ -534,14 +534,12 @@ export async function handleRestaurant(ctx: Context) {
       restaurant ? null : { address: draft.origenRestaurante!, location: pickupLocation },
       restaurant,
     );
-    const courierAssigned = await assignNextCourier(trip.id);
-    if (courierAssigned) {
-      await notifyAssigned(trip.id);
-    } else {
-      await say(conversation.id, message.phone, `✅ Pedido ${trip.code} confirmado. Las motos están ocupadas: te aviso apenas tenga una asignada.`, {
-        replyTo: trip.sourceWaMessageId,
-        tripId: trip.id,
-      });
-    }
+    // El restaurante siempre recibe la confirmación con el tiempo estándar,
+    // haya moto libre o no: la espera por eficiencia del despacho no es suya.
+    await say(conversation.id, message.phone, confirmationText(trip.code, d.listoEnMinutos), {
+      replyTo: trip.sourceWaMessageId,
+      tripId: trip.id,
+    });
+    if (await assignNextCourier(trip.id)) await notifyAssigned(trip.id);
   }
 }
