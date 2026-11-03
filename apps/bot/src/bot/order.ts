@@ -17,7 +17,7 @@ import { assignNextCourier, getBotConfig, quoteByDistance, saveRestaurant, type 
 
 import { say } from "@/bot/messaging";
 import { notifyAssigned } from "@/bot/notify";
-import { answerStatus, waitingText } from "@/bot/status";
+import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
@@ -527,13 +527,18 @@ export async function handleRestaurant(ctx: Context) {
       restaurant ? null : { address: draft.origenRestaurante!, location: pickupLocation },
       restaurant,
     );
-    // Con moto libre, un solo mensaje: «servicio motorizado confirmado» con
-    // quién va. Sin moto, el servicio queda en espera y el aviso de
-    // confirmado llega cuando el despacho se la asigne (notifyAssigned).
+    // El restaurante siempre queda confirmado y con un tiempo, haya moto
+    // libre o no: la espera por eficiencia del despacho no es suya. Con moto
+    // libre, un solo mensaje con quién va; sin moto, la confirmación sale ya
+    // y quién va llega después (notifyAssigned).
     if (await assignNextCourier(trip.id)) {
-      await notifyAssigned(trip.id);
+      await notifyAssigned(trip.id, { atConfirmation: true });
     } else {
-      await say(conversation.id, message.phone, waitingText(trip.code), { replyTo: trip.sourceWaMessageId, tripId: trip.id });
+      const estimate = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier: null });
+      await say(conversation.id, message.phone, confirmedText(trip.code, estimate, null, cop(trip.deliveryFee)), {
+        replyTo: trip.sourceWaMessageId,
+        tripId: trip.id,
+      });
     }
   }
 }

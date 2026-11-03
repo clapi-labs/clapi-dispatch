@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, getBotConfig, schema } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
-import { confirmedText } from "@/bot/status";
+import { confirmedText, courierAssignedText, estimatePickup } from "@/bot/status";
 import { conversationForOutbound } from "@/db/queries/conversation";
 import type { SendResult } from "@/services/whatsapp/client";
 
@@ -89,8 +89,11 @@ export async function sendCourierTicket(
 }
 
 /** Moto asignada: ficha al motorizado + aviso al restaurante, citando el
- *  mensaje con que pidió ese domicilio. */
-export async function notifyAssigned(tripId: number) {
+ *  mensaje con que pidió ese domicilio. Si se asignó al confirmar
+ *  (`atConfirmation`), el aviso es la confirmación con el tiempo; si se
+ *  asignó después, el restaurante ya tiene su confirmación y solo se le
+ *  dice quién va. */
+export async function notifyAssigned(tripId: number, opts: { atConfirmation?: boolean } = {}) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
 
@@ -99,7 +102,14 @@ export async function notifyAssigned(tripId: number) {
   const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
     // Sin el número del domiciliario: el restaurante habla siempre con la agencia.
-    const text = confirmedText(row.trip.code, row.courier.name, row.trip.readyAt, cop(row.trip.deliveryFee));
+    const text = opts.atConfirmation
+      ? confirmedText(
+          row.trip.code,
+          estimatePickup({ readyAt: row.trip.readyAt, pickup: row.trip.pickupLocation ?? null, courier: row.courier }),
+          row.courier.name,
+          cop(row.trip.deliveryFee),
+        )
+      : courierAssignedText(row.trip.code, row.courier.name);
     await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }
