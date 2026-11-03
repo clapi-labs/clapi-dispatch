@@ -53,10 +53,12 @@ function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deli
   const id = nextTripId++;
   return {
     id,
-    // Mismo formato que los reales (packages/shared/src/db/trip-code.ts): letra del día + número.
-    code: `${"GABCDEF"[new Date().getDay()]}${id + 1000}`,
-    pickupAddress: null,
+    // Mismo formato que los reales (packages/shared/src/db/trip-code.ts): letra y dos cifras.
+    code: `${"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(id / 100) % 26]}-${String(id % 100).padStart(2, "0")}`,
+    pickupAddress: "Calle 16 #100-50, Ciudad Jardín",
+    customerName: "Laura Gómez",
     customerPhone: "3157894561",
+    notes: "Portón negro · Llamar al llegar",
     valueToCollect: 45_000,
     paymentMethod: "efectivo",
     requiresCashReturn: true,
