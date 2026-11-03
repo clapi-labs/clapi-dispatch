@@ -41,6 +41,16 @@ export default function FlotaPage() {
     refresh();
   }
 
+  async function setEmergency(id: number, on: boolean) {
+    setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, status: on ? "paused" : c.status } : c)));
+    await fetch(`/api/couriers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emergency: on }),
+    });
+    refresh();
+  }
+
   async function remove(id: number) {
     setCouriers((prev) => prev.filter((c) => c.id !== id));
     await fetch(`/api/couriers/${id}`, {
@@ -55,10 +65,12 @@ export default function FlotaPage() {
   const counts = {
     available: couriers.filter((c) => c.status === "available").length,
     busy: couriers.filter((c) => c.status === "busy").length,
-    off: couriers.filter((c) => c.status === "paused" || c.status === "offline").length,
+    offline: couriers.filter((c) => c.status === "offline").length,
+    emergency: couriers.filter((c) => c.status === "paused").length,
   };
   const sorted = [...couriers].sort((a, b) => {
-    const rank = (c: Courier) => (c.status === "available" ? queue.indexOf(c.id) : c.status === "busy" ? 100 : 200);
+    const rank = (c: Courier) =>
+      c.status === "paused" ? -1 : c.status === "available" ? queue.indexOf(c.id) : c.status === "busy" ? 100 : 200;
     return rank(a) - rank(b);
   });
 
@@ -67,11 +79,12 @@ export default function FlotaPage() {
       {/* Sin título: arriba van los contadores y, a la derecha, agregar un motorizado. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* En celular ocupan la fila entera y el botón baja; desde tableta van lado a lado. */}
-        <div className="grid w-full grid-cols-3 gap-2 sm:w-md sm:max-w-full">
+        <div className="grid w-full grid-cols-2 gap-2 sm:w-xl sm:grid-cols-4 sm:max-w-full">
           {[
             { label: "Libres", value: counts.available, dot: "bg-ok" },
             { label: "En viaje", value: counts.busy, dot: "bg-gold" },
-            { label: "Fuera", value: counts.off, dot: "bg-danger" },
+            { label: "Desconectados", value: counts.offline, dot: "bg-ink-3" },
+            { label: "Emergencia", value: counts.emergency, dot: "bg-danger" },
           ].map((s) => (
             <div key={s.label} className="card px-3 py-2.5">
               <p className="flex items-center gap-1.5 text-xs text-ink-3">
@@ -92,6 +105,7 @@ export default function FlotaPage() {
               key={courier.id}
               courier={courier}
               onChange={(status) => setStatus(courier.id, status)}
+              onEmergency={(on) => setEmergency(courier.id, on)}
               onRemove={() => remove(courier.id)}
             />
           );

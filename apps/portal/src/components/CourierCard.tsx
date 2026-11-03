@@ -1,10 +1,12 @@
 "use client";
 
-import { Check, ChevronDown, Copy, LocateFixed, Power, PowerOff, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Copy, LocateFixed, Power, PowerOff, Siren, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
 import { PhoneLink } from "@/components/PhoneLink";
+import { chatHref } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
 import { elapsedLabel, formatPhone, initials } from "@/lib/format";
 import type { Courier } from "@/lib/types";
@@ -12,30 +14,35 @@ import type { Courier } from "@/lib/types";
 const STATUS: Record<Courier["status"], { dot: string; label: string; chip: string }> = {
   available: { dot: "bg-ok", label: "Libre", chip: "bg-ok-soft text-ok" },
   busy: { dot: "bg-gold", label: "En un viaje", chip: "bg-gold-soft text-gold-ink" },
-  paused: { dot: "bg-ink-3", label: "En pausa", chip: "bg-sunken text-ink-3" },
-  offline: { dot: "bg-danger", label: "Desconectado", chip: "bg-danger-soft text-danger" },
+  // Rojo: emergencia marcada por la central o novedad que reportó él (accidente, moto varada).
+  paused: { dot: "bg-danger", label: "Emergencia", chip: "bg-danger-soft text-danger" },
+  // Gris: recién agregado o desconectado. Se conecta escribiéndole al bot.
+  offline: { dot: "bg-ink-3", label: "Desconectado", chip: "bg-sunken text-ink-3" },
 };
 
 export function CourierCard({
   courier,
   onChange,
+  onEmergency,
   onRemove,
 }: {
   courier: Courier;
   onChange: (next: Courier["status"]) => void;
+  onEmergency: (on: boolean) => void;
   onRemove: () => void;
 }) {
   const status = STATUS[courier.status];
   const located = courier.lat != null && courier.lng != null;
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  // Fuera de turno, sea desconectado o en pausa: el botón de encendido lo vuelve a conectar.
-  const off = courier.status === "offline" || courier.status === "paused";
+  const off = courier.status === "offline";
+  const emergency = courier.status === "paused";
+  const [confirmingEmergency, setConfirmingEmergency] = useState(false);
   // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <article className="card flex flex-col gap-4 p-4">
+    <article className={`card flex flex-col gap-4 p-4 ${emergency ? "ring-2 ring-danger" : ""}`}>
       <div className="flex items-center gap-3">
         <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-clapi text-sm font-bold text-white">
           {initials(courier.name)}
@@ -94,10 +101,10 @@ export function CourierCard({
         <PhoneLink phone={courier.phone} name={courier.name} iconOnly wide />
         <PhoneLink phone={courier.phone} name={courier.name} call iconOnly wide />
         {/* Encendido de ida y vuelta: verde si está conectado (tocar lo desconecta), apagado
-            si no (tocar lo conecta). En un viaje no se puede desconectar. */}
+            si no (tocar lo conecta). En un viaje o en emergencia no se toca. */}
         <button
           type="button"
-          disabled={courier.status === "busy"}
+          disabled={courier.status === "busy" || emergency}
           onClick={() => onChange(off ? "available" : "offline")}
           aria-label={off ? "Conectar" : "Desconectar"}
           title={off ? "Conectar" : "Desconectar"}
@@ -111,6 +118,17 @@ export function CourierCard({
         </button>
         <button
           type="button"
+          onClick={() => (emergency ? onEmergency(false) : setConfirmingEmergency(true))}
+          aria-label={emergency ? "Quitar la emergencia" : "Marcar emergencia"}
+          title={emergency ? "Quitar la emergencia" : "Marcar emergencia"}
+          className={`ease-ui flex h-10 w-10 items-center justify-center rounded-xl ${
+            emergency ? "bg-danger text-white" : "bg-sunken text-ink-3 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+          }`}
+        >
+          <Siren size={15} />
+        </button>
+        <button
+          type="button"
           disabled={courier.status === "busy"}
           onClick={() => setConfirming(true)}
           aria-label="Quitar de la flota"
@@ -119,6 +137,41 @@ export function CourierCard({
           <Trash2 size={15} />
         </button>
       </div>
+
+      {emergency && (
+        <p className="-mt-1 rounded-xl bg-danger-soft px-3 py-2 text-xs text-danger">
+          No recibe pedidos y su bot está pausado.{" "}
+          <Link href={chatHref(courier.phone)} className="font-semibold underline underline-offset-2">
+            Abrir su chat
+          </Link>
+        </p>
+      )}
+
+      {confirmingEmergency && (
+        <div role="alertdialog" aria-label={`Emergencia de ${courier.name}`} className="flex flex-col gap-2 rounded-xl bg-danger-soft p-3 text-xs text-danger">
+          <p className="font-semibold">¿Marcar a {courier.name} en emergencia?</p>
+          <ul className="list-disc pl-4 text-ink-2">
+            <li>No le llegan más pedidos.</li>
+            <li>El bot deja de responderle y su chat queda fijado arriba en Conversaciones.</li>
+            <li>Lo que lleva sigue a su nombre: decide tú si reasignarlo.</li>
+          </ul>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingEmergency(false);
+                onEmergency(true);
+              }}
+              className="ease-ui h-9 flex-1 rounded-lg bg-danger font-semibold text-white"
+            >
+              Sí, marcar emergencia
+            </button>
+            <button type="button" onClick={() => setConfirmingEmergency(false)} className="ease-ui h-9 rounded-lg bg-surface px-4 font-semibold text-ink-2">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {confirming && (
         <div role="alertdialog" aria-label={`Quitar a ${courier.name}`} className="flex flex-col gap-2 rounded-xl bg-danger-soft p-3 text-xs text-danger">
