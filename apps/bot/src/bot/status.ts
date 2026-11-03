@@ -17,11 +17,6 @@ import type { Trip } from "@/db/queries/trips";
 
 const RECENT_DELIVERED_MS = 3 * 60 * 60_000;
 
-function formatPhone(phone: string) {
-  const d = phone.replace(/\D/g, "").slice(-10);
-  return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : phone;
-}
-
 function time(date: Date) {
   return date.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" });
 }
@@ -29,7 +24,6 @@ function time(date: Date) {
 type Row = {
   trip: Trip;
   courierName: string | null;
-  courierPhone: string | null;
   deliveredAt: Date | null;
 };
 
@@ -39,12 +33,10 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
     .select({
       trip: schema.trips,
       courierName: schema.assignments.courierName,
-      courierPhone: schema.couriers.phone,
       deliveredAt: schema.assignments.deliveredAt,
     })
     .from(schema.trips)
     .leftJoin(schema.assignments, eq(schema.assignments.tripId, schema.trips.id))
-    .leftJoin(schema.couriers, eq(schema.couriers.id, schema.assignments.courierId))
     .where(
       and(
         eq(schema.trips.conversationId, conversationId),
@@ -62,17 +54,41 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
 /** Lo que tarda en llegar el domiciliario al restaurante, regla estándar. */
 export const PICKUP_WINDOW = "10 - 15 minutos";
 
-/** Una línea por pedido: dónde va y quién lo lleva. */
+/** Cuándo llega el domiciliario: en la ventana estándar o, si la comida
+ *  tarda más, para cuando esté lista. */
+export function pickupEta(readyAt: Date | null): string {
+  const readyIn = readyAt ? Math.ceil((readyAt.getTime() - Date.now()) / 60_000) : null;
+  return readyIn != null && readyIn > 15 ? `para cuando esté lista (en ${readyIn} min)` : `en ${PICKUP_WINDOW}`;
+}
+
+/** El restaurante nunca recibe el número del domiciliario: la agencia es
+ *  la intermediaria y le pasa lo que necesite. */
+export const COURIER_CONTACT_NOTE = "Si necesitas algo del domiciliario, escríbenos por aquí y nosotros le avisamos.";
+
+/** El pedido quedó creado pero todavía no tiene moto: el servicio queda en
+ *  espera y se avisa cuando se asigne (`notifyAssigned`). */
+export function waitingText(code: string): string {
+  return `⏳ Servicio motorizado en espera de asignación para el pedido ${code}.\n\nLas motos están ocupadas, te aviso apenas tenga una asignada.`;
+}
+
+/** Ya hay moto: el servicio pasa a confirmado. Solo el nombre del
+ *  domiciliario, nunca su número. */
+export function confirmedText(code: string, courierName: string, readyAt: Date | null, fee?: string): string {
+  const price = fee ? ` · ${fee}` : "";
+  return `✅ Servicio motorizado confirmado para el pedido ${code}${price}.\n\nVa ${courierName}, estará ahí ${pickupEta(readyAt)}.\n\n${COURIER_CONTACT_NOTE}`;
+}
+
+/** Una línea por pedido: dónde va y quién lo lleva (solo el nombre). */
 function describe(row: Row, withAddress: boolean) {
   const { trip } = row;
   const where = withAddress ? ` (${trip.deliveryAddress})` : "";
-  const courier = row.courierName ? `${row.courierName}${row.courierPhone ? ` · ${formatPhone(row.courierPhone)}` : ""}` : null;
+  const courier = row.courierName ?? "un domiciliario";
   switch (trip.status) {
     case "pending":
-      return `⏳ ${trip.code}${where}: confirmado, el domiciliario estará ahí en ${PICKUP_WINDOW}.`;
+      return withAddress ? `${waitingText(trip.code)}\n\n📍 ${trip.deliveryAddress}` : waitingText(trip.code);
     case "assigned":
     case "en_route":
-      return `🛵 ${trip.code}${where}: va ${courier ?? "un domiciliario"}.`;
+      return `✅ Servicio motorizado confirmado para el pedido ${trip.code}${where}: va ${courier}.\n\n${COURIER_CONTACT_NOTE}`;
     case "delivered":
       // Sin punto final: la hora ya termina en "p. m.".
       return `✅ ${trip.code}${where}: entregado${row.deliveredAt ? ` a las ${time(row.deliveredAt)}` : ""}`;

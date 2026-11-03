@@ -156,15 +156,16 @@ export const restaurants = pgTable(
 
 export type TripStatus = "pending" | "assigned" | "en_route" | "delivered" | "cancelled";
 
-/** El número del código de cada pedido (`A1042`): global, nunca se repite.
- *  Arranca en 1001 para que todos los códigos tengan al menos 4 cifras. */
-export const tripCodeSeq = pgSequence("trip_code_seq", { startWith: 1001 });
+/** El contador del código de cada pedido (`B-12`): de 0 (A-00) a 2599 (Z-99)
+ *  y vuelve a empezar. Ver `trip-code.ts`. */
+export const tripCodeSeq = pgSequence("trip_code_seq", { startWith: 0, minValue: 0, maxValue: 2599, cycle: true });
 
 export const trips = pgTable(
   "trips",
   {
     id: serial("id").primaryKey(),
-    code: text("code").notNull().unique(),
+    /** Se repite cada 2.600 pedidos: no es único. */
+    code: text("code").notNull(),
 
     restaurantId: integer("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
     conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
@@ -215,6 +216,8 @@ export const trips = pgTable(
   (t) => [
     index("trips_status_idx").on(t.status),
     index("trips_restaurant_idx").on(t.restaurantId),
+    // El restaurante nombra el pedido por su código (bot: tripFromCodeInText).
+    index("trips_conversation_code_idx").on(t.conversationId, t.code),
     // El tablero trae los activos y los que se movieron hoy (portal: listTrips).
     index("trips_updated_idx").on(t.updatedAt),
   ],
