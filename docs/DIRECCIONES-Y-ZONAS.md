@@ -4,7 +4,8 @@
 
 - **Dirección escrita:** se geocodifica una sola vez con Google Geocoding (`apps/bot/src/services/google/geocode.ts`), limitado a un rectángulo que va de Cali a Jamundí (sur 3.2, oeste −76.65, norte 3.6, este −76.4).
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
-- **Recogida:** la del restaurante registrado (ubicada una vez al registrarlo); si no está registrado, se ubica lo que escribió como origen.
+- **Recogida:** la del restaurante registrado; si no está registrado, se ubica lo que escribió como origen.
+- **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.
 - **Se cobra solo por distancia** (Haversine × 1,3, tabla de rangos por km del portal). El cobro por zonas se eliminó: sin ubicación no hay precio.
 - **Si Google no encuentra la dirección**, se pide corregirla (número completo y barrio) o mandar la ubicación; a los 2 intentos pasa a la central.
 - **Si Google falla** (caído, sin llave o sin facturación), el bot responde «No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central» y la conversación queda en el portal con el pedido a medio armar.

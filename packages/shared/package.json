@@ -8,6 +8,7 @@
     "./db": "./src/db/index.ts",
     "./db/schema": "./src/db/schema.ts",
     "./domain/extraction": "./src/domain/extraction.ts",
+    "./domain/coordinates": "./src/domain/coordinates.ts",
     "./auth/password": "./src/auth/password.ts"
   },
   "scripts": {

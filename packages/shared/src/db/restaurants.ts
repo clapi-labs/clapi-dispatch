@@ -1,5 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 
+import { inServiceArea } from "../domain/coordinates";
 import { db } from "./client";
 import { restaurants } from "./schema";
 
@@ -54,4 +55,93 @@ export async function saveRestaurant(input: {
     .values({ ...values, phone: normalizePhone(input.phone) })
     .returning();
   return { restaurant, created: true };
+}
+
+/** Lo que llega del formulario de restaurantes del portal, ya revisado. */
+export type RestaurantInput = {
+  name: string;
+  phone: string;
+  pickupAddress: string;
+  pickupDetail: string | null;
+  pickupLocation: { lat: number; lng: number };
+  active: boolean;
+};
+
+/**
+ * Revisa el cuerpo del formulario. Sin coordenadas dentro del área de
+ * servicio no se guarda: la recogida de un restaurante registrado es la que
+ * usa el bot para cobrar, y un punto equivocado cobra mal cada pedido.
+ */
+export function validateRestaurant(body: unknown): { input: RestaurantInput } | { error: string } {
+  if (!body || typeof body !== "object") return { error: "Datos inválidos" };
+  const b = body as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+  const name = text(b.name);
+  const phone = normalizePhone(text(b.phone));
+  const pickupAddress = text(b.pickupAddress);
+  const pickupDetail = text(b.pickupDetail) || null;
+  const loc = b.pickupLocation as { lat?: unknown; lng?: unknown } | null;
+  const lat = Number(loc?.lat);
+  const lng = Number(loc?.lng);
+
+  if (!name) return { error: "Falta el nombre" };
+  if (phone.length < 10) return { error: "El WhatsApp debe tener al menos 10 dígitos" };
+  if (!pickupAddress) return { error: "Falta la dirección" };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: "Faltan las coordenadas" };
+  if (!inServiceArea({ lat, lng })) return { error: "Las coordenadas quedan fuera de Cali y Jamundí" };
+
+  return {
+    input: {
+      name,
+      // "3001234567" se guarda como "573001234567", igual que el wa_id de WhatsApp.
+      phone: phone.length === 10 ? `57${phone}` : phone,
+      pickupAddress,
+      pickupDetail,
+      pickupLocation: { lat, lng },
+      active: b.active !== false,
+    },
+  };
+}
+
+/** Todos, activos e inactivos, por nombre. */
+export async function listRestaurants(): Promise<Restaurant[]> {
+  return db.select().from(restaurants).orderBy(asc(restaurants.name));
+}
+
+/** Otro restaurante (activo o no) con el mismo número, para no duplicarlo. */
+async function phoneTaken(phone: string, exceptId: number | null) {
+  const last10 = normalizePhone(phone).slice(-10);
+  const conditions = [sql`right(regexp_replace(${restaurants.phone}, '\\D', '', 'g'), 10) = ${last10}`];
+  if (exceptId !== null) conditions.push(ne(restaurants.id, exceptId));
+  const [row] = await db.select({ name: restaurants.name }).from(restaurants).where(and(...conditions)).limit(1);
+  return row?.name ?? null;
+}
+
+function rowValues(input: RestaurantInput) {
+  return {
+    name: input.name,
+    phone: input.phone,
+    knownPickupAddress: input.pickupAddress,
+    knownPickupLocation: input.pickupLocation,
+    pickupDetail: input.pickupDetail,
+    active: input.active,
+  };
+}
+
+export async function createRestaurant(input: RestaurantInput): Promise<{ restaurant: Restaurant } | { error: string }> {
+  const taken = await phoneTaken(input.phone, null);
+  if (taken) return { error: `Ese número ya es de ${taken}` };
+  const [restaurant] = await db.insert(restaurants).values(rowValues(input)).returning();
+  return { restaurant };
+}
+
+export async function updateRestaurant(
+  id: number,
+  input: RestaurantInput,
+): Promise<{ restaurant: Restaurant } | { error: string } | null> {
+  const taken = await phoneTaken(input.phone, id);
+  if (taken) return { error: `Ese número ya es de ${taken}` };
+  const [restaurant] = await db.update(restaurants).set(rowValues(input)).where(eq(restaurants.id, id)).returning();
+  return restaurant ? { restaurant } : null;
 }

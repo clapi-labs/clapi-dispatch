@@ -47,8 +47,15 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1793681004802,
-      "tag": "0006_codigos_y_citas",
+      "when": 1793683808913,
+      "tag": "0006_restaurantes_detalle",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793689247122,
+      "tag": "0007_codigos_y_citas",
       "breakpoints": true
     }
   ]

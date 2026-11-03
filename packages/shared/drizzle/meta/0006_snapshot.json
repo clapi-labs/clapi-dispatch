@@ -1,5 +1,5 @@
 {
-  "id": "c060f0d3-0376-4af7-bdeb-d5e794c894a5",
+  "id": "1a0f616f-85d8-41ae-8316-fb9345e5c7fb",
   "prevId": "0ad6e613-bf2c-4ee3-a16e-7cf504f1fd22",
   "version": "7",
   "dialect": "postgresql",
@@ -628,12 +628,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "reply_to_wa_message_id": {
-          "name": "reply_to_wa_message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "incoming": {
           "name": "incoming",
           "type": "jsonb",
@@ -770,6 +764,12 @@
         "known_pickup_location": {
           "name": "known_pickup_location",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pickup_detail": {
+          "name": "pickup_detail",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1242,18 +1242,7 @@
   },
   "enums": {},
   "schemas": {},
-  "sequences": {
-    "public.trip_code_seq": {
-      "name": "trip_code_seq",
-      "schema": "public",
-      "increment": "1",
-      "startWith": "1001",
-      "minValue": "1",
-      "maxValue": "9223372036854775807",
-      "cache": "1",
-      "cycle": false
-    }
-  },
+  "sequences": {},
   "roles": {},
   "policies": {},
   "views": {},
