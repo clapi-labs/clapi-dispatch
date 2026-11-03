@@ -92,7 +92,7 @@ export async function notifyAssigned(tripId: number) {
 
   const restaurant = await restaurantConversation(row.trip.conversationId);
   if (restaurant) {
-    const text = `✅ Pedido ${row.trip.code} confirmado · ${cop(row.trip.deliveryFee)}\n🛵 Va ${row.courier.name} · ${formatPhone(row.courier.phone)}`;
+    const text = `🛵 Pedido ${row.trip.code} · ${cop(row.trip.deliveryFee)}\nVa ${row.courier.name} · ${formatPhone(row.courier.phone)}`;
     await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }

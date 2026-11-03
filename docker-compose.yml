@@ -48,6 +48,8 @@ services:
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      # Modo sombra del engine; vacío = no corre.
+      ENGINE_URL: http://engine:3003
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
     depends_on:

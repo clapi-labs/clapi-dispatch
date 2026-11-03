@@ -65,7 +65,10 @@ export function parseDelivery(raw: Record<string, unknown>): Interpretation["ent
         : null;
   const listo = typeof raw.listoEnMinutos === "number" ? Math.round(raw.listoEnMinutos) : null;
   const phone = customerPhone(raw.telefonoCliente);
-  const doubts = Array.isArray(raw.dudas) ? raw.dudas.filter((k): k is DoubtfulField => (DOUBTFUL_FIELDS as readonly unknown[]).includes(k)) : [];
+  // El valor y el pago no se le preguntan al restaurante: no se dudan.
+  const doubts = Array.isArray(raw.dudas)
+    ? raw.dudas.filter((k): k is DoubtfulField => (DOUBTFUL_FIELDS as readonly unknown[]).includes(k) && k !== "valorACobrar" && k !== "metodoPago")
+    : [];
   if (phone.doubtful) doubts.push("telefonoCliente");
   return {
     direccionEntrega: text(raw.direccionEntrega),

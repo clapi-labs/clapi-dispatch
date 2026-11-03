@@ -58,6 +58,12 @@ export const env = {
     },
   },
 
+  /** Opcional: el engine de asignación (apps/engine). Sin él, el modo sombra
+   *  no corre y todo sigue con la cola. */
+  get engineUrl() {
+    return optional("ENGINE_URL").replace(/\/+$/, "");
+  },
+
   /**
    * El número se comparte con el sistema de pedidos de restaurante
    * (`demo-delivery-system`) mientras se prueba esto — nunca los dos activos

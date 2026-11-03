@@ -59,6 +59,9 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
     .orderBy(desc(schema.trips.createdAt));
 }
 
+/** Lo que tarda en llegar el domiciliario al restaurante, regla estándar. */
+export const PICKUP_WINDOW = "10 - 15 minutos";
+
 /** Una línea por pedido: dónde va y quién lo lleva. */
 function describe(row: Row, withAddress: boolean) {
   const { trip } = row;
@@ -66,7 +69,7 @@ function describe(row: Row, withAddress: boolean) {
   const courier = row.courierName ? `${row.courierName}${row.courierPhone ? ` · ${formatPhone(row.courierPhone)}` : ""}` : null;
   switch (trip.status) {
     case "pending":
-      return `⏳ ${trip.code}${where}: buscando moto, te aviso apenas se asigne.`;
+      return `⏳ ${trip.code}${where}: confirmado, el domiciliario estará ahí en ${PICKUP_WINDOW}.`;
     case "assigned":
     case "en_route":
       return `🛵 ${trip.code}${where}: va ${courier ?? "un domiciliario"}.`;
