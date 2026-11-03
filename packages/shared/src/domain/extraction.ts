@@ -37,7 +37,24 @@ type DeliveryFields = {
   /** El barrio de la dirección: para nombrar la entrega en los mensajes
    *  («Serían $6.000 hasta Valle del Lili»). No se usa para cobrar. */
   barrio?: string | null;
+  /** Los campos que el modelo leyó pero no está seguro (letra borrosa, un
+   *  número incompleto, dos lecturas posibles). Se le muestran al restaurante
+   *  marcados para que los confirme o los corrija. */
+  dudas?: DoubtfulField[] | null;
 };
+
+/** Lo que el modelo puede marcar como dudoso. */
+export const DOUBTFUL_FIELDS = [
+  "direccionEntrega",
+  "detalleDireccion",
+  "telefonoCliente",
+  "nombreCliente",
+  "valorACobrar",
+  "metodoPago",
+  "listoEnMinutos",
+  "notas",
+] as const;
+export type DoubtfulField = (typeof DOUBTFUL_FIELDS)[number];
 
 /** Una entrega del pedido: lo que dijo el restaurante y lo que calculó el código. */
 export type DeliveryDraft = DeliveryFields & {
@@ -77,6 +94,13 @@ export type OrderDraft = {
   /** Un cambio para un pedido ya creado (por ejemplo «ya está listo») cuando
    *  hay varios abiertos y se preguntó a cuál se refiere. */
   actualizacionPendiente?: TripUpdate | null;
+  /** Los datos se leyeron de una imagen o el modelo dudó de alguno: antes de
+   *  pedir la moto, el restaurante ve lo que se entendió y lo confirma. */
+  verificar?: boolean;
+  /** El restaurante solo preguntó el precio («¿cuánto a Pance?»): se le
+   *  respondió sin pedirle que confirme. Pasa a pedido cuando decide
+   *  mandarlo («dale», los datos del cliente, el tiempo). */
+  soloPrecio?: boolean;
 };
 
 /** Lo que devuelve el modelo por mensaje. */
@@ -86,11 +110,11 @@ export type Interpretation = {
 };
 
 /** Lo que se puede exigir por agencia antes de crear el viaje. */
-export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "barrio" | "esConjunto">;
+export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "barrio" | "esConjunto" | "dudas">;
 
 /** Los obligatorios del primer cliente. Cada agencia puede cambiarlos en
  *  `settings.bot_config` sin tocar el flujo. */
-export const DEFAULT_REQUIRED_FIELDS: OrderFieldKey[] = ["direccionEntrega", "listoEnMinutos"];
+export const DEFAULT_REQUIRED_FIELDS: OrderFieldKey[] = ["direccionEntrega", "nombreCliente", "telefonoCliente", "listoEnMinutos"];
 
 const DELIVERY_KEYS = [
   "direccionEntrega",
@@ -116,6 +140,7 @@ export function emptyDelivery(): DeliveryDraft {
     detalleDireccion: null,
     esConjunto: null,
     barrio: null,
+    dudas: null,
   };
 }
 
@@ -183,6 +208,11 @@ function mergeDelivery(known: DeliveryDraft, incoming: DeliveryFields): Delivery
     if (value != null) (merged as Record<string, unknown>)[key] = value;
   }
   if (incoming.barrio) merged.barrio = incoming.barrio;
+  // Un dato que llega de nuevo (una corrección) deja de ser dudoso, salvo que
+  // el modelo vuelva a dudar de él.
+  const corrected = (k: DoubtfulField) => incoming[k] != null && incoming[k] !== known[k];
+  const doubts = new Set<DoubtfulField>([...(known.dudas ?? []).filter((k) => !corrected(k)), ...(incoming.dudas ?? [])]);
+  merged.dudas = doubts.size ? [...doubts] : null;
   const notes = [known.notas, incoming.notas].filter((n): n is string => !!n?.trim());
   merged.notas = notes.length ? [...new Set(notes)].join(" · ") : null;
   return merged;
@@ -236,10 +266,12 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
       "notas": string | null,             // solo lo NUEVO de este mensaje que el motorizado deba saber
       "detalleDireccion": string | null,  // torre, bloque, apartamento, casa, piso, oficina o local: "Torre 3 apto 502"
       "esConjunto": boolean | null,       // true si la dirección es un conjunto, unidad, edificio, condominio o torres
-      "barrio": string | null             // el barrio del CLIENTE ("Bochalema", "Cañasgordas"), aunque venga dentro de la dirección; no la comuna ni el barrio del restaurante; null si no se sabe
+      "barrio": string | null,            // el barrio del CLIENTE ("Bochalema", "Cañasgordas"), aunque venga dentro de la dirección; no la comuna ni el barrio del restaurante; null si no se sabe
+      "dudas": string[]                   // nombres de los campos de ESTA entrega que leíste pero no estás seguro; [] si ninguno
     }
   ],
   "consulta": "estado" | "cobertura" | null,
+  "intencion": "cotizar" | "pedir" | null,
   "confirma": boolean,
   "confuso": boolean
 }
@@ -262,8 +294,14 @@ Reglas:
   Ejemplo: "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio" → direccionEntrega "Calle 5 # 66-20, Edificio Torre Alta, El Refugio", detalleDireccion "Apto 1203", esConjunto true.
 - "esConjunto": true si la dirección nombra un conjunto, unidad residencial, edificio, condominio, torres o urbanización cerrada ("Conjunto Bosques del Lili", "Unidad Alameda", "Edificio Ceibas", "Torres de Comfandi"). false si es una casa en una calle, un local o un lugar público (clínica, centro comercial, universidad). null si no se sabe. Conserva el valor ya capturado si el mensaje no dice nada nuevo de la dirección.
 - "notas": instrucciones de entrega, con cuánto paga el cliente ("billete de 100 mil"), qué lleva el pedido, horarios o referencias del lugar. No repitas lo que ya va en otro campo ni lo que ya estaba en las notas.
+- "intencion": qué quiere el restaurante con ESTE mensaje.
+  "cotizar" = SOLO pregunta cuánto vale o si llegan, sin pedir que lo manden: "¿cuánto a Valle del Lili?", "¿qué vale un domi hasta Pance?", "¿cuánto cobran a la Cra 50 # 10-20?", "cotízame a…", "¿llegan a Jamundí y cuánto?".
+  "pedir" = pide el servicio: manda el pedido o datos del cliente (nombre, teléfono, tiempo, valor, torre y apto), reenvía el pedido de su cliente, "necesito un domi para…", "envíame una moto", "para la Cra 50…", una dirección sola sin preguntar el precio, o decide mandar lo que ya cotizó ("dale, mándalo", "pídelo").
+  null = ni lo uno ni lo otro (un saludo, "gracias", una consulta de estado). Si dudas entre "cotizar" y "pedir", "pedir".
 - "confirma": true solo si la etapa es "cotizado" o "confirmado" y el restaurante acepta el servicio: "sí", "dale", "listo", "confirmo", "ya están los 2", o da el tiempo de preparación. En la etapa "recibiendo", siempre false.
+  Si en los datos ya capturados "soloPrecio" es true (solo preguntó el precio), confirma SOLO si decide mandarlo: "dale, mándalo", "pídelo", "sí, envíalo", "listo, que vaya", o manda los datos del cliente o el tiempo. "Ok", "gracias", "vale", "ah bueno", "listo gracias" o "lo tengo en cuenta" son false.
 - Nunca inventes un valor: lo que no sepas va en null.
+- "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), o un dato que no queda claro a qué entrega pertenece. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
 - "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto, o se contradice sin aclarar cuál dato es el bueno. Saludos, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.

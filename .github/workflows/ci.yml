@@ -34,7 +34,9 @@ jobs:
 
   engine:
     name: Engine (casos y contrato)
-    runs-on: ubuntu-latest
+    # Fijo, no ubuntu-latest: en Ubuntu 26.04 setup-python aún no tiene la
+    # 3.14.4 y el job falla antes de probar nada.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4

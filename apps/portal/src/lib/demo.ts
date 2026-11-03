@@ -53,7 +53,8 @@ function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deli
   const id = nextTripId++;
   return {
     id,
-    code: `DSP-${String(id).padStart(4, "0")}`,
+    // Mismo formato que los reales (packages/shared/src/db/trip-code.ts): letra del día + número.
+    code: `${"GABCDEF"[new Date().getDay()]}${id + 1000}`,
     pickupAddress: null,
     customerPhone: "3157894561",
     valueToCollect: 45_000,

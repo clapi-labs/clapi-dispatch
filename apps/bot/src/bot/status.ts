@@ -91,5 +91,12 @@ export async function answerStatus(conversation: Conversation, phone: string, qu
     return;
   }
 
-  await say(conversation.id, phone, rows.map((r) => describe(r, true)).join("\n"));
+  // Varios: uno por pedido, citando el mensaje con que se pidió, como
+  // respondería una persona señalando cada uno. Del más viejo al más nuevo.
+  // Si dos salieron del mismo mensaje, la dirección dice cuál es cuál.
+  const sharedSource = (row: Row) => rows.filter((r) => r.trip.sourceWaMessageId && r.trip.sourceWaMessageId === row.trip.sourceWaMessageId).length > 1;
+  for (const row of [...rows].reverse()) {
+    const quote = row.trip.sourceWaMessageId;
+    await say(conversation.id, phone, describe(row, !quote || sharedSource(row)), { replyTo: quote, tripId: row.trip.id });
+  }
 }

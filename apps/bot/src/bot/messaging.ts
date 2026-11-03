@@ -23,6 +23,7 @@ export async function say(conversationId: number | null, phone: string, text: st
     await recordMessage(conversationId, "bot", result.ok ? text : `${text}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`, {
       waMessageId: result.ok ? result.messageId : null,
       tripId: options.tripId ?? null,
+      replyTo: options.replyTo ?? null,
     });
   }
   return result;
