@@ -7,6 +7,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  */
 
 export const SESSION_COOKIE = "session";
+
+/** `AUTH_DISABLED=1` entra al portal sin login. Solo para desarrollo o una
+ *  prueba corta: sin login, cualquiera con la dirección ve los chats y puede
+ *  escribirles a los restaurantes y motorizados. */
+export function authDisabled(): boolean {
+  return process.env.AUTH_DISABLED === "1";
+}
 export const SESSION_MAX_AGE = 12 * 60 * 60; // segundos
 
 type Payload = { u: number; exp: number };

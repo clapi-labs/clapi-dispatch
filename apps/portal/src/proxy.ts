@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
+import { authDisabled, SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /**
  * Todo el portal exige sesión salvo la pantalla de login y su API. Las
@@ -9,7 +9,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value) !== null) {
+  if (authDisabled() || verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value) !== null) {
     return NextResponse.next();
   }
 
