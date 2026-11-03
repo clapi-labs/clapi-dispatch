@@ -136,6 +136,9 @@ export const restaurants = pgTable(
      *  usa como respaldo si el mensaje no la trae. */
     knownPickupAddress: text("known_pickup_address"),
     knownPickupLocation: jsonb("known_pickup_location").$type<{ lat: number; lng: number }>(),
+    /** Lo que ayuda al motorizado a encontrar la recogida: "Local 12, entrada
+     *  por el parqueadero". Va en la ficha junto a la dirección. */
+    pickupDetail: text("pickup_detail"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

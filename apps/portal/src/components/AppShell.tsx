@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ const NAV = [
   { href: "/flota", label: "Flota", short: "Flota", icon: Users },
   { href: "/arqueo", label: "Finanzas", short: "Finanzas", icon: Wallet },
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
+  { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store, desktopOnly: true },
   // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
   { href: "/zonas", label: "Zonas sin cobertura", short: "Zonas", icon: MapPinOff, desktopOnly: true },
 ];
