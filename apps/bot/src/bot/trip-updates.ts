@@ -1,4 +1,4 @@
-import type { DeliveryDraft, Interpretation, OrderDraft, TripUpdate } from "@dispatch/shared";
+import { fullAddress, type DeliveryDraft, type Interpretation, type OrderDraft, type TripUpdate } from "@dispatch/shared";
 
 import { say } from "@/bot/messaging";
 import { notifyTripUpdated } from "@/bot/notify";
@@ -28,12 +28,16 @@ export function tripUpdateFrom(fields: Interpretation["entregas"][number], known
   if (fields.nombreCliente && fields.nombreCliente !== known.nombreCliente) update.nombreCliente = fields.nombreCliente;
   if (fields.valorACobrar != null && fields.valorACobrar !== known.valorACobrar) update.valorACobrar = fields.valorACobrar;
   if (fields.metodoPago && fields.metodoPago !== known.metodoPago) update.metodoPago = fields.metodoPago;
+  // La torre y el apto que llegan con el viaje ya creado («es la torre 2 apto
+  // 301»): sin esto el domiciliario llegaría a la portería sin saber a quién.
+  if (fields.detalleDireccion && fields.detalleDireccion !== known.detalleDireccion) update.detalleDireccion = fields.detalleDireccion;
   return Object.keys(update).length > 1 ? update : null;
 }
 
 /** Cómo se le cuenta el cambio a cada uno. */
 function describe(update: TripUpdate) {
   const parts: string[] = [];
+  if (update.detalleDireccion) parts.push(`la entrega es en ${update.detalleDireccion}`);
   if (update.listoEnMinutos != null) parts.push(update.listoEnMinutos === 0 ? "la comida ya está lista" : `la comida está lista en ${update.listoEnMinutos} min`);
   if (update.metodoPago) parts.push(update.metodoPago === "efectivo" ? "se cobra en efectivo" : "ya está pagado, no se cobra");
   if (update.valorACobrar != null) parts.push(`valor a cobrar ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(update.valorACobrar)}`);
@@ -54,6 +58,8 @@ export async function applyTripUpdate(ctx: Context, trip: Trip, update: TripUpda
   const patch: Partial<Trip> = {};
   if (update.listoEnMinutos != null) patch.readyAt = new Date(Date.parse(update.desde) + update.listoEnMinutos * 60_000);
   if (update.notas) patch.notes = [trip.notes, update.notas].filter(Boolean).join(" · ");
+  // La calle se queda; la torre y el apto que hubiera se reemplazan.
+  if (update.detalleDireccion) patch.deliveryAddress = fullAddress({ direccionEntrega: trip.deliveryAddress.split(" · ")[0], detalleDireccion: update.detalleDireccion });
   if (update.telefonoCliente) patch.customerPhone = update.telefonoCliente;
   if (update.nombreCliente) patch.customerName = update.nombreCliente;
   if (update.valorACobrar != null) patch.valueToCollect = update.valorACobrar;

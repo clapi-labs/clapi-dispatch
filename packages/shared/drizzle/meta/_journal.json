@@ -71,6 +71,13 @@
       "when": 1793743084670,
       "tag": "0009_codigo_letra_dos_cifras",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793752940898,
+      "tag": "0010_confirmacion_visto",
+      "breakpoints": true
     }
   ]
 }

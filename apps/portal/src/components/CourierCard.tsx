@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, MapPin, Power, PowerOff, Trash2 } from "lucide-react";
+import { ChevronDown, Eye, MapPin, Power, PowerOff, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
@@ -75,6 +75,27 @@ export function CourierCard({
           <dd className="truncate text-sm font-semibold">{zone ?? "Sin GPS"}</dd>
         </div>
       </dl>
+
+      {/* Cómo responde a la ficha: para exigirle al que siempre se demora en confirmar. */}
+      {courier.seenStats && (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-3" title="Últimos 7 días">
+          <Eye size={12} className="shrink-0" />
+          {courier.seenStats.avgMinutes != null ? (
+            <span>
+              Confirma en <strong className={courier.seenStats.avgMinutes > 3 ? "text-danger" : "text-ink-2"}>{courier.seenStats.avgMinutes} min</strong> en
+              promedio ({courier.seenStats.confirmed} {courier.seenStats.confirmed === 1 ? "pedido" : "pedidos"})
+            </span>
+          ) : (
+            <span>Sin confirmaciones</span>
+          )}
+          {courier.seenStats.reminders > 0 && (
+            <span className="text-warn">
+              · {courier.seenStats.reminders} {courier.seenStats.reminders === 1 ? "recordatorio" : "recordatorios"}
+            </span>
+          )}
+          <span>· 7 días</span>
+        </p>
+      )}
 
       <div className="flex items-center gap-1.5 text-xs text-ink-3">
         <PhoneLink phone={courier.phone} name={courier.name} />

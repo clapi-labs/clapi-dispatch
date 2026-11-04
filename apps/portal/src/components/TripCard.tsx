@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Check, CheckCircle2, CreditCard } from "lucide-react";
+import { Banknote, Check, CheckCircle2, CreditCard, Eye, EyeOff } from "lucide-react";
 import { motion } from "motion/react";
 import { memo } from "react";
 
@@ -47,6 +47,33 @@ function Timer({ trip }: { trip: Trip }) {
 }
 
 /**
+ * ¿El motorizado ya vio el pedido? Hasta que toque «Vi el pedido» sale
+ * «Sin confirmar» (con «recordado» si el bot ya le insistió); pasados los
+ * minutos de alerta, en rojo, para que la central lo llame o le pase el
+ * pedido a otra moto.
+ */
+function SeenBadge({ trip, alert }: { trip: Trip; alert: boolean }) {
+  const now = useNow(trip.seenAt ? null : 1000);
+  const chip = "flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold";
+  if (trip.seenAt) {
+    const at = new Date(trip.seenAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+    return (
+      <span className={`${chip} bg-ok-soft text-ok`}>
+        <Eye size={12} /> Visto {at}
+      </span>
+    );
+  }
+  const min = trip.assignedAt ? Math.floor((now - Date.parse(trip.assignedAt)) / 60_000) : 0;
+  return (
+    <span className={`${chip} ${alert ? "bg-danger text-white" : "bg-warn-soft text-warn"}`}>
+      <EyeOff size={12} />
+      {alert ? `Sin confirmar hace ${min} min` : "Sin confirmar"}
+      {trip.seenReminderAt ? " · recordado" : ""}
+    </span>
+  );
+}
+
+/**
  * La tarjeta no depende del reloj: solo el cronómetro (`Timer`) late cada
  * segundo. Antes la tarjeta entera, con su animación de `layout`, se volvía a
  * medir y dibujar cada segundo por cada viaje en pantalla. `memo`: si el viaje
@@ -56,6 +83,8 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
   const urgent = useAfter(trip.status === "pending" ? Date.parse(trip.createdAt) + 120_000 : null);
   const assignedFor8s = useAfter(trip.status === "en_route" && trip.assignedAt ? Date.parse(trip.assignedAt) + 8000 : null);
   const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
+  const watchSeen = trip.status === "en_route" && !!trip.courierName && trip.seenAt !== undefined;
+  const unseenAlert = useAfter(watchSeen && !trip.seenAt && trip.seenAlertAt ? Date.parse(trip.seenAlertAt) : null);
   const cash = trip.paymentMethod === "efectivo";
 
   return (
@@ -66,7 +95,7 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`card flex flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      className={`card flex flex-col gap-2.5 p-3.5 ${urgent || unseenAlert ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
@@ -88,9 +117,12 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
         </div>
       </div>
 
-      {trip.deliveryFee > 0 && (
+      {(trip.deliveryFee > 0 || watchSeen) && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
-          <span className="rounded-full bg-clapi-soft px-2.5 py-0.5 font-semibold text-clapi-ink">Domicilio {formatCOP(trip.deliveryFee)}</span>
+          {trip.deliveryFee > 0 && (
+            <span className="rounded-full bg-clapi-soft px-2.5 py-0.5 font-semibold text-clapi-ink">Domicilio {formatCOP(trip.deliveryFee)}</span>
+          )}
+          {watchSeen && <SeenBadge trip={trip} alert={unseenAlert} />}
         </div>
       )}
 

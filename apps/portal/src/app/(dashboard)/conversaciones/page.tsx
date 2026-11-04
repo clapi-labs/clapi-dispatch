@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { AdvisorQueryPanel } from "@/components/AdvisorQueryPanel";
 import { ChatContactActions } from "@/components/ChatContactActions";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { KINDS, KindChip } from "@/components/KindChip";
@@ -536,6 +537,18 @@ export default function ConversacionesPage() {
                   </button>
                 </div>
               )}
+
+              {selected.botPaused && selected.advisorQuery?.length ? (
+                <AdvisorQueryPanel
+                  key={selected.id}
+                  conversationId={selected.id}
+                  items={selected.advisorQuery}
+                  onDone={() => {
+                    loadList();
+                    loadThread(selected.id);
+                  }}
+                />
+              ) : null}
 
               {!selected.botPaused && selected.draft && <DraftPanel draft={selected.draft} />}
 

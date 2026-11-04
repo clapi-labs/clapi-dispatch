@@ -25,6 +25,7 @@ type Row = {
   trip: Trip;
   courierName: string | null;
   deliveredAt: Date | null;
+  seenAt: Date | null;
 };
 
 async function load(conversationId: number, tripId: number | null): Promise<Row[]> {
@@ -34,6 +35,7 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
       trip: schema.trips,
       courierName: schema.assignments.courierName,
       deliveredAt: schema.assignments.deliveredAt,
+      seenAt: schema.assignments.seenAt,
     })
     .from(schema.trips)
     .leftJoin(schema.assignments, eq(schema.assignments.tripId, schema.trips.id))
@@ -71,7 +73,13 @@ export function waitingText(code: string): string {
   return `⏳ Servicio motorizado en espera de asignación para el pedido ${code}.\n\nLas motos están ocupadas, te aviso apenas tenga una asignada.`;
 }
 
-/** Ya hay moto: el servicio pasa a confirmado. Solo el nombre del
+/** Ya hay moto, pero el domiciliario todavía no confirma que vio el pedido:
+ *  el «confirmado» llega cuando toque «Vi el pedido» (`notifySeen`). */
+export function awaitingSeenText(code: string): string {
+  return `⏳ Servicio motorizado en espera de confirmación para el pedido ${code}.\n\nYa se lo pasé a un domiciliario, te confirmo apenas lo vea.`;
+}
+
+/** El domiciliario vio el pedido: el servicio pasa a confirmado. Solo el nombre del
  *  domiciliario, nunca su número. */
 export function confirmedText(code: string, courierName: string, readyAt: Date | null, fee?: string): string {
   const price = fee ? ` · ${fee}` : "";
@@ -88,6 +96,7 @@ function describe(row: Row, withAddress: boolean) {
       return withAddress ? `${waitingText(trip.code)}\n\n📍 ${trip.deliveryAddress}` : waitingText(trip.code);
     case "assigned":
     case "en_route":
+      if (!row.seenAt) return withAddress ? `${awaitingSeenText(trip.code)}\n\n📍 ${trip.deliveryAddress}` : awaitingSeenText(trip.code);
       return `✅ Servicio motorizado confirmado para el pedido ${trip.code}${where}: va ${courier}.\n\n${COURIER_CONTACT_NOTE}`;
     case "delivered":
       // Sin punto final: la hora ya termina en "p. m.".

@@ -56,7 +56,8 @@ export async function assignNextCourier(tripId: number): Promise<{ courierId: nu
       .values({ tripId, courierId: courier.id, courierName: courier.name, assignedAt: now, dispatchedAt: now })
       .onConflictDoUpdate({
         target: assignments.tripId,
-        set: { courierId: courier.id, courierName: courier.name, assignedAt: now, dispatchedAt: now, deliveredAt: null },
+        // Moto nueva: tiene que confirmar de nuevo que lo vio.
+        set: { courierId: courier.id, courierName: courier.name, assignedAt: now, dispatchedAt: now, deliveredAt: null, seenAt: null, seenReminderAt: null },
       });
 
     return { courierId: courier.id, courierName: courier.name };

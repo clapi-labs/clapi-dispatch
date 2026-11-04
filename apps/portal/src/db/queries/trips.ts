@@ -1,6 +1,6 @@
 import { desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 
-import { db, schema } from "@dispatch/shared/db";
+import { db, getBotConfig, schema } from "@dispatch/shared/db";
 
 export type TripRow = typeof schema.trips.$inferSelect;
 export type AssignmentRow = typeof schema.assignments.$inferSelect;
@@ -11,6 +11,13 @@ export type TripWithAssignment = TripRow & {
   courierPhone: string | null;
   assignedAt: Date | null;
   deliveredAt: Date | null;
+  /** Cuándo el motorizado tocó «Vi el pedido». */
+  seenAt: Date | null;
+  /** Cuándo se le recordó que confirmara. */
+  seenReminderAt: Date | null;
+  /** Desde cuándo el viaje sale en rojo si sigue sin confirmar (la hora de
+   *  asignación más `seenAlertMinutes`). `null` si ya lo vio o no tiene moto. */
+  seenAlertAt: Date | null;
 };
 
 /** Lo que el tablero necesita: los viajes abiertos (sin importar cuándo se
@@ -20,6 +27,7 @@ export type TripWithAssignment = TripRow & {
  *  porque un viaje recién creado todavía no tiene fila en `assignments`. El
  *  teléfono sale de `couriers`: la asignación solo guarda el nombre. */
 export async function listTrips(): Promise<TripWithAssignment[]> {
+  const { seenAlertMinutes } = await getBotConfig();
   const rows = await db
     .select({
       trip: schema.trips,
@@ -28,6 +36,8 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
       courierPhone: schema.couriers.phone,
       assignedAt: schema.assignments.assignedAt,
       deliveredAt: schema.assignments.deliveredAt,
+      seenAt: schema.assignments.seenAt,
+      seenReminderAt: schema.assignments.seenReminderAt,
     })
     .from(schema.trips)
     .leftJoin(schema.assignments, eq(schema.assignments.tripId, schema.trips.id))
@@ -47,6 +57,9 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     courierPhone: r.courierPhone,
     assignedAt: r.assignedAt,
     deliveredAt: r.deliveredAt,
+    seenAt: r.seenAt,
+    seenReminderAt: r.seenReminderAt,
+    seenAlertAt: r.assignedAt && !r.seenAt ? new Date(r.assignedAt.getTime() + seenAlertMinutes * 60_000) : null,
   }));
 }
 

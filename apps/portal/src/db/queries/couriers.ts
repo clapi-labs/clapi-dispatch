@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
@@ -11,8 +11,36 @@ function toWaId(phone: string) {
 
 export type CourierRow = typeof schema.couriers.$inferSelect;
 
-export async function listCouriers(): Promise<CourierRow[]> {
-  return db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt));
+/** Cómo responde a la ficha en los últimos 7 días: cuánto tarda en tocar
+ *  «Vi el pedido» y cuántas veces hubo que recordárselo. */
+export type SeenStats = { confirmed: number; avgMinutes: number | null; reminders: number };
+
+const STATS_DAYS = 7;
+
+export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenStats | null })[]> {
+  const a = schema.assignments;
+  const [couriers, stats] = await Promise.all([
+    db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt)),
+    db
+      .select({
+        courierId: a.courierId,
+        confirmed: sql<number>`count(${a.seenAt})::int`,
+        reminders: sql<number>`count(${a.seenReminderAt})::int`,
+        avgSeconds: sql<number | null>`avg(extract(epoch from ${a.seenAt} - ${a.assignedAt}))::float`,
+      })
+      .from(a)
+      .where(and(isNotNull(a.courierId), gte(a.assignedAt, new Date(Date.now() - STATS_DAYS * 24 * 60 * 60_000))))
+      .groupBy(a.courierId),
+  ]);
+  const byCourier = new Map(stats.map((r) => [r.courierId, r]));
+  return couriers.map((c) => {
+    const r = byCourier.get(c.id);
+    const seenStats =
+      r && (r.confirmed || r.reminders)
+        ? { confirmed: r.confirmed, reminders: r.reminders, avgMinutes: r.avgSeconds == null ? null : Math.round((r.avgSeconds / 60) * 10) / 10 }
+        : null;
+    return { ...c, seenStats };
+  });
 }
 
 export async function createCourier(input: { name: string; phone: string; lat?: number; lng?: number }) {
