@@ -93,6 +93,8 @@ services:
       PORT: 3002
       INTERNAL_SECRET: ${INTERNAL_SECRET}
       SESSION_SECRET: ${SESSION_SECRET:?falta SESSION_SECRET en .env}
+      # Solo en staging: "1" deja entrar sin login. Sin definir, el login sigue activo.
+      AUTH_DISABLED: ${AUTH_DISABLED:-}
       BOT_URL: http://bot:3001
     depends_on:
       postgres: { condition: service_healthy }
