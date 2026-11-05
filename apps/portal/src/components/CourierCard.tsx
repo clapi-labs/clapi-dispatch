@@ -1,95 +1,137 @@
 "use client";
 
-import { ChevronDown, MapPin, Power, PowerOff, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Copy, Eye, LocateFixed, Power, PowerOff, Siren, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
+import { ConfirmDialog } from "@/components/Modal";
 import { PhoneLink } from "@/components/PhoneLink";
-import { initials } from "@/lib/format";
-import { nearestZone } from "@/lib/geo";
+import { PhotoButton } from "@/components/PhotoButton";
+import { chatHref } from "@/lib/chat";
+import { copyText } from "@/lib/clipboard";
+import { elapsedLabel, formatPhone } from "@/lib/format";
 import type { Courier } from "@/lib/types";
 
 const STATUS: Record<Courier["status"], { dot: string; label: string; chip: string }> = {
   available: { dot: "bg-ok", label: "Libre", chip: "bg-ok-soft text-ok" },
   busy: { dot: "bg-gold", label: "En un viaje", chip: "bg-gold-soft text-gold-ink" },
-  paused: { dot: "bg-ink-3", label: "En pausa", chip: "bg-sunken text-ink-3" },
-  offline: { dot: "bg-danger", label: "Desconectado", chip: "bg-danger-soft text-danger" },
+  // Rojo: emergencia marcada por la central o novedad que reportó él (accidente, moto varada).
+  paused: { dot: "bg-danger", label: "Emergencia", chip: "bg-danger-soft text-danger" },
+  // Gris: recién agregado o desconectado. Se conecta escribiéndole al bot.
+  offline: { dot: "bg-ink-3", label: "Desconectado", chip: "bg-sunken text-ink-3" },
 };
 
 export function CourierCard({
   courier,
-  queuePosition,
   onChange,
+  onEmergency,
   onRemove,
+  onPhoto,
 }: {
   courier: Courier;
-  /** Su turno en la cola si está libre: 1 = el próximo viaje es suyo. */
-  queuePosition: number | null;
   onChange: (next: Courier["status"]) => void;
+  onEmergency: (on: boolean) => void;
   onRemove: () => void;
+  onPhoto: (photo: string | null) => Promise<void>;
 }) {
   const status = STATUS[courier.status];
-  const zone = courier.lat && courier.lng ? nearestZone(courier.lat, courier.lng) : null;
-  // Fuera de turno, sea desconectado o en pausa: el botón de encendido lo vuelve a conectar.
-  const off = courier.status === "offline" || courier.status === "paused";
+  const located = courier.lat != null && courier.lng != null;
+  const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const off = courier.status === "offline";
+  const emergency = courier.status === "paused";
+  const [confirmingEmergency, setConfirmingEmergency] = useState(false);
+  const [confirmingOff, setConfirmingOff] = useState(false);
   // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <article className="card flex flex-col gap-4 p-4">
+    <article className={`card flex flex-col gap-4 p-4 ${emergency ? "ring-2 ring-danger" : ""}`}>
       <div className="flex items-center gap-3">
-        <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-clapi text-sm font-bold text-white">
-          {initials(courier.name)}
+        <span className="relative h-12 w-12 shrink-0">
+          <PhotoButton name={courier.name} photo={courier.photo} className="h-12 w-12 bg-clapi text-sm text-white" onChange={onPhoto} />
           <span
-            className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-[3px] ring-surface ${status.dot} ${
-              courier.status === "available" ? "animate-live" : ""
-            }`}
+            className={`pointer-events-none absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-[3px] ring-surface ${status.dot}`}
           />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{courier.name}</p>
           <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>{status.label}</span>
         </div>
-        {queuePosition !== null && (
-          <span
-            className={`flex h-10 min-w-10 flex-col items-center justify-center rounded-xl px-2 leading-none ${
-              queuePosition === 1 ? "bg-clapi text-white" : "bg-sunken text-ink-2"
-            }`}
-            title="Turno en la cola"
-          >
-            <span className="text-[9px] font-semibold uppercase opacity-80">Turno</span>
-            <span className="text-sm font-bold">{queuePosition}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-xl bg-sunken px-3 py-2">
+          <p className="text-ink-3">Viajes hoy</p>
+          <p className="text-base font-bold tabular-nums">{courier.deliveriesThisShift}</p>
+        </div>
+        {/* Dónde está ahora: abre su última posición en el mapa. */}
+        <a
+          href={located ? `https://www.google.com/maps?q=${courier.lat},${courier.lng}` : undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={!located}
+          className={`ease-ui flex flex-col justify-center rounded-xl px-3 py-2 ${
+            located ? "bg-clapi-soft text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white" : "pointer-events-none bg-sunken text-ink-3"
+          }`}
+        >
+          <span className="flex items-center gap-1 text-sm font-semibold">
+            <LocateFixed size={14} /> {located ? "Ubicar" : "Sin ubicación"}
           </span>
-        )}
+          {located && courier.locationUpdatedAt && (
+            <span className="text-[11px] opacity-80">hace {elapsedLabel(new Date(courier.locationUpdatedAt))}</span>
+          )}
+        </a>
       </div>
 
-      <dl className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-xl bg-sunken px-3 py-2">
-          <dt className="text-ink-3">Viajes hoy</dt>
-          <dd className="text-base font-bold tabular-nums">{courier.deliveriesThisShift}</dd>
-        </div>
-        <div className="rounded-xl bg-sunken px-3 py-2">
-          <dt className="flex items-center gap-1 text-ink-3">
-            <MapPin size={11} className={courier.status !== "offline" ? "text-clapi" : ""} /> Última zona
-          </dt>
-          <dd className="truncate text-sm font-semibold">{zone ?? "Sin GPS"}</dd>
-        </div>
-      </dl>
+      {/* Cómo responde a la ficha: para exigirle al que siempre se demora en confirmar. */}
+      {courier.seenStats && (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-3" title="Últimos 7 días">
+          <Eye size={12} className="shrink-0" />
+          {courier.seenStats.avgMinutes != null ? (
+            <span>
+              Confirma en <strong className={courier.seenStats.avgMinutes > 3 ? "text-danger" : "text-ink-2"}>{courier.seenStats.avgMinutes} min</strong> en
+              promedio ({courier.seenStats.confirmed} {courier.seenStats.confirmed === 1 ? "pedido" : "pedidos"})
+            </span>
+          ) : (
+            <span>Sin confirmaciones</span>
+          )}
+          {courier.seenStats.reminders > 0 && (
+            <span className="text-warn">
+              · {courier.seenStats.reminders} {courier.seenStats.reminders === 1 ? "recordatorio" : "recordatorios"}
+            </span>
+          )}
+          <span>· 7 días</span>
+        </p>
+      )}
 
-      <div className="flex items-center gap-1.5 text-xs text-ink-3">
-        <PhoneLink phone={courier.phone} name={courier.name} />
-      </div>
+      {/* El número solo se copia: para el chat y la llamada están los botones de abajo. */}
+      <button
+        type="button"
+        onClick={async () => {
+          if (await copyText(formatPhone(courier.phone).replace(/\s/g, ""))) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }
+        }}
+        title="Copiar el número"
+        className="ease-ui -my-1 flex items-center gap-1.5 self-start rounded-md py-1 text-xs text-ink-3 can-hover:hover:text-clapi-ink"
+      >
+        {copied ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
+        {copied ? "Copiado" : formatPhone(courier.phone)}
+      </button>
 
       <div className="flex gap-2">
         {/* Donde estaba Activar / Pausar: abrir su chat en el portal o llamarlo. */}
         <PhoneLink phone={courier.phone} name={courier.name} iconOnly wide />
         <PhoneLink phone={courier.phone} name={courier.name} call iconOnly wide />
         {/* Encendido de ida y vuelta: verde si está conectado (tocar lo desconecta), apagado
-            si no (tocar lo conecta). En un viaje no se puede desconectar. */}
+            si no (tocar lo conecta). En un viaje o en emergencia no se toca. */}
         <button
           type="button"
-          disabled={courier.status === "busy"}
-          onClick={() => onChange(off ? "available" : "offline")}
+          disabled={courier.status === "busy" || emergency}
+          onClick={() => (off ? onChange("available") : setConfirmingOff(true))}
           aria-label={off ? "Conectar" : "Desconectar"}
           title={off ? "Conectar" : "Desconectar"}
           className={`ease-ui flex h-10 w-10 items-center justify-center rounded-xl disabled:opacity-40 ${
@@ -102,14 +144,72 @@ export function CourierCard({
         </button>
         <button
           type="button"
+          onClick={() => (emergency ? onEmergency(false) : setConfirmingEmergency(true))}
+          aria-label={emergency ? "Quitar la emergencia" : "Marcar emergencia"}
+          title={emergency ? "Quitar la emergencia" : "Marcar emergencia"}
+          className={`ease-ui flex h-10 w-10 items-center justify-center rounded-xl ${
+            emergency ? "bg-danger text-white" : "bg-sunken text-ink-3 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+          }`}
+        >
+          <Siren size={15} />
+        </button>
+        <button
+          type="button"
           disabled={courier.status === "busy"}
-          onClick={onRemove}
+          onClick={() => setConfirming(true)}
           aria-label="Quitar de la flota"
           className="ease-ui flex h-10 w-10 items-center justify-center rounded-xl bg-sunken text-ink-3 disabled:opacity-40 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
         >
           <Trash2 size={15} />
         </button>
       </div>
+
+      {emergency && (
+        <p className="-mt-1 rounded-xl bg-danger-soft px-3 py-2 text-xs text-danger">
+          No recibe pedidos y su bot está pausado.{" "}
+          <Link href={chatHref(courier.phone)} className="font-semibold underline underline-offset-2">
+            Abrir su chat
+          </Link>
+        </p>
+      )}
+
+      {confirmingOff && (
+        <ConfirmDialog
+          title={`¿Desconectar a ${courier.name}?`}
+          points={["No le llegan más pedidos.", "Vuelve a conectarse cuando le escriba al bot, o tocando aquí el mismo botón."]}
+          confirmLabel="Sí, desconectar"
+          onConfirm={() => onChange("offline")}
+          onClose={() => setConfirmingOff(false)}
+        />
+      )}
+
+      {confirmingEmergency && (
+        <ConfirmDialog
+          title={`¿Marcar a ${courier.name} en emergencia?`}
+          points={[
+            "No le llegan más pedidos.",
+            "El bot deja de responderle y su chat queda fijado arriba en Conversaciones.",
+            "Lo que lleva sigue a su nombre: decide tú si reasignarlo.",
+          ]}
+          confirmLabel="Sí, marcar"
+          onConfirm={() => onEmergency(true)}
+          onClose={() => setConfirmingEmergency(false)}
+        />
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title={`¿Quitar a ${courier.name} de la flota?`}
+          points={[
+            "Deja de recibir viajes desde ya.",
+            "Si le escribe al bot, ya no lo reconoce como domiciliario.",
+            "Sus viajes y su historial se conservan en los reportes.",
+          ]}
+          confirmLabel="Sí, quitarlo"
+          onConfirm={onRemove}
+          onClose={() => setConfirming(false)}
+        />
+      )}
 
       <button
         type="button"

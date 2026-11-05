@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Info, Plus, Route, Trash2 } from "lucide-react";
+import { Check, Plus, Route, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { FareRange } from "@/lib/types";
@@ -210,13 +210,6 @@ export default function TarifasPage() {
           </div>
         </section>
 
-        <div className="flex gap-3 rounded-2xl bg-gold-soft p-4 text-sm text-gold-ink">
-          <Info size={18} className="mt-0.5 shrink-0" />
-          <p>
-            El bot ubica la recogida y la entrega en el mapa y cobra según la distancia por calles. Si no logra ubicar una
-            dirección, no inventa un precio: pide corregirla o pasa el pedido a la central.
-          </p>
-        </div>
       </div>
 
     </div>

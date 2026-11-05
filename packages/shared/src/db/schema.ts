@@ -134,8 +134,10 @@ export const restaurants = pgTable(
     name: text("name").notNull(),
     /** El wa_id de quien escribe a la agencia. Único: cada número de
      *  restaurante es una sola fila, aunque escriba "donde siempre" cada vez
-     *  con un nombre ligeramente distinto. */
-    phone: text("phone").notNull().unique(),
+     *  con un nombre ligeramente distinto. Opcional: puede no tener WhatsApp. */
+    phone: text("phone").unique(),
+    /** Foto pequeña, como data URL. */
+    photo: text("photo"),
     /** La dirección de recogida que más se repite para este restaurante.
      *  Se completa con la primera entrega confirmada y de ahí en adelante se
      *  usa como respaldo si el mensaje no la trae. */
@@ -234,6 +236,8 @@ export const couriers = pgTable("couriers", {
   name: text("name").notNull(),
   /** wa_id del motorizado — por ahí le llega la ficha del viaje. */
   phone: text("phone").notNull(),
+  /** Foto pequeña, como data URL. */
+  photo: text("photo"),
   status: text("status").notNull().$type<CourierStatus>().default("offline"),
 
   /** Última posición conocida. Columnas simples, no PostGIS/Redis geo: a la
@@ -287,6 +291,11 @@ export const assignments = pgTable(
     courierName: text("courier_name").notNull(),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    /** Cuándo el motorizado tocó «Vi el pedido» en su ficha. Sin esto la
+     *  central no sabe si lo vio o si el pedido se está enfriando. */
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    /** Cuándo se le recordó que confirmara (una sola vez por asignación). */
+    seenReminderAt: timestamp("seen_reminder_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("assignments_trip_idx").on(t.tripId)],

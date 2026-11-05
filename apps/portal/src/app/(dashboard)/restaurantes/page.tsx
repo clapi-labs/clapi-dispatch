@@ -1,13 +1,17 @@
 "use client";
 
 import { googleMapsLink, inServiceArea, parseCoordinates } from "@dispatch/shared/domain/coordinates";
-import { Check, ExternalLink, Info, MapPin, Pencil, Plus, Search, Store, X } from "lucide-react";
+import { Check, ExternalLink, Info, MapPin, Pencil, Plus, Search, Store, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+import { ConfirmDialog } from "@/components/Modal";
+import { PhotoButton } from "@/components/PhotoButton";
 
 type Restaurant = {
   id: number;
   name: string;
-  phone: string;
+  phone: string | null;
+  photo: string | null;
   knownPickupAddress: string | null;
   knownPickupLocation: { lat: number; lng: number } | null;
   pickupDetail: string | null;
@@ -22,7 +26,7 @@ const EMPTY: Form = { name: "", phone: "", address: "", detail: "", coords: "", 
 function toForm(r: Restaurant): Form {
   return {
     name: r.name,
-    phone: r.phone.startsWith("57") && r.phone.length === 12 ? r.phone.slice(2) : r.phone,
+    phone: !r.phone ? "" : r.phone.startsWith("57") && r.phone.length === 12 ? r.phone.slice(2) : r.phone,
     address: r.knownPickupAddress ?? "",
     detail: r.pickupDetail ?? "",
     coords: r.knownPickupLocation ? `${r.knownPickupLocation.lat}, ${r.knownPickupLocation.lng}` : "",
@@ -71,12 +75,31 @@ const input =
 export default function RestaurantesPage() {
   const [list, setList] = useState<Restaurant[] | null>(null);
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   /** null: formulario cerrado; "new": uno nuevo; número: editando ese. */
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedName, setSavedName] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Restaurant | null>(null);
+
+  async function setPhoto(id: number, photo: string | null) {
+    const res = await fetch(`/api/restaurants/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photo }),
+    });
+    if (!res.ok) throw new Error("No se guardó");
+    setList((prev) => prev?.map((r) => (r.id === id ? { ...r, photo } : r)) ?? null);
+  }
+
+  async function remove(id: number) {
+    setList((prev) => prev?.filter((r) => r.id !== id) ?? null);
+    if (editing === id) setEditing(null);
+    await fetch(`/api/restaurants/${id}`, { method: "DELETE" });
+    load();
+  }
 
   function load() {
     return fetch("/api/restaurants", { cache: "no-store" })
@@ -103,13 +126,13 @@ export default function RestaurantesPage() {
       (r) =>
         r.name.toLowerCase().includes(q) ||
         (r.knownPickupAddress ?? "").toLowerCase().includes(q) ||
-        (digits.length >= 3 && r.phone.includes(digits)),
+        (digits.length >= 3 && !!r.phone?.includes(digits)),
     );
   }, [list, query]);
 
   const coords = readCoords(form.coords);
   const canSave =
-    form.name.trim() !== "" && form.phone.replace(/\D/g, "").length >= 10 && form.address.trim() !== "" && coords.kind === "ok";
+    form.name.trim() !== "" && (form.phone.trim() === "" || form.phone.replace(/\D/g, "").length >= 10) && form.address.trim() !== "" && coords.kind === "ok";
 
   function open(target: Restaurant | "new") {
     setEditing(target === "new" ? "new" : target.id);
@@ -160,29 +183,42 @@ export default function RestaurantesPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-5 lg:px-8 lg:py-7">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="ease-ui flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-sunken px-3.5 focus-within:ring-2 focus-within:ring-clapi/30 sm:max-w-sm">
+      <div className="flex items-center gap-2">
+        <label className="ease-ui flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-sunken px-3.5 focus-within:ring-2 focus-within:ring-clapi/30">
           <Search size={16} className="shrink-0 text-ink-3" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setSearching(true)}
+            onBlur={() => setSearching(false)}
             placeholder="Buscar por nombre, dirección o número"
-            className="w-full bg-transparent text-sm outline-none"
+            className="w-full min-w-0 bg-transparent text-sm outline-none"
           />
         </label>
-        {savedName && (
-          <p className="flex items-center gap-1.5 text-sm text-ok">
-            <Check size={16} /> {savedName} guardado
-          </p>
-        )}
+        {/* Mientras se busca queda solo el ícono, y el buscador se queda con el espacio. */}
         <button
           type="button"
           onClick={() => open("new")}
-          className="ease-ui ml-auto flex h-11 items-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
+          aria-label="Agregar restaurante"
+          title="Agregar restaurante"
+          className="ease-ui flex h-11 shrink-0 items-center rounded-xl bg-clapi px-3.5 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
         >
-          <Plus size={17} /> Agregar restaurante
+          <Plus size={17} className="shrink-0" />
+          <span
+            className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-200 ease-out ${
+              searching || query !== "" ? "max-w-0 opacity-0" : "ml-2 max-w-24 opacity-100"
+            }`}
+          >
+            Agregar
+          </span>
         </button>
       </div>
+
+      {savedName && (
+        <p className="-mt-2 flex items-center gap-1.5 text-sm text-ok">
+          <Check size={16} /> {savedName} guardado
+        </p>
+      )}
 
       {editing !== null && (
         <form onSubmit={save} className="card grid gap-5 p-4 sm:p-5 lg:grid-cols-[1.3fr_1fr]">
@@ -204,7 +240,7 @@ export default function RestaurantesPage() {
               <Field label="Nombre">
                 <input autoFocus value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Monkeys Valle del Lili" className={input} />
               </Field>
-              <Field label="WhatsApp del restaurante">
+              <Field label="WhatsApp del restaurante (opcional)">
                 <input
                   value={form.phone}
                   onChange={(e) => set({ phone: e.target.value })}
@@ -314,6 +350,7 @@ export default function RestaurantesPage() {
           <ul className="flex flex-col divide-y divide-line">
             {filtered.map((r) => (
               <li key={r.id} className={`flex items-center gap-3 px-4 py-3 sm:px-5 ${r.active ? "" : "opacity-50"}`}>
+                <span className="shrink-0"><PhotoButton name={r.name} photo={r.photo} className="h-12 w-12 bg-clapi/15 text-sm text-clapi-ink" onChange={(photo) => setPhoto(r.id, photo)} /></span>
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                     {r.name}
@@ -323,7 +360,8 @@ export default function RestaurantesPage() {
                     )}
                   </p>
                   <p className="truncate text-xs text-ink-2">
-                    {formatPhone(r.phone)} · {[r.knownPickupAddress, r.pickupDetail].filter(Boolean).join(", ") || "Sin dirección"}
+                    {r.phone ? `${formatPhone(r.phone)} · ` : ""}
+                    {[r.knownPickupAddress, r.pickupDetail].filter(Boolean).join(", ") || "Sin dirección"}
                   </p>
                 </div>
                 {r.knownPickupLocation && (
@@ -345,11 +383,33 @@ export default function RestaurantesPage() {
                 >
                   <Pencil size={16} />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleting(r)}
+                  aria-label={`Borrar ${r.name}`}
+                  className="ease-ui flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-ink-3 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+                >
+                  <Trash2 size={16} />
+                </button>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {deleting && (
+        <ConfirmDialog
+          title={`¿Borrar ${deleting.name}?`}
+          points={[
+            "Se borra del todo, no se puede deshacer. Si solo quieres pausarlo, desmárcalo como activo.",
+            "Si escribe desde su número, el bot ya no lo reconoce.",
+            "Sus viajes anteriores se conservan en los reportes.",
+          ]}
+          confirmLabel="Sí, borrar"
+          onConfirm={() => remove(deleting.id)}
+          onClose={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 }

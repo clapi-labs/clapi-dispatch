@@ -7,14 +7,17 @@ import { useState } from "react";
 import { TripCard } from "@/components/TripCard";
 import { useTrips } from "@/components/TripsProvider";
 import type { Trip } from "@/lib/types";
+import { useSwipePanes } from "@/lib/use-swipe-panes";
 
 type ColumnKey = "pending" | "route" | "done";
 
 const COLUMNS: { key: ColumnKey; title: string; dot: string; empty: string }[] = [
-  { key: "pending", title: "Por asignar", dot: "bg-warn", empty: "Nada esperando moto" },
-  { key: "route", title: "En ruta", dot: "bg-clapi", empty: "Ninguna moto en la calle" },
-  { key: "done", title: "Entregados", dot: "bg-ok", empty: "Todavía no hay entregas hoy" },
+  { key: "pending", title: "Pendiente", dot: "bg-warn", empty: "Nada esperando moto" },
+  { key: "route", title: "Asignado", dot: "bg-clapi", empty: "Ninguna moto en la calle" },
+  { key: "done", title: "Finalizado", dot: "bg-ok", empty: "Todavía no hay entregas hoy" },
 ];
+
+const KEYS = COLUMNS.map((c) => c.key);
 
 function bucket(trips: Trip[], key: ColumnKey) {
   if (key === "pending") return trips.filter((t) => t.status === "pending").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -33,9 +36,10 @@ function SkeletonCard() {
 
 export default function ViajesPage() {
   const { trips, loaded, deliver } = useTrips();
-  // En el celular se ve una columna a la vez. Arranca en "En ruta": es lo
+  // En el celular se ve una columna a la vez. Arranca en "Asignado": es lo
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
+  const panes = useSwipePanes(KEYS, tab, setTab);
 
   const groups = Object.fromEntries(COLUMNS.map((c) => [c.key, bucket(trips, c.key)])) as Record<ColumnKey, Trip[]>;
 
@@ -64,12 +68,17 @@ export default function ViajesPage() {
       </div>
 
       <LayoutGroup>
-        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-3">
+        {/* Celular: un carrusel con un panel por columna; se pasa de una a otra deslizando.
+            Escritorio: las tres lado a lado. */}
+        <div
+          ref={panes}
+          className="no-scrollbar -mx-4 flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain lg:mx-0 lg:grid lg:snap-none lg:grid-cols-3 lg:gap-5 lg:overflow-visible"
+        >
           {COLUMNS.map((c) => {
             const empty = loaded && groups[c.key].length === 0;
             return (
               // `min-w-0`: en el celular la columna no puede ensancharse por un nombre largo.
-              <section key={c.key} className={`min-h-0 min-w-0 flex-col gap-3 ${tab === c.key ? "flex" : "hidden lg:flex"}`}>
+              <section key={c.key} className="flex min-h-0 w-full min-w-0 shrink-0 snap-start snap-always flex-col gap-3 px-4 lg:w-auto lg:px-0">
                 <div className="hidden items-center gap-2 px-1 lg:flex">
                   <span className={`h-2 w-2 rounded-full ${c.dot}`} />
                   <h2 className="text-sm font-semibold">{c.title}</h2>
@@ -80,7 +89,7 @@ export default function ViajesPage() {
                     aire al anillo de urgente, que el scroll recortaría. Vacía, la columna no se estira. */}
                 <div
                   className={`no-scrollbar flex flex-col gap-3 ${
-                    empty ? "" : "lg:-mx-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-2 lg:pb-2 lg:pt-0.5"
+                    empty ? "" : "-mx-2 -mt-1.5 min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5"
                   }`}
                 >
                   {!loaded ? (

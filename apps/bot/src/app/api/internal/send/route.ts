@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { db, schema } from "@dispatch/shared/db";
+import { db, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { recordMessage } from "@/db/queries/conversation";
 import { sendText } from "@/services/whatsapp/client";
@@ -24,10 +24,14 @@ export async function POST(request: Request) {
   const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId));
   if (!conversation) return Response.json({ error: "No existe" }, { status: 404 });
 
-  await db
-    .update(schema.conversations)
-    .set({ botPaused: true, escalationReason: conversation.escalationReason ?? "Un operador tomó la conversación." })
-    .where(eq(schema.conversations.id, conversationId));
+  // En la pausa general la central escribe como en un WhatsApp normal: el
+  // chat no queda intervenido y vuelve al bot cuando la agencia reanuda.
+  if (!(await getBusinessState()).paused) {
+    await db
+      .update(schema.conversations)
+      .set({ botPaused: true, escalationReason: conversation.escalationReason ?? "Un operador tomó la conversación." })
+      .where(eq(schema.conversations.id, conversationId));
+  }
 
   const result = await sendText(conversation.phone, body);
   await recordMessage(conversationId, "agent", body);

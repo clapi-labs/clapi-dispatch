@@ -32,12 +32,12 @@ const ago = (min: number) => new Date(T0 - min * 60_000).toISOString();
 // ---------------------------------------------------------------------------
 
 const couriers: Courier[] = [
-  { id: 1, name: "Juan Rodríguez", phone: "573001112233", status: "busy", lat: 3.4372, lng: -76.5422, locationUpdatedAt: ago(1), deliveriesThisShift: 6, lastAssignedAt: ago(18), active: true, createdAt: ago(600) },
-  { id: 2, name: "Carlos Mejía", phone: "573104445566", status: "available", lat: 3.4583, lng: -76.5322, locationUpdatedAt: ago(3), deliveriesThisShift: 4, lastAssignedAt: ago(95), active: true, createdAt: ago(600) },
-  { id: 3, name: "Andrés Gómez", phone: "573207778899", status: "available", lat: 3.3609, lng: -76.5352, locationUpdatedAt: ago(26), deliveriesThisShift: 5, lastAssignedAt: ago(60), active: true, createdAt: ago(600) },
-  { id: 4, name: "Mateo Vargas", phone: "573156667788", status: "busy", lat: 3.4764, lng: -76.5281, locationUpdatedAt: ago(2), deliveriesThisShift: 3, lastAssignedAt: ago(31), active: true, createdAt: ago(600) },
-  { id: 5, name: "Luis Torres", phone: "573012223344", status: "paused", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 2, lastAssignedAt: ago(180), active: true, createdAt: ago(600) },
-  { id: 6, name: "Diego Ramírez", phone: "573189990011", status: "offline", lat: 3.4224, lng: -76.5405, locationUpdatedAt: ago(240), deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: ago(600) },
+  { id: 1, name: "Juan Rodríguez", phone: "573001112233", photo: null, status: "busy", lat: 3.4372, lng: -76.5422, locationUpdatedAt: ago(1), deliveriesThisShift: 6, lastAssignedAt: ago(18), active: true, createdAt: ago(600) },
+  { id: 2, name: "Carlos Mejía", phone: "573104445566", photo: null, status: "available", lat: 3.4583, lng: -76.5322, locationUpdatedAt: ago(3), deliveriesThisShift: 4, lastAssignedAt: ago(95), active: true, createdAt: ago(600) },
+  { id: 3, name: "Andrés Gómez", phone: "573207778899", photo: null, status: "available", lat: 3.3609, lng: -76.5352, locationUpdatedAt: ago(26), deliveriesThisShift: 5, lastAssignedAt: ago(60), active: true, createdAt: ago(600) },
+  { id: 4, name: "Mateo Vargas", phone: "573156667788", photo: null, status: "busy", lat: 3.4764, lng: -76.5281, locationUpdatedAt: ago(2), deliveriesThisShift: 3, lastAssignedAt: ago(31), active: true, createdAt: ago(600) },
+  { id: 5, name: "Luis Torres", phone: "573012223344", photo: null, status: "paused", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 2, lastAssignedAt: ago(180), active: true, createdAt: ago(600) },
+  { id: 6, name: "Diego Ramírez", phone: "573189990011", photo: null, status: "offline", lat: 3.4224, lng: -76.5405, locationUpdatedAt: ago(240), deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: ago(600) },
 ];
 
 const profiles = new Map<number, CourierProfile>([
@@ -48,19 +48,24 @@ const profiles = new Map<number, CourierProfile>([
 // Viajes
 // ---------------------------------------------------------------------------
 
+let business: { paused: boolean; pausedAt: string | null } = { paused: false, pausedAt: null };
+
 let nextTripId = 200;
 function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deliveryAddress" | "status">): Trip {
   const id = nextTripId++;
   return {
     id,
-    // Mismo formato que los reales (packages/shared/src/db/trip-code.ts): letra del día + número.
-    code: `${"GABCDEF"[new Date().getDay()]}${id + 1000}`,
-    pickupAddress: null,
+    // Mismo formato que los reales (packages/shared/src/db/trip-code.ts): letra y dos cifras.
+    code: `${"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(id / 100) % 26]}-${String(id % 100).padStart(2, "0")}`,
+    pickupAddress: "Calle 16 #100-50, Ciudad Jardín",
+    customerName: "Laura Gómez",
     customerPhone: "3157894561",
+    notes: "Portón negro · Llamar al llegar",
     valueToCollect: 45_000,
     paymentMethod: "efectivo",
     requiresCashReturn: true,
     deliveryFee: 6_000,
+    distanceKm: 2,
     createdAt: ago(10),
     updatedAt: ago(5),
     courierName: null,
@@ -210,27 +215,24 @@ let fareRanges: FareRange[] = [
 
 function settlement(): Settlement {
   const delivered = trips.filter((t) => t.status === "delivered");
-  const byMethod = { cash: { orders: 0, amount: 0 }, transfer: { orders: 0, amount: 0 } };
   const byCourier = new Map<string, SettlementRow>();
-  let netEarnings = 0;
+  let total = 0;
   for (const t of delivered) {
-    netEarnings += t.deliveryFee;
-    const m = t.paymentMethod === "efectivo" ? byMethod.cash : byMethod.transfer;
-    m.orders += 1;
-    m.amount += t.valueToCollect ?? 0;
+    total += t.deliveryFee;
     const name = t.courierName ?? "—";
-    const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, netEarnings: 0, cashToDeliver: 0 };
+    const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, earned: 0, agencyShare: 0 };
     row.deliveredCount += 1;
-    row.netEarnings += t.deliveryFee;
-    if (t.paymentMethod === "efectivo") row.cashToDeliver += t.valueToCollect ?? 0;
+    row.earned += t.deliveryFee;
+    row.agencyShare = Math.round(row.earned * 0.1);
     byCourier.set(name, row);
   }
   return {
-    netEarnings,
+    total,
     deliveredCount: delivered.length,
-    averageFee: delivered.length ? Math.round(netEarnings / delivered.length) : 0,
-    byMethod,
-    couriers: [...byCourier.values()].sort((a, b) => b.netEarnings - a.netEarnings),
+    averageFee: delivered.length ? Math.round(total / delivered.length) : 0,
+    agencyRate: 0.1,
+    agencyShare: Math.round(total * 0.1),
+    couriers: [...byCourier.values()].sort((a, b) => b.earned - a.earned),
   };
 }
 
@@ -244,6 +246,10 @@ async function handle(method: string, path: string, body: string | null): Promis
   const data = body ? JSON.parse(body) : {};
   let m: RegExpMatchArray | null;
 
+  if (path === "/api/business") {
+    if (method === "PUT") business = { paused: !!data.paused, pausedAt: data.paused ? new Date().toISOString() : null };
+    return json(business);
+  }
   if (path === "/api/trips" && method === "GET") return json(trips);
   if (path === "/api/dispatch/auto-assign") return json({ assigned: 0 });
   if ((m = path.match(/^\/api\/trips\/(\d+)\/deliver$/))) {
@@ -276,7 +282,7 @@ async function handle(method: string, path: string, body: string | null): Promis
 
   if (path === "/api/couriers" && method === "GET") return json(couriers.filter((c) => c.active));
   if (path === "/api/couriers" && method === "POST") {
-    const c: Courier = { id: couriers.length + 100, name: data.name, phone: data.phone, status: "available", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: new Date().toISOString() };
+    const c: Courier = { id: couriers.length + 100, name: data.name, phone: data.phone, photo: null, status: "available", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: new Date().toISOString() };
     couriers.unshift(c);
     return json(c, 201);
   }
@@ -289,6 +295,7 @@ async function handle(method: string, path: string, body: string | null): Promis
     const c = couriers.find((x) => x.id === Number(m![1]));
     if (c && typeof data.status === "string") c.status = data.status;
     if (c && data.active === false) c.active = false;
+    if (c && "photo" in data) c.photo = data.photo;
     return json(c ?? {});
   }
 

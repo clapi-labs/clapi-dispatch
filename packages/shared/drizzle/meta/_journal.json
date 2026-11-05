@@ -71,6 +71,20 @@
       "when": 1793743084670,
       "tag": "0009_codigo_letra_dos_cifras",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793752940898,
+      "tag": "0010_confirmacion_visto",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793843423174,
+      "tag": "0011_fotos_y_restaurante_sin_numero",
+      "breakpoints": true
     }
   ]
 }

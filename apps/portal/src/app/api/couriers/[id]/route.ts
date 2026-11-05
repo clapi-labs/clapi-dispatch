@@ -1,4 +1,5 @@
-import { removeCourier, updateCourierStatus } from "@/db/queries/couriers";
+import { removeCourier, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
+import { isValidPhoto } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.active === false) {
     await removeCourier(Number(id));
     return Response.json({ ok: true });
+  }
+
+  if ("photo" in body) {
+    if (!isValidPhoto(body.photo)) return Response.json({ error: "Foto inválida" }, { status: 400 });
+    const courier = await setCourierPhoto(Number(id), body.photo);
+    return courier ? Response.json(courier) : Response.json({ error: "No existe" }, { status: 404 });
+  }
+
+  if (typeof body.emergency === "boolean") {
+    const courier = await setCourierEmergency(Number(id), body.emergency);
+    return courier ? Response.json(courier) : Response.json({ error: "No existe" }, { status: 404 });
+  }
+
+  // La emergencia solo se pone y se quita con `emergency`: así siempre va con su chat.
+  if (body.status === "paused") {
+    return Response.json({ error: "Usa emergency" }, { status: 400 });
   }
 
   if (!VALID_STATUSES.includes(body.status)) {

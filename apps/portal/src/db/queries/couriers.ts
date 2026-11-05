@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
@@ -11,8 +11,36 @@ function toWaId(phone: string) {
 
 export type CourierRow = typeof schema.couriers.$inferSelect;
 
-export async function listCouriers(): Promise<CourierRow[]> {
-  return db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt));
+/** Cómo responde a la ficha en los últimos 7 días: cuánto tarda en tocar
+ *  «Vi el pedido» y cuántas veces hubo que recordárselo. */
+export type SeenStats = { confirmed: number; avgMinutes: number | null; reminders: number };
+
+const STATS_DAYS = 7;
+
+export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenStats | null })[]> {
+  const a = schema.assignments;
+  const [couriers, stats] = await Promise.all([
+    db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt)),
+    db
+      .select({
+        courierId: a.courierId,
+        confirmed: sql<number>`count(${a.seenAt})::int`,
+        reminders: sql<number>`count(${a.seenReminderAt})::int`,
+        avgSeconds: sql<number | null>`avg(extract(epoch from ${a.seenAt} - ${a.assignedAt}))::float`,
+      })
+      .from(a)
+      .where(and(isNotNull(a.courierId), gte(a.assignedAt, new Date(Date.now() - STATS_DAYS * 24 * 60 * 60_000))))
+      .groupBy(a.courierId),
+  ]);
+  const byCourier = new Map(stats.map((r) => [r.courierId, r]));
+  return couriers.map((c) => {
+    const r = byCourier.get(c.id);
+    const seenStats =
+      r && (r.confirmed || r.reminders)
+        ? { confirmed: r.confirmed, reminders: r.reminders, avgMinutes: r.avgSeconds == null ? null : Math.round((r.avgSeconds / 60) * 10) / 10 }
+        : null;
+    return { ...c, seenStats };
+  });
 }
 
 export async function createCourier(input: { name: string; phone: string; lat?: number; lng?: number }) {
@@ -23,7 +51,8 @@ export async function createCourier(input: { name: string; phone: string; lat?: 
       phone: toWaId(input.phone),
       lat: input.lat ?? null,
       lng: input.lng ?? null,
-      status: "available",
+      // Gris hasta que escriba por primera vez: escribirle al bot es conectarse.
+      status: "offline",
       locationUpdatedAt: input.lat !== undefined ? new Date() : null,
       shiftStartedAt: new Date(),
     })
@@ -34,6 +63,11 @@ export async function createCourier(input: { name: string; phone: string; lat?: 
 export async function updateCourierStatus(id: number, status: schema.CourierStatus) {
   const [courier] = await db.update(schema.couriers).set({ status }).where(eq(schema.couriers.id, id)).returning();
   return courier;
+}
+
+export async function setCourierPhoto(id: number, photo: string | null) {
+  const [courier] = await db.update(schema.couriers).set({ photo }).where(eq(schema.couriers.id, id)).returning();
+  return courier ?? null;
 }
 
 export type CourierProfile = Pick<
@@ -69,4 +103,40 @@ export async function removeCourier(id: number) {
     .update(schema.couriers)
     .set({ active: false, status: "offline" })
     .where(and(eq(schema.couriers.id, id), ne(schema.couriers.status, "busy")));
+}
+
+export const EMERGENCY_REASON = "Emergencia marcada desde Flota.";
+
+/**
+ * Emergencia (rojo): un accidente, una moto varada. El despacho no le asigna
+ * nada más (solo asigna a los libres) y lo que lleva sigue a su nombre para
+ * que la central decida. Su chat queda en manos de la central, fijado arriba
+ * en Conversaciones; si nunca había escrito, se le abre uno.
+ *
+ * Al quitarla vuelve el bot y queda en viaje si todavía lleva algo, o libre.
+ */
+export async function setCourierEmergency(id: number, on: boolean) {
+  const [courier] = await db.select().from(schema.couriers).where(eq(schema.couriers.id, id)).limit(1);
+  if (!courier) return null;
+
+  let status: schema.CourierStatus = "paused";
+  if (!on) {
+    const [current] = await db
+      .select({ id: schema.trips.id })
+      .from(schema.assignments)
+      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+      .where(and(eq(schema.assignments.courierId, id), inArray(schema.trips.status, ["assigned", "en_route"])))
+      .limit(1);
+    status = current ? "busy" : "available";
+  }
+
+  const [updated] = await db.update(schema.couriers).set({ status }).where(eq(schema.couriers.id, id)).returning();
+  const chat = on
+    ? { botPaused: true, escalationReason: `${EMERGENCY_REASON} ${courier.name}`, lastMessageAt: new Date() }
+    : { botPaused: false, escalationReason: null };
+  await db
+    .insert(schema.conversations)
+    .values({ phone: courier.phone, displayName: courier.name, ...chat })
+    .onConflictDoUpdate({ target: schema.conversations.phone, set: { ...chat, draft: null, failedAttempts: 0 } });
+  return updated;
 }

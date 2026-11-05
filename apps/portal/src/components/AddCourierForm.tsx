@@ -1,11 +1,12 @@
 "use client";
 
-import { UserPlus, X } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { useState } from "react";
 
+import { Modal } from "@/components/Modal";
 import { CITY_CENTER } from "@/lib/geo";
 
-export function AddCourierForm({ onCreated }: { onCreated: () => void }) {
+export function AddCourierForm({ collapsed, onCreated }: { collapsed: boolean; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -29,51 +30,53 @@ export function AddCourierForm({ onCreated }: { onCreated: () => void }) {
     onCreated();
   }
 
-  if (!open) {
-    return (
+  return (
+    <>
+      {/* Mientras se busca queda solo el ícono, y el buscador se queda con el espacio. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
+        aria-label="Agregar motorizado"
+        title="Agregar motorizado"
+        className="ease-ui flex h-11 shrink-0 items-center rounded-xl bg-clapi px-3.5 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
       >
-        <UserPlus size={17} /> Agregar motorizado
+        <UserPlus size={17} className="shrink-0" />
+        <span className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-200 ease-out ${collapsed ? "max-w-0 opacity-0" : "ml-2 max-w-24 opacity-100"}`}>Agregar</span>
       </button>
-    );
-  }
 
-  return (
-    <form onSubmit={submit} className="card flex w-full flex-col gap-3 p-4 sm:flex-row sm:items-center">
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Nombre completo"
-        className="ease-ui h-11 min-w-0 flex-1 rounded-xl bg-sunken px-3.5 outline-none focus:ring-2 focus:ring-clapi/40"
-      />
-      <input
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        inputMode="tel"
-        placeholder="Celular (3001234567)"
-        className="ease-ui h-11 rounded-xl bg-sunken px-3.5 outline-none focus:ring-2 focus:ring-clapi/40 sm:w-56"
-      />
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={busy || !name.trim() || !phone.trim()}
-          className="ease-ui h-11 flex-1 rounded-xl bg-clapi px-5 text-sm font-semibold text-white disabled:opacity-50 sm:flex-none"
-        >
-          Guardar
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="Cancelar"
-          className="flex h-11 w-11 items-center justify-center rounded-xl bg-sunken text-ink-3"
-        >
-          <X size={18} />
-        </button>
-      </div>
-    </form>
+      {open && (
+        <Modal label="Agregar motorizado" onClose={() => setOpen(false)}>
+          <p className="text-base font-semibold text-ink">Agregar motorizado</p>
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nombre completo"
+              className="ease-ui h-11 rounded-xl bg-sunken px-3.5 text-sm outline-none focus:ring-2 focus:ring-clapi/40"
+            />
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              inputMode="tel"
+              placeholder="Celular (3001234567)"
+              className="ease-ui h-11 rounded-xl bg-sunken px-3.5 text-sm outline-none focus:ring-2 focus:ring-clapi/40"
+            />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setOpen(false)} className="ease-ui h-10 flex-1 rounded-xl bg-sunken text-sm font-semibold text-ink-2">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !name.trim() || !phone.trim()}
+                className="ease-ui h-10 flex-1 rounded-xl bg-clapi text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Guardar
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }

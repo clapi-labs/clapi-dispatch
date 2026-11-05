@@ -166,19 +166,6 @@
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
 }
 
-@keyframes live-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-@utility animate-live {
-  animation: live-dot 1.6s ease-in-out infinite;
-}
-
 /* El anillo que respira en un pedido que lleva rato sin moto. */
 @keyframes urgent-ring {
   0%,
