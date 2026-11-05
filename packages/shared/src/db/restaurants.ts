@@ -60,7 +60,7 @@ export async function saveRestaurant(input: {
 /** Lo que llega del formulario de restaurantes del portal, ya revisado. */
 export type RestaurantInput = {
   name: string;
-  phone: string;
+  phone: string | null;
   pickupAddress: string;
   pickupDetail: string | null;
   pickupLocation: { lat: number; lng: number };
@@ -86,7 +86,7 @@ export function validateRestaurant(body: unknown): { input: RestaurantInput } | 
   const lng = Number(loc?.lng);
 
   if (!name) return { error: "Falta el nombre" };
-  if (phone.length < 10) return { error: "El WhatsApp debe tener al menos 10 dígitos" };
+  if (phone && phone.length < 10) return { error: "El WhatsApp debe tener al menos 10 dígitos" };
   if (!pickupAddress) return { error: "Falta la dirección" };
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: "Faltan las coordenadas" };
   if (!inServiceArea({ lat, lng })) return { error: "Las coordenadas quedan fuera de Cali y Jamundí" };
@@ -95,7 +95,7 @@ export function validateRestaurant(body: unknown): { input: RestaurantInput } | 
     input: {
       name,
       // "3001234567" se guarda como "573001234567", igual que el wa_id de WhatsApp.
-      phone: phone.length === 10 ? `57${phone}` : phone,
+      phone: !phone ? null : phone.length === 10 ? `57${phone}` : phone,
       pickupAddress,
       pickupDetail,
       pickupLocation: { lat, lng },
@@ -130,7 +130,7 @@ function rowValues(input: RestaurantInput) {
 }
 
 export async function createRestaurant(input: RestaurantInput): Promise<{ restaurant: Restaurant } | { error: string }> {
-  const taken = await phoneTaken(input.phone, null);
+  const taken = input.phone && (await phoneTaken(input.phone, null));
   if (taken) return { error: `Ese número ya es de ${taken}` };
   const [restaurant] = await db.insert(restaurants).values(rowValues(input)).returning();
   return { restaurant };
@@ -140,8 +140,19 @@ export async function updateRestaurant(
   id: number,
   input: RestaurantInput,
 ): Promise<{ restaurant: Restaurant } | { error: string } | null> {
-  const taken = await phoneTaken(input.phone, id);
+  const taken = input.phone && (await phoneTaken(input.phone, id));
   if (taken) return { error: `Ese número ya es de ${taken}` };
   const [restaurant] = await db.update(restaurants).set(rowValues(input)).where(eq(restaurants.id, id)).returning();
   return restaurant ? { restaurant } : null;
+}
+
+export async function setRestaurantPhoto(id: number, photo: string | null) {
+  const [restaurant] = await db.update(restaurants).set({ photo }).where(eq(restaurants.id, id)).returning();
+  return restaurant ?? null;
+}
+
+/** Sus viajes se conservan: guardan el nombre y quedan sin el enlace al restaurante. */
+export async function deleteRestaurant(id: number) {
+  const [restaurant] = await db.delete(restaurants).where(eq(restaurants.id, id)).returning();
+  return restaurant ?? null;
 }

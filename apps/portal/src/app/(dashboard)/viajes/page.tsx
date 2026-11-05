@@ -12,9 +12,9 @@ import { useSwipePanes } from "@/lib/use-swipe-panes";
 type ColumnKey = "pending" | "route" | "done";
 
 const COLUMNS: { key: ColumnKey; title: string; dot: string; empty: string }[] = [
-  { key: "pending", title: "Por asignar", dot: "bg-warn", empty: "Nada esperando moto" },
-  { key: "route", title: "En ruta", dot: "bg-clapi", empty: "Ninguna moto en la calle" },
-  { key: "done", title: "Entregados", dot: "bg-ok", empty: "Todavía no hay entregas hoy" },
+  { key: "pending", title: "Pendiente", dot: "bg-warn", empty: "Nada esperando moto" },
+  { key: "route", title: "Asignado", dot: "bg-clapi", empty: "Ninguna moto en la calle" },
+  { key: "done", title: "Finalizado", dot: "bg-ok", empty: "Todavía no hay entregas hoy" },
 ];
 
 const KEYS = COLUMNS.map((c) => c.key);
@@ -36,7 +36,7 @@ function SkeletonCard() {
 
 export default function ViajesPage() {
   const { trips, loaded, deliver } = useTrips();
-  // En el celular se ve una columna a la vez. Arranca en "En ruta": es lo
+  // En el celular se ve una columna a la vez. Arranca en "Asignado": es lo
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
   const panes = useSwipePanes(KEYS, tab, setTab);
@@ -89,7 +89,7 @@ export default function ViajesPage() {
                     aire al anillo de urgente, que el scroll recortaría. Vacía, la columna no se estira. */}
                 <div
                   className={`no-scrollbar flex flex-col gap-3 ${
-                    empty ? "" : "min-h-0 flex-1 overflow-y-auto pb-2 lg:-mx-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-2 lg:pb-2 lg:pt-0.5"
+                    empty ? "" : "-mx-2 -mt-1.5 min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5"
                   }`}
                 >
                   {!loaded ? (

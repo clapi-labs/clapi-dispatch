@@ -41,11 +41,14 @@ export default function ArqueoPage() {
             {data.deliveredCount} domicilios entregados · promedio {formatCOP(data.averageFee)}
           </p>
         </section>
-        <section className="card flex flex-col justify-center p-5 lg:p-6">
-          <p className="flex items-center gap-2 text-sm font-medium text-ink-3">
+        <section className="relative flex flex-col justify-center overflow-hidden rounded-2xl bg-gold p-5 text-clapi-deep shadow-sm lg:p-6">
+          <span className="absolute -right-6 -top-12 h-52 w-8 rotate-45 bg-white/20" />
+          <span className="absolute right-8 -top-12 h-52 w-5 rotate-45 bg-white/15" />
+          <span className="absolute right-[4.5rem] -top-12 h-52 w-2.5 rotate-45 bg-white/10" />
+          <p className="flex items-center gap-2 text-sm font-semibold">
             <Building2 size={16} /> Para {BRAND.client.name} ({rate})
           </p>
-          <p className="mt-1 text-3xl font-extrabold tracking-tight tabular-nums text-clapi-ink lg:text-4xl">{formatCOP(data.agencyShare)}</p>
+          <p className="mt-1 text-3xl font-extrabold tracking-tight tabular-nums lg:text-4xl">{formatCOP(data.agencyShare)}</p>
         </section>
       </div>
 
@@ -79,11 +82,11 @@ export default function ArqueoPage() {
               </span>
               <span className="rounded-lg bg-sunken px-2.5 py-1.5 md:bg-transparent md:p-0 md:text-right">
                 <span className="block text-[10px] font-semibold uppercase text-ink-3 md:hidden">Generado</span>
-                <span className="font-semibold tabular-nums text-ok">{formatCOP(row.earned)}</span>
+                <span className="font-semibold tabular-nums">{formatCOP(row.earned)}</span>
               </span>
-              <span className="rounded-lg bg-clapi-soft px-2.5 py-1.5 md:bg-transparent md:p-0 md:text-right">
-                <span className="block text-[10px] font-semibold uppercase text-clapi-ink md:hidden">Agencia {rate}</span>
-                <span className="font-bold tabular-nums text-clapi-ink">{formatCOP(row.agencyShare)}</span>
+              <span className="rounded-lg bg-sunken px-2.5 py-1.5 md:bg-transparent md:p-0 md:text-right">
+                <span className="block text-[10px] font-semibold uppercase text-ink-3 md:hidden">Agencia {rate}</span>
+                <span className="font-semibold tabular-nums">{formatCOP(row.agencyShare)}</span>
               </span>
             </div>
           </div>

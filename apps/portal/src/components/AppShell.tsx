@@ -7,17 +7,18 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import logotipo from "@/assets/logotipo-clapi.svg";
+import { ConfirmDialog } from "@/components/Modal";
 import { useTrips } from "@/components/TripsProvider";
 import { BRAND } from "@/lib/brand";
 import { setBusinessPaused, useBusiness } from "@/lib/business";
 
 const NAV = [
-  { href: "/viajes", label: "Despachos", short: "Despachos", icon: LayoutGrid },
+  { href: "/viajes", label: "Viajes", short: "Viajes", icon: LayoutGrid },
   { href: "/conversaciones", label: "Conversaciones", short: "Chats", icon: MessagesSquare },
   { href: "/flota", label: "Flota", short: "Flota", icon: Users },
   { href: "/arqueo", label: "Finanzas", short: "Finanzas", icon: Wallet },
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
-  { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store, desktopOnly: true },
+  { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },
   // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
   { href: "/zonas", label: "Zonas sin cobertura", short: "Zonas", icon: MapPinOff, desktopOnly: true },
 ];
@@ -189,30 +190,8 @@ function PauseButton({ compact }: { compact?: boolean }) {
   const { paused } = useBusiness();
   const [confirming, setConfirming] = useState(false);
 
-  if (confirming) {
-    return (
-      <span className={`flex items-center gap-1.5 ${compact ? "" : "flex-col items-stretch"}`}>
-        {!compact && <span className="px-1 text-xs text-white/70">El bot deja de responder y no entran pedidos nuevos.</span>}
-        <span className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              setConfirming(false);
-              setBusinessPaused(true);
-            }}
-            className="ease-ui flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-danger px-3 text-xs font-semibold text-white"
-          >
-            <CirclePause size={15} /> {compact ? "Pausar" : "Sí, pausar todo"}
-          </button>
-          <button type="button" onClick={() => setConfirming(false)} className="ease-ui h-10 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white">
-            {compact ? "No" : "Cancelar"}
-          </button>
-        </span>
-      </span>
-    );
-  }
-
   return (
+    <>
     <button
       type="button"
       onClick={() => (paused ? setBusinessPaused(false) : setConfirming(true))}
@@ -225,6 +204,16 @@ function PauseButton({ compact }: { compact?: boolean }) {
       {paused ? <CirclePlay size={16} /> : <CirclePause size={16} />}
       {!compact && (paused ? "Reanudar operación" : "Pausar operación")}
     </button>
+    {confirming && (
+      <ConfirmDialog
+        title="¿Pausar toda la operación?"
+        points={["El bot deja de responder y no entran pedidos nuevos.", "Lo que ya está en la calle sigue su curso."]}
+        confirmLabel="Sí, pausar"
+        onConfirm={() => setBusinessPaused(true)}
+        onClose={() => setConfirming(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -305,8 +294,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-tabbar lg:pb-0">{children}</main>
 
         {/* Celular y tablet: barra de navegación abajo, al alcance del pulgar. Es el riel
-            del escritorio acostado: azul noche, y la sección activa en su cápsula violeta. */}
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 bg-clapi-deep/95 pb-[env(safe-area-inset-bottom)] text-white backdrop-blur lg:hidden">
+            del escritorio acostado: azul noche, y la sección activa en su cápsula violeta.
+            Se ven cinco, del mismo tamaño de siempre; las demás aparecen al deslizar. */}
+        <nav className="no-scrollbar fixed inset-x-0 bottom-0 z-40 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-clapi-deep/95 pb-[env(safe-area-inset-bottom)] text-white backdrop-blur lg:hidden">
           {NAV.filter((item) => !item.desktopOnly).map(({ href, short, icon: Icon }) => {
             const active = pathname?.startsWith(href);
             const badge = badgeFor(href, pending, needsHelp);
@@ -314,7 +304,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className={`flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium focus-visible:outline-gold ${
+                ref={active ? (el) => el?.scrollIntoView({ block: "nearest", inline: "nearest" }) : undefined}
+                className={`flex h-16 w-1/5 shrink-0 snap-start flex-col items-center justify-center gap-1 text-[11px] font-medium focus-visible:outline-gold ${
                   active ? "text-white" : "text-white/60"
                 }`}
               >

@@ -1,9 +1,10 @@
 "use client";
 
-import { Banknote, Check, CheckCircle2, CreditCard } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown } from "lucide-react";
 import { motion } from "motion/react";
-import { memo } from "react";
+import { memo, useState, type MouseEvent } from "react";
 
+import { ConfirmDialog } from "@/components/Modal";
 import { PhoneLink } from "@/components/PhoneLink";
 import { formatCOP, initials } from "@/lib/format";
 import type { Trip } from "@/lib/types";
@@ -39,7 +40,7 @@ function Timer({ trip }: { trip: Trip }) {
     return (
       <span className={`${pill} bg-clapi-soft text-clapi-ink`}>
         <CheckCircle2 size={13} className="text-ok" />
-        {at ? at.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : "Entregado"}
+        {at ? at.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : "Finalizado"}
       </span>
     );
   }
@@ -56,17 +57,25 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
   const urgent = useAfter(trip.status === "pending" ? Date.parse(trip.createdAt) + 120_000 : null);
   const assignedFor8s = useAfter(trip.status === "en_route" && trip.assignedAt ? Date.parse(trip.assignedAt) + 8000 : null);
   const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
-  const cash = trip.paymentMethod === "efectivo";
+  const [open, setOpen] = useState(false);
+  const [confirmingDeliver, setConfirmingDeliver] = useState(false);
+  const tag = [trip.distanceKm != null && `${Math.max(1, Math.round(trip.distanceKm))} km`, trip.deliveryFee > 0 && formatCOP(trip.deliveryFee)].filter(Boolean).join(" · ");
+
+  // Toda la tarjeta abre el detalle, menos sus botones y enlaces, que hacen lo suyo.
+  function toggle(e: MouseEvent) {
+    if (!(e.target as HTMLElement).closest("a, button")) setOpen((v) => !v);
+  }
 
   return (
     <motion.article
-      layout
+      layout="position"
       layoutId={`trip-${trip.id}`}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`card flex flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      onClick={toggle}
+      className={`card flex cursor-pointer flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
@@ -88,48 +97,54 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
         </div>
       </div>
 
-      {trip.deliveryFee > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
-          <span className="rounded-full bg-clapi-soft px-2.5 py-0.5 font-semibold text-clapi-ink">Domicilio {formatCOP(trip.deliveryFee)}</span>
-        </div>
-      )}
+      <div className="flex items-center justify-between gap-2">
+        {tag ? <span className="rounded-full bg-gold px-2.5 py-0.5 text-xs font-bold tabular-nums text-clapi-deep">{tag}</span> : <span />}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={open ? "Ocultar información adicional" : "Ver información adicional"}
+          className="ease-ui flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-3 can-hover:hover:bg-clapi-soft"
+        >
+          <ChevronDown size={16} className={`ease-ui ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Método de pago y cliente son opcionales: sin el dato no se muestra nada. */}
-        {cash ? (
-          <span className="flex items-center gap-1.5 rounded-full bg-gold px-3 py-1.5 text-xs font-bold text-clapi-deep">
-            <Banknote size={14} />
-            Cobrar {trip.valueToCollect != null && formatCOP(trip.valueToCollect)}
-          </span>
-        ) : trip.paymentMethod === "transferencia" ? (
-          <span className="flex items-center gap-1.5 rounded-full bg-ok-soft px-3 py-1.5 text-xs font-bold text-ok">
-            <CreditCard size={14} />
-            Pre-pagado{trip.valueToCollect != null && ` · ${formatCOP(trip.valueToCollect)}`}
-          </span>
-        ) : null}
-        {/* El cliente final no tiene chat con el bot: su número solo llama. */}
-        {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
+      {/* Se abre con CSS y no con `motion`: solo crece este bloque y lo de abajo baja, nada más se reacomoda. */}
+      <div
+        inert={!open}
+        className={`-mt-2.5 grid transition-[grid-template-rows,opacity] duration-200 ease-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-col items-start gap-2 pt-2.5">
+            {/* Las indicaciones que el bot sacó del pedido: referencias del lugar, con cuánto paga, etc. */}
+            {trip.notes && <p className="text-xs leading-snug text-ink">{trip.notes}</p>}
+            {/* El cliente final no tiene chat con el bot: su número solo llama. */}
+            {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
+            {!trip.notes && !trip.customerPhone && <span className="rounded-full bg-sunken px-2.5 py-0.5 text-xs text-ink-3">Sin información adicional</span>}
+          </div>
+        </div>
       </div>
 
       {/* Una sola línea: avatar, nombre, chat y llamada; en "En ruta", el botón Entregado al final. */}
       <footer className="flex items-center gap-2 border-t border-gray-100 pt-2.5">
         {trip.courierName ? (
           <>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-clapi text-[11px] font-bold text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-clapi lg:h-8 lg:w-8 text-[11px] font-bold text-white">
               {initials(trip.courierName)}
             </span>
-            <p className="min-w-0 truncate text-sm font-medium leading-tight">{trip.courierName}</p>
+            <p className="min-w-0 wrap-break-word text-xs font-medium leading-tight">{trip.courierName}</p>
             {/* Del motorizado no se muestra el número: un botón abre su chat y el otro lo llama. */}
             {trip.courierPhone && (
               <div className="flex shrink-0 items-center gap-1.5 text-ink-3">
-                <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly />
-                <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly />
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} iconOnly className="h-9! w-9! lg:h-8! lg:w-8!" />
+                <PhoneLink phone={trip.courierPhone} name={trip.courierName} call iconOnly className="h-9! w-9! lg:h-8! lg:w-8!" />
               </div>
             )}
           </>
         ) : (
           <div className="flex items-center gap-2 text-sm text-ink-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-ink-3/40">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed lg:h-8 lg:w-8 border-ink-3/40">
               <span className="h-1.5 w-1.5 rounded-full bg-warn" />
             </span>
             Buscando moto libre…
@@ -139,7 +154,7 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
         {trip.status === "en_route" && (
           <button
             type="button"
-            onClick={() => onDeliver(trip.id)}
+            onClick={() => setConfirmingDeliver(true)}
             className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
           >
             <Check size={14} />
@@ -147,6 +162,17 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
           </button>
         )}
       </footer>
+
+      {confirmingDeliver && (
+        <ConfirmDialog
+          title={`¿Marcar ${trip.code} como entregado?`}
+          points={["Pasa a Finalizado y el domiciliario queda libre si no lleva otro."]}
+          confirmLabel="Sí, entregado"
+          tone="primary"
+          onConfirm={() => onDeliver(trip.id)}
+          onClose={() => setConfirmingDeliver(false)}
+        />
+      )}
     </motion.article>
   );
 });

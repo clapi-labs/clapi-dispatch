@@ -16,6 +16,7 @@ export type Trip = {
   paymentMethod: PaymentMethod | null;
   requiresCashReturn: boolean;
   deliveryFee: number;
+  distanceKm: number | null;
   createdAt: string;
   updatedAt: string;
   courierName: string | null;
@@ -29,6 +30,7 @@ export type Courier = {
   id: number;
   name: string;
   phone: string;
+  photo: string | null;
   status: CourierStatus;
   lat: number | null;
   lng: number | null;

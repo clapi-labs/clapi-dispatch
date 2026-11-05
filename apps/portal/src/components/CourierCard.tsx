@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { CourierDetails } from "@/components/CourierDetails";
+import { ConfirmDialog } from "@/components/Modal";
 import { PhoneLink } from "@/components/PhoneLink";
+import { PhotoButton } from "@/components/PhotoButton";
 import { chatHref } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
-import { elapsedLabel, formatPhone, initials } from "@/lib/format";
+import { elapsedLabel, formatPhone } from "@/lib/format";
 import type { Courier } from "@/lib/types";
 
 const STATUS: Record<Courier["status"], { dot: string; label: string; chip: string }> = {
@@ -25,11 +27,13 @@ export function CourierCard({
   onChange,
   onEmergency,
   onRemove,
+  onPhoto,
 }: {
   courier: Courier;
   onChange: (next: Courier["status"]) => void;
   onEmergency: (on: boolean) => void;
   onRemove: () => void;
+  onPhoto: (photo: string | null) => Promise<void>;
 }) {
   const status = STATUS[courier.status];
   const located = courier.lat != null && courier.lng != null;
@@ -38,16 +42,17 @@ export function CourierCard({
   const off = courier.status === "offline";
   const emergency = courier.status === "paused";
   const [confirmingEmergency, setConfirmingEmergency] = useState(false);
+  const [confirmingOff, setConfirmingOff] = useState(false);
   // Con muchos motorizados la tarjeta se queda en el resumen; el resto se abre a pedido.
   const [expanded, setExpanded] = useState(false);
 
   return (
     <article className={`card flex flex-col gap-4 p-4 ${emergency ? "ring-2 ring-danger" : ""}`}>
       <div className="flex items-center gap-3">
-        <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-clapi text-sm font-bold text-white">
-          {initials(courier.name)}
+        <span className="relative h-12 w-12 shrink-0">
+          <PhotoButton name={courier.name} photo={courier.photo} className="h-12 w-12 bg-clapi text-sm text-white" onChange={onPhoto} />
           <span
-            className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-[3px] ring-surface ${status.dot}`}
+            className={`pointer-events-none absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-[3px] ring-surface ${status.dot}`}
           />
         </span>
         <div className="min-w-0 flex-1">
@@ -105,7 +110,7 @@ export function CourierCard({
         <button
           type="button"
           disabled={courier.status === "busy" || emergency}
-          onClick={() => onChange(off ? "available" : "offline")}
+          onClick={() => (off ? onChange("available") : setConfirmingOff(true))}
           aria-label={off ? "Conectar" : "Desconectar"}
           title={off ? "Conectar" : "Desconectar"}
           className={`ease-ui flex h-10 w-10 items-center justify-center rounded-xl disabled:opacity-40 ${
@@ -147,49 +152,42 @@ export function CourierCard({
         </p>
       )}
 
+      {confirmingOff && (
+        <ConfirmDialog
+          title={`¿Desconectar a ${courier.name}?`}
+          points={["No le llegan más pedidos.", "Vuelve a conectarse cuando le escriba al bot, o tocando aquí el mismo botón."]}
+          confirmLabel="Sí, desconectar"
+          onConfirm={() => onChange("offline")}
+          onClose={() => setConfirmingOff(false)}
+        />
+      )}
+
       {confirmingEmergency && (
-        <div role="alertdialog" aria-label={`Emergencia de ${courier.name}`} className="flex flex-col gap-2 rounded-xl bg-danger-soft p-3 text-xs text-danger">
-          <p className="font-semibold">¿Marcar a {courier.name} en emergencia?</p>
-          <ul className="list-disc pl-4 text-ink-2">
-            <li>No le llegan más pedidos.</li>
-            <li>El bot deja de responderle y su chat queda fijado arriba en Conversaciones.</li>
-            <li>Lo que lleva sigue a su nombre: decide tú si reasignarlo.</li>
-          </ul>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmingEmergency(false);
-                onEmergency(true);
-              }}
-              className="ease-ui h-9 flex-1 rounded-lg bg-danger font-semibold text-white"
-            >
-              Sí, marcar emergencia
-            </button>
-            <button type="button" onClick={() => setConfirmingEmergency(false)} className="ease-ui h-9 rounded-lg bg-surface px-4 font-semibold text-ink-2">
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`¿Marcar a ${courier.name} en emergencia?`}
+          points={[
+            "No le llegan más pedidos.",
+            "El bot deja de responderle y su chat queda fijado arriba en Conversaciones.",
+            "Lo que lleva sigue a su nombre: decide tú si reasignarlo.",
+          ]}
+          confirmLabel="Sí, marcar"
+          onConfirm={() => onEmergency(true)}
+          onClose={() => setConfirmingEmergency(false)}
+        />
       )}
 
       {confirming && (
-        <div role="alertdialog" aria-label={`Quitar a ${courier.name}`} className="flex flex-col gap-2 rounded-xl bg-danger-soft p-3 text-xs text-danger">
-          <p className="font-semibold">¿Quitar a {courier.name} de la flota?</p>
-          <ul className="list-disc pl-4 text-ink-2">
-            <li>Deja de recibir viajes desde ya.</li>
-            <li>Si le escribe al bot, ya no lo reconoce como domiciliario.</li>
-            <li>Sus viajes y su historial se conservan en los reportes.</li>
-          </ul>
-          <div className="flex gap-2">
-            <button type="button" onClick={onRemove} className="ease-ui h-9 flex-1 rounded-lg bg-danger font-semibold text-white">
-              Sí, quitarlo
-            </button>
-            <button type="button" onClick={() => setConfirming(false)} className="ease-ui h-9 rounded-lg bg-surface px-4 font-semibold text-ink-2">
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`¿Quitar a ${courier.name} de la flota?`}
+          points={[
+            "Deja de recibir viajes desde ya.",
+            "Si le escribe al bot, ya no lo reconoce como domiciliario.",
+            "Sus viajes y su historial se conservan en los reportes.",
+          ]}
+          confirmLabel="Sí, quitarlo"
+          onConfirm={onRemove}
+          onClose={() => setConfirming(false)}
+        />
       )}
 
       <button

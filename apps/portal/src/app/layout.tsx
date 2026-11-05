@@ -10,12 +10,15 @@ const sora = Sora({ subsets: ["latin"], display: "swap", variable: "--font-sora"
 
 export const metadata: Metadata = {
   title: `${BRAND.client.name} · Central de despachos`,
-  description: `Despachos en vivo — tecnología ${BRAND.platform.name}`,
+  description: `Viajes en vivo — tecnología ${BRAND.platform.name}`,
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Sin zoom: la plataforma se usa como una app, y así iOS tampoco acerca la pantalla al tocar un campo.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: "#0d0b14",
 };

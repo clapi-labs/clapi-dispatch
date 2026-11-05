@@ -1,4 +1,5 @@
-import { removeCourier, setCourierEmergency, updateCourierStatus } from "@/db/queries/couriers";
+import { removeCourier, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
+import { isValidPhoto } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.active === false) {
     await removeCourier(Number(id));
     return Response.json({ ok: true });
+  }
+
+  if ("photo" in body) {
+    if (!isValidPhoto(body.photo)) return Response.json({ error: "Foto inválida" }, { status: 400 });
+    const courier = await setCourierPhoto(Number(id), body.photo);
+    return courier ? Response.json(courier) : Response.json({ error: "No existe" }, { status: 404 });
   }
 
   if (typeof body.emergency === "boolean") {

@@ -1,6 +1,6 @@
 import { desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 
-import { db, schema } from "@dispatch/shared/db";
+import { db, routeKm, schema } from "@dispatch/shared/db";
 
 export type TripRow = typeof schema.trips.$inferSelect;
 export type AssignmentRow = typeof schema.assignments.$inferSelect;
@@ -11,6 +11,8 @@ export type TripWithAssignment = TripRow & {
   courierPhone: string | null;
   assignedAt: Date | null;
   deliveredAt: Date | null;
+  /** Kilómetros del domicilio; nulo si falta alguna de las dos ubicaciones. */
+  distanceKm: number | null;
 };
 
 /** Lo que el tablero necesita: los viajes abiertos (sin importar cuándo se
@@ -47,6 +49,7 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     courierPhone: r.courierPhone,
     assignedAt: r.assignedAt,
     deliveredAt: r.deliveredAt,
+    distanceKm: r.trip.pickupLocation && r.trip.deliveryLocation ? routeKm(r.trip.pickupLocation, r.trip.deliveryLocation) : null,
   }));
 }
 

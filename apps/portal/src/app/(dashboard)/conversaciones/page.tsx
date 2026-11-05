@@ -21,13 +21,12 @@ import { ChatContactActions } from "@/components/ChatContactActions";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { KINDS, KindChip } from "@/components/KindChip";
 import { MessageMenu } from "@/components/MessageMenu";
-import { QuickReplies } from "@/components/QuickReplies";
 import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKEOVER_REASON } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
 import { useSwipePanes } from "@/lib/use-swipe-panes";
 import { useBusiness } from "@/lib/business";
-import { formatCOP, formatPhone, initials, samePhone } from "@/lib/format";
-import type { ChatMessage, ConversationKind, ConversationSummary, DraftFields } from "@/lib/types";
+import { formatPhone, initials, samePhone } from "@/lib/format";
+import type { ChatMessage, ConversationKind, ConversationSummary } from "@/lib/types";
 import { useLive } from "@/lib/live";
 
 function timeLabel(iso: string) {
@@ -79,46 +78,6 @@ function isDesktop() {
 
 const INTERVENE =
   "ease-ui h-9 shrink-0 items-center gap-1.5 rounded-lg bg-clapi px-3 text-xs font-semibold text-white shadow-sm can-hover:hover:brightness-110";
-
-const DRAFT_FIELDS: { key: keyof DraftFields; label: string }[] = [
-  { key: "origenRestaurante", label: "Restaurante" },
-  { key: "direccionEntrega", label: "Dirección" },
-  { key: "telefonoCliente", label: "Teléfono" },
-  { key: "valorACobrar", label: "Valor" },
-  { key: "metodoPago", label: "Pago" },
-];
-
-/** Lo que el bot ya entendió del pedido en curso: la memoria entre mensajes. */
-function DraftPanel({ draft }: { draft: DraftFields }) {
-  const done = DRAFT_FIELDS.filter((f) => draft[f.key] !== null).length;
-  return (
-    <div className="border-b border-line bg-clapi-soft/60 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-clapi-ink">
-        <span className="flex items-center gap-1.5">
-          <Bot size={14} /> El bot está armando el pedido
-        </span>
-        <span className="tabular-nums">{done}/5</span>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {DRAFT_FIELDS.map((f) => {
-          const value = draft[f.key];
-          const text = value === null ? f.label : f.key === "valorACobrar" ? formatCOP(Number(value)) : String(value);
-          return (
-            <span
-              key={f.key}
-              className={`flex max-w-full items-center gap-1 truncate rounded-lg px-2 py-1 text-xs ${
-                value === null ? "border border-dashed border-ink-3/40 text-ink-3" : "bg-surface font-medium text-ink shadow-sm"
-              }`}
-            >
-              {value !== null && <Check size={12} className="shrink-0 text-ok" />}
-              <span className="truncate">{text}</span>
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /** La cita encima de la burbuja, como en WhatsApp: quién escribió el
  *  mensaje citado y su comienzo. Tocarla lleva hasta ese mensaje. */
@@ -313,6 +272,16 @@ export default function ConversacionesPage() {
 
   const selected = list.find((c) => c.id === selectedId) ?? null;
 
+  // En el celular el chat tapa la lista: sin esta pausa corta, el toque no alcanza a verse.
+  const [tapped, setTapped] = useState<number | null>(null);
+  function tap(id: number) {
+    setTapped(id);
+    setTimeout(() => {
+      open(id);
+      setTapped(null);
+    }, 200);
+  }
+
   // Tocar una cita lleva al mensaje citado y lo ilumina un momento.
   const [highlight, setHighlight] = useState<number | null>(null);
   const goToMessage = useCallback((messageId: number) => {
@@ -448,9 +417,9 @@ export default function ConversacionesPage() {
                     <button
                       key={c.id}
                       type="button"
-                      onClick={() => open(c.id)}
-                      className={`ease-ui relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left ${
-                        c.id === selectedId ? KINDS[c.kind].selected : help ? "bg-gold-soft/70 can-hover:hover:bg-gold-soft" : "can-hover:hover:bg-sunken"
+                      onClick={() => tap(c.id)}
+                      className={`ease-ui relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left duration-100 active:scale-[0.97] ${
+                        c.id === tapped ? `scale-[0.97] ${c.kind === "courier" ? "bg-courier/25" : "bg-clapi/25"}` : c.id === selectedId ? KINDS[c.kind].selected : help ? "bg-gold-soft/70 can-hover:hover:bg-gold-soft" : "can-hover:hover:bg-sunken"
                       }`}
                     >
                       {/* Franja amarilla a la izquierda: este chat pide ayuda. */}
@@ -473,7 +442,6 @@ export default function ConversacionesPage() {
                           </span>
                         </span>
                         <span className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">
-                          <KindChip kind={c.kind} />
                           <span className="min-w-0 truncate">
                             {help ? (
                               <span className="font-semibold text-gold-ink">Necesita tu ayuda</span>
@@ -537,25 +505,17 @@ export default function ConversacionesPage() {
               </header>
 
               {selected.botPaused && !businessPaused && (
-                <div className="flex flex-wrap items-center gap-3 border-b border-gold/30 bg-gold-soft px-4 py-3">
-                  <Headset size={18} className="shrink-0 text-gold-ink" />
-                  <p className="min-w-0 flex-1 text-sm text-gold-ink">
-                    <strong>El bot está en silencio.</strong> {selected.escalationReason ?? "Un asesor atiende este chat."}
+                <div className="flex items-center gap-2 border-b border-gold/30 bg-gold-soft px-3 py-1.5 lg:px-4">
+                  <Headset size={14} className="shrink-0 text-gold-ink" />
+                  {/* Solo la razón por la que el bot escaló: que un operador tomó el chat ya se sabe. */}
+                  <p className="min-w-0 flex-1 text-xs leading-snug text-gold-ink">
+                    {selected.escalationReason && selected.escalationReason !== TAKEOVER_REASON ? selected.escalationReason : "Tú atiendes"}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => act("resume")}
-                    className="ease-ui flex h-9 items-center gap-1.5 rounded-lg bg-surface px-3 text-xs font-semibold text-ink shadow-sm"
-                  >
-                    <RotateCcw size={13} /> Devolver al bot
-                  </button>
                 </div>
               )}
 
-              {!selected.botPaused && !businessPaused && selected.draft && <DraftPanel draft={selected.draft} />}
-
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
-              <div className="no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 py-4 lg:px-6">
+              <div className={`no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 pt-4 lg:px-6 ${selected.botPaused && !businessPaused ? "pb-14" : "pb-4"}`}>
                 {thread.map((m, i) => {
                   const day = dayLabel(m.createdAt);
                   const newDay = i === 0 || dayLabel(thread[i - 1].createdAt) !== day;
@@ -581,16 +541,19 @@ export default function ConversacionesPage() {
               </div>
 
               {selected.botPaused || businessPaused ? (
-                <form onSubmit={send} className="border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
+                <form onSubmit={send} className="relative border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
                   {sendError && <p className="mb-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{sendError}</p>}
+                  {/* Flota sobre el hilo, a la altura del botón de enviar; el hilo le deja espacio abajo. */}
+                  {selected.botPaused && !businessPaused && (
+                    <button
+                      type="button"
+                      onClick={() => act("resume")}
+                      className={`absolute bottom-full right-3 z-10 mb-2 flex lg:right-5 ${INTERVENE}`}
+                    >
+                      <RotateCcw size={13} /> Devolver al bot
+                    </button>
+                  )}
                   <div className="flex items-end gap-2">
-                    <QuickReplies
-                      kind={selected.kind}
-                      onPick={(text) => {
-                        setDraftText((prev) => (prev.trim() ? `${prev.trimEnd()}\n${text}` : text));
-                        inputRef.current?.focus();
-                      }}
-                    />
                     <textarea
                       ref={inputRef}
                       value={draftText}
@@ -603,21 +566,21 @@ export default function ConversacionesPage() {
                       }}
                       rows={1}
                       placeholder="Escribe como la central…"
-                      className="ease-ui max-h-32 min-h-11 flex-1 resize-none rounded-xl bg-sunken px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-clapi/30"
+                      className="ease-ui max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-sunken px-3.5 py-2.5 text-sm leading-5 outline-none focus:ring-2 focus:ring-clapi/30"
                     />
                     <button
                       type="submit"
                       disabled={sending || !draftText.trim()}
                       aria-label="Enviar"
-                      className="ease-ui flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-clapi text-white disabled:opacity-40"
+                      className="ease-ui flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-clapi text-white disabled:opacity-40"
                     >
-                      <SendHorizontal size={18} />
+                      <SendHorizontal size={16} />
                     </button>
                   </div>
                 </form>
               ) : (
-                <div className="flex items-center justify-center gap-2 border-t border-line bg-surface px-4 py-3 text-xs text-ink-3">
-                  <Bot size={14} className="shrink-0 text-clapi" />
+                <div className="flex items-center justify-center gap-2 border-t border-line bg-surface px-3 pb-3 pt-2 text-sm text-ink-3 lg:px-5">
+                  <Bot size={16} className="shrink-0 text-clapi" />
                   <span className="sm:hidden">El bot está atendiendo.</span>
                   <span className="hidden sm:inline">
                     El bot está atendiendo. Toca <strong className="text-ink-2">Intervenir</strong> para escribir tú.

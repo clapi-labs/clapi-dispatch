@@ -37,6 +37,11 @@ export async function updateCourierStatus(id: number, status: schema.CourierStat
   return courier;
 }
 
+export async function setCourierPhoto(id: number, photo: string | null) {
+  const [courier] = await db.update(schema.couriers).set({ photo }).where(eq(schema.couriers.id, id)).returning();
+  return courier ?? null;
+}
+
 export type CourierProfile = Pick<
   typeof schema.courierProfiles.$inferSelect,
   "vehiclePlate" | "vehicleType" | "documentId" | "emergencyContactName" | "emergencyContactPhone"

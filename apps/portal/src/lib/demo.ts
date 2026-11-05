@@ -32,12 +32,12 @@ const ago = (min: number) => new Date(T0 - min * 60_000).toISOString();
 // ---------------------------------------------------------------------------
 
 const couriers: Courier[] = [
-  { id: 1, name: "Juan Rodríguez", phone: "573001112233", status: "busy", lat: 3.4372, lng: -76.5422, locationUpdatedAt: ago(1), deliveriesThisShift: 6, lastAssignedAt: ago(18), active: true, createdAt: ago(600) },
-  { id: 2, name: "Carlos Mejía", phone: "573104445566", status: "available", lat: 3.4583, lng: -76.5322, locationUpdatedAt: ago(3), deliveriesThisShift: 4, lastAssignedAt: ago(95), active: true, createdAt: ago(600) },
-  { id: 3, name: "Andrés Gómez", phone: "573207778899", status: "available", lat: 3.3609, lng: -76.5352, locationUpdatedAt: ago(26), deliveriesThisShift: 5, lastAssignedAt: ago(60), active: true, createdAt: ago(600) },
-  { id: 4, name: "Mateo Vargas", phone: "573156667788", status: "busy", lat: 3.4764, lng: -76.5281, locationUpdatedAt: ago(2), deliveriesThisShift: 3, lastAssignedAt: ago(31), active: true, createdAt: ago(600) },
-  { id: 5, name: "Luis Torres", phone: "573012223344", status: "paused", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 2, lastAssignedAt: ago(180), active: true, createdAt: ago(600) },
-  { id: 6, name: "Diego Ramírez", phone: "573189990011", status: "offline", lat: 3.4224, lng: -76.5405, locationUpdatedAt: ago(240), deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: ago(600) },
+  { id: 1, name: "Juan Rodríguez", phone: "573001112233", photo: null, status: "busy", lat: 3.4372, lng: -76.5422, locationUpdatedAt: ago(1), deliveriesThisShift: 6, lastAssignedAt: ago(18), active: true, createdAt: ago(600) },
+  { id: 2, name: "Carlos Mejía", phone: "573104445566", photo: null, status: "available", lat: 3.4583, lng: -76.5322, locationUpdatedAt: ago(3), deliveriesThisShift: 4, lastAssignedAt: ago(95), active: true, createdAt: ago(600) },
+  { id: 3, name: "Andrés Gómez", phone: "573207778899", photo: null, status: "available", lat: 3.3609, lng: -76.5352, locationUpdatedAt: ago(26), deliveriesThisShift: 5, lastAssignedAt: ago(60), active: true, createdAt: ago(600) },
+  { id: 4, name: "Mateo Vargas", phone: "573156667788", photo: null, status: "busy", lat: 3.4764, lng: -76.5281, locationUpdatedAt: ago(2), deliveriesThisShift: 3, lastAssignedAt: ago(31), active: true, createdAt: ago(600) },
+  { id: 5, name: "Luis Torres", phone: "573012223344", photo: null, status: "paused", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 2, lastAssignedAt: ago(180), active: true, createdAt: ago(600) },
+  { id: 6, name: "Diego Ramírez", phone: "573189990011", photo: null, status: "offline", lat: 3.4224, lng: -76.5405, locationUpdatedAt: ago(240), deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: ago(600) },
 ];
 
 const profiles = new Map<number, CourierProfile>([
@@ -65,6 +65,7 @@ function trip(partial: Partial<Trip> & Pick<Trip, "originRestaurantName" | "deli
     paymentMethod: "efectivo",
     requiresCashReturn: true,
     deliveryFee: 6_000,
+    distanceKm: 2,
     createdAt: ago(10),
     updatedAt: ago(5),
     courierName: null,
@@ -281,7 +282,7 @@ async function handle(method: string, path: string, body: string | null): Promis
 
   if (path === "/api/couriers" && method === "GET") return json(couriers.filter((c) => c.active));
   if (path === "/api/couriers" && method === "POST") {
-    const c: Courier = { id: couriers.length + 100, name: data.name, phone: data.phone, status: "available", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: new Date().toISOString() };
+    const c: Courier = { id: couriers.length + 100, name: data.name, phone: data.phone, photo: null, status: "available", lat: null, lng: null, locationUpdatedAt: null, deliveriesThisShift: 0, lastAssignedAt: null, active: true, createdAt: new Date().toISOString() };
     couriers.unshift(c);
     return json(c, 201);
   }
@@ -294,6 +295,7 @@ async function handle(method: string, path: string, body: string | null): Promis
     const c = couriers.find((x) => x.id === Number(m![1]));
     if (c && typeof data.status === "string") c.status = data.status;
     if (c && data.active === false) c.active = false;
+    if (c && "photo" in data) c.photo = data.photo;
     return json(c ?? {});
   }
 
