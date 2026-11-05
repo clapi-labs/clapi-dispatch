@@ -1,5 +1,5 @@
 {
-  "id": "9ec93c59-949b-4f80-9d88-e26f0eb1f03f",
+  "id": "4bae67bf-845c-4c98-910f-bf7a8301aa5e",
   "prevId": "5751e9c0-14d2-447f-bb55-3e35425197e9",
   "version": "7",
   "dialect": "postgresql",
@@ -41,6 +41,18 @@
         },
         "dispatched_at": {
           "name": "dispatched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seen_at": {
+          "name": "seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seen_reminder_at": {
+          "name": "seen_reminder_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -301,12 +313,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "photo": {
-          "name": "photo",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "status": {
           "name": "status",
@@ -924,13 +930,7 @@
           "name": "phone",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "photo": {
-          "name": "photo",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "known_pickup_address": {
           "name": "known_pickup_address",

@@ -1,4 +1,4 @@
-import { buildExtractionPrompt, DOUBTFUL_FIELDS, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
+import { ambiguousAddress, buildExtractionPrompt, DOUBTFUL_FIELDS, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
 
 import { env } from "@/env";
 import type { DownloadedImage } from "@/services/whatsapp/client";
@@ -70,6 +70,8 @@ export function parseDelivery(raw: Record<string, unknown>): Interpretation["ent
     ? raw.dudas.filter((k): k is DoubtfulField => (DOUBTFUL_FIELDS as readonly unknown[]).includes(k) && k !== "valorACobrar" && k !== "metodoPago")
     : [];
   if (phone.doubtful) doubts.push("telefonoCliente");
+  // Sin tipo de vía («la 42 con 83») el mapa puede ubicarla en otro lado: se confirma.
+  if (ambiguousAddress(text(raw.direccionEntrega))) doubts.push("direccionEntrega");
   return {
     direccionEntrega: text(raw.direccionEntrega),
     telefonoCliente: phone.phone,

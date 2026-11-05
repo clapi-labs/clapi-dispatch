@@ -3,7 +3,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
 
-import type { ChatMessage, DraftFields } from "@/lib/types";
+import type { AdvisorQueryItem, ChatMessage, DraftFields } from "@/lib/types";
 
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
 
@@ -46,6 +46,7 @@ export async function listConversations() {
         botPaused: c.botPaused,
         escalationReason: c.escalationReason,
         draft: draftSummary(c.draft),
+        advisorQuery: advisorQuery(c.draft),
         lastMessageAt: c.lastMessageAt,
         lastText: last?.text ?? null,
         lastRole: last?.role ?? null,
@@ -142,6 +143,20 @@ export async function resumeBot(conversationId: number) {
     .update(schema.conversations)
     .set({ botPaused: false, escalationReason: null, draft: null, failedAttempts: 0 })
     .where(eq(schema.conversations.id, conversationId));
+}
+
+/** Las direcciones que el bot le preguntó a la central (ver `askAdvisor` en
+ *  apps/bot/src/bot/order.ts). `null` si no hay consulta pendiente. */
+function advisorQuery(raw: unknown): AdvisorQueryItem[] | null {
+  if (!raw) return null;
+  const draft = normalizeDraft(raw);
+  if (!draft.consultaAsesor) return null;
+  return draft.consultaAsesor.entregas.flatMap((indice) => {
+    const d = draft.entregas[indice];
+    if (!d?.direccionEntrega) return [];
+    const direccion = [d.direccionEntrega, d.detalleDireccion].filter(Boolean).join(" · ");
+    return [{ indice, direccion, barrio: d.barrio ?? null, cliente: d.nombreCliente ?? null }];
+  });
 }
 
 /**

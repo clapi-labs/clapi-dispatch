@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, ChevronDown } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { motion } from "motion/react";
 import { memo, useState, type MouseEvent } from "react";
 
@@ -48,6 +48,33 @@ function Timer({ trip }: { trip: Trip }) {
 }
 
 /**
+ * ¿El motorizado ya vio el pedido? Hasta que toque «Vi el pedido» sale
+ * «Sin confirmar» (con «recordado» si el bot ya le insistió); pasados los
+ * minutos de alerta, en rojo, para que la central lo llame o le pase el
+ * pedido a otra moto.
+ */
+function SeenBadge({ trip, alert }: { trip: Trip; alert: boolean }) {
+  const now = useNow(trip.seenAt ? null : 1000);
+  const chip = "flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold";
+  if (trip.seenAt) {
+    const at = new Date(trip.seenAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+    return (
+      <span className={`${chip} bg-ok-soft text-ok`}>
+        <Eye size={12} /> Visto {at}
+      </span>
+    );
+  }
+  const min = trip.assignedAt ? Math.floor((now - Date.parse(trip.assignedAt)) / 60_000) : 0;
+  return (
+    <span className={`${chip} ${alert ? "bg-danger text-white" : "bg-warn-soft text-warn"}`}>
+      <EyeOff size={12} />
+      {alert ? `Sin confirmar hace ${min} min` : "Sin confirmar"}
+      {trip.seenReminderAt ? " · recordado" : ""}
+    </span>
+  );
+}
+
+/**
  * La tarjeta no depende del reloj: solo el cronómetro (`Timer`) late cada
  * segundo. Antes la tarjeta entera, con su animación de `layout`, se volvía a
  * medir y dibujar cada segundo por cada viaje en pantalla. `memo`: si el viaje
@@ -59,6 +86,8 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
   const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
   const [open, setOpen] = useState(false);
   const [confirmingDeliver, setConfirmingDeliver] = useState(false);
+  const watchSeen = trip.status === "en_route" && !!trip.courierName && trip.seenAt !== undefined;
+  const unseenAlert = useAfter(watchSeen && !trip.seenAt && trip.seenAlertAt ? Date.parse(trip.seenAlertAt) : null);
   const tag = [trip.distanceKm != null && `${Math.max(1, Math.round(trip.distanceKm))} km`, trip.deliveryFee > 0 && formatCOP(trip.deliveryFee)].filter(Boolean).join(" · ");
 
   // Toda la tarjeta abre el detalle, menos sus botones y enlaces, que hacen lo suyo.
@@ -75,7 +104,7 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
       onClick={toggle}
-      className={`card flex cursor-pointer flex-col gap-2.5 p-3.5 ${urgent ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      className={`card flex cursor-pointer flex-col gap-2.5 p-3.5 ${urgent || unseenAlert ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
@@ -98,7 +127,10 @@ export const TripCard = memo(function TripCard({ trip, onDeliver }: { trip: Trip
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        {tag ? <span className="rounded-full bg-gold px-2.5 py-0.5 text-xs font-bold tabular-nums text-clapi-deep">{tag}</span> : <span />}
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-ink-3">
+          {tag && <span className="rounded-full bg-gold px-2.5 py-0.5 text-xs font-bold tabular-nums text-clapi-deep">{tag}</span>}
+          {watchSeen && <SeenBadge trip={trip} alert={unseenAlert} />}
+        </div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

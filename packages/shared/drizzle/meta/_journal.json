@@ -75,8 +75,15 @@
     {
       "idx": 10,
       "version": "7",
-      "when": 1793841730512,
-      "tag": "0010_fotos_y_restaurante_sin_numero",
+      "when": 1793752940898,
+      "tag": "0010_confirmacion_visto",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793843423174,
+      "tag": "0011_fotos_y_restaurante_sin_numero",
       "breakpoints": true
     }
   ]

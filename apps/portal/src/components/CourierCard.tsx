@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Copy, LocateFixed, Power, PowerOff, Siren, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Copy, Eye, LocateFixed, Power, PowerOff, Siren, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -84,6 +84,27 @@ export function CourierCard({
           )}
         </a>
       </div>
+
+      {/* Cómo responde a la ficha: para exigirle al que siempre se demora en confirmar. */}
+      {courier.seenStats && (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-3" title="Últimos 7 días">
+          <Eye size={12} className="shrink-0" />
+          {courier.seenStats.avgMinutes != null ? (
+            <span>
+              Confirma en <strong className={courier.seenStats.avgMinutes > 3 ? "text-danger" : "text-ink-2"}>{courier.seenStats.avgMinutes} min</strong> en
+              promedio ({courier.seenStats.confirmed} {courier.seenStats.confirmed === 1 ? "pedido" : "pedidos"})
+            </span>
+          ) : (
+            <span>Sin confirmaciones</span>
+          )}
+          {courier.seenStats.reminders > 0 && (
+            <span className="text-warn">
+              · {courier.seenStats.reminders} {courier.seenStats.reminders === 1 ? "recordatorio" : "recordatorios"}
+            </span>
+          )}
+          <span>· 7 días</span>
+        </p>
+      )}
 
       {/* El número solo se copia: para el chat y la llamada están los botones de abajo. */}
       <button

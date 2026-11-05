@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { AdvisorQueryPanel } from "@/components/AdvisorQueryPanel";
 import { ChatContactActions } from "@/components/ChatContactActions";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { KINDS, KindChip } from "@/components/KindChip";
@@ -513,6 +514,18 @@ export default function ConversacionesPage() {
                   </p>
                 </div>
               )}
+
+              {selected.botPaused && selected.advisorQuery?.length ? (
+                <AdvisorQueryPanel
+                  key={selected.id}
+                  conversationId={selected.id}
+                  items={selected.advisorQuery}
+                  onDone={() => {
+                    loadList();
+                    loadThread(selected.id);
+                  }}
+                />
+              ) : null}
 
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
               <div className={`no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 pt-4 lg:px-6 ${selected.botPaused && !businessPaused ? "pb-14" : "pb-4"}`}>

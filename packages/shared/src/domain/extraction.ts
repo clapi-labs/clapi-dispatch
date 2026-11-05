@@ -64,15 +64,25 @@ export type DeliveryDraft = DeliveryFields & {
   ubicacionEntrega?: { lat: number; lng: number } | null;
   /** La dirección que se geocodificó; si cambia, se vuelve a ubicar y cotizar. */
   direccionUbicada?: string | null;
-  cotizacion?: { precio: number; km: number } | null;
+  /** `km` null = el precio lo dio el asesor, sin distancia medida. */
+  cotizacion?: { precio: number; km: number | null } | null;
+  /** El mapa no la ubicó, pero el asesor dijo que es válida y cuánto vale:
+   *  no se vuelve a buscar mientras no cambie la dirección. */
+  validadaPorAsesor?: boolean;
 };
+
+/** Lo que el bot le preguntó a la central: las entregas (por posición) que
+ *  el mapa no ubicó. Mientras espera, el bot no responde en ese chat. */
+export type AdvisorQuery = { entregas: number[]; desde: string };
 
 /** En qué va el pedido: `cotizado` = ya se le mandó el precio y se espera la
  *  confirmación; `confirmado` = confirmó y se espera lo que falte. */
 export type OrderStage = "recibiendo" | "cotizado" | "confirmado";
 
 /** Lo que un mensaje puede cambiar de un pedido ya creado. */
-export type TripUpdate = Partial<Pick<DeliveryFields, "listoEnMinutos" | "notas" | "telefonoCliente" | "nombreCliente" | "valorACobrar" | "metodoPago">> & {
+export type TripUpdate = Partial<
+  Pick<DeliveryFields, "listoEnMinutos" | "notas" | "telefonoCliente" | "nombreCliente" | "valorACobrar" | "metodoPago" | "detalleDireccion">
+> & {
   /** Cuándo se dijo el tiempo (ISO), para contar desde ahí. */
   desde: string;
 };
@@ -101,6 +111,9 @@ export type OrderDraft = {
    *  respondió sin pedirle que confirme. Pasa a pedido cuando decide
    *  mandarlo («dale», los datos del cliente, el tiempo). */
   soloPrecio?: boolean;
+  /** El mapa no ubicó una dirección (o no respondió): se le preguntó a la
+   *  central si es válida y cuánto vale. Lo responde en el portal. */
+  consultaAsesor?: AdvisorQuery | null;
 };
 
 /** Lo que devuelve el modelo por mensaje. */
@@ -193,6 +206,24 @@ const UNIT_NUMBER = /\b(apto|apartamento|torre|bloque|casa|interior|int)\b\.?\s*
  *  puerta ir. */
 export function looksLikeMultiUnit(address: string | null | undefined): boolean {
   return !!address && MULTI_UNIT_WORDS.test(address) && !UNIT_NUMBER.test(address);
+}
+
+/** Calle, carrera, avenida…: el tipo de vía, sin el cual «la 42 con 83» puede
+ *  ser una calle o una carrera. */
+const ROAD_TYPE =
+  /\b(calle|cll?|carrera|cra|cr|kra?|kr|avenida|av|avda|diagonal|dg|diag|transversal|tv|trans|transv|autopista|circular|circ|v[ií]a|km|kil[oó]metro|manzana|mz|vereda|corregimiento|sector)\b/iu;
+
+/**
+ * La dirección tiene números pero no dice el tipo de vía («La 42 con
+ * 83E-15», «42 # 83-15»): el mapa puede ubicarla en otro lado. El
+ * restaurante la confirma antes de cotizar. Un lugar con nombre y sin
+ * números («Clínica Farallones») no entra aquí.
+ */
+export function ambiguousAddress(address: string | null | undefined): boolean {
+  if (!address || !/\d/.test(address)) return false;
+  // «Conjunto Bosques del Lili, 3» o «Unicentro local 12»: el número no es de la calle.
+  const street = address.replace(/\b(local|apto|apartamento|torre|bloque|casa|piso|oficina|of|interior|int)\b\.?\s*#?\s*\w+/giu, "");
+  return /\d/.test(street) && !ROAD_TYPE.test(street);
 }
 
 /** La dirección tal como la lee el motorizado: calle y, si hay, torre y apto. */
@@ -320,7 +351,7 @@ Reglas:
 - "confirma": true solo si la etapa es "cotizado" o "confirmado" y el restaurante acepta el servicio: "sí", "dale", "listo", "confirmo", "ya están los 2", o da el tiempo de preparación. En la etapa "recibiendo", siempre false.
   Si en los datos ya capturados "soloPrecio" es true (solo preguntó el precio), confirma SOLO si decide mandarlo: "dale, mándalo", "pídelo", "sí, envíalo", "listo, que vaya", o manda los datos del cliente o el tiempo. "Ok", "gracias", "vale", "ah bueno", "listo gracias" o "lo tengo en cuenta" son false.
 - Nunca inventes un valor: lo que no sepas va en null.
-- "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), o un dato que no queda claro a qué entrega pertenece. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
+- "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), un dato que no queda claro a qué entrega pertenece, o algo que no cuadra: una dirección sin tipo de vía ("la 42 con 83", no se sabe si es calle o carrera) o a medias (sin el número de la casa), dos teléfonos o dos nombres para el mismo cliente, un barrio que no corresponde a la dirección, o un dato distinto del ya capturado sin decir que es una corrección. Ante la duda, márcalo: el restaurante confirma antes de pedir la moto, y es mejor preguntar que mandar al domiciliario a otro lado. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
 - "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto, o se contradice sin aclarar cuál dato es el bueno. Saludos, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.

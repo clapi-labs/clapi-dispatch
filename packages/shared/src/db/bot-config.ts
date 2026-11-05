@@ -22,6 +22,11 @@ export type BotConfig = {
   /** Responderle al motorizado cuando toca «Terminé el servicio». El botón ya
    *  le muestra que lo tocó; esto es un mensaje más por servicio. */
   confirmDeliveryToCourier: boolean;
+  /** Minutos sin tocar «Vi el pedido» antes de recordárselo al motorizado. */
+  seenReminderMinutes: number;
+  /** Minutos sin tocar «Vi el pedido» antes de marcar el viaje en rojo en el
+   *  tablero para que la central lo llame o le pase el pedido a otra moto. */
+  seenAlertMinutes: number;
 };
 
 export const DEFAULT_BOT_CONFIG: BotConfig = {
@@ -29,7 +34,11 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   maxKm: 15,
   notifyRestaurantOnDelivery: true,
   confirmDeliveryToCourier: false,
+  seenReminderMinutes: 3,
+  seenAlertMinutes: 6,
 };
+
+const positive = (v: unknown) => (typeof v === "number" && v > 0 ? v : null);
 
 /** La configuración guardada, con los valores por defecto en lo que falte. */
 export async function getBotConfig(): Promise<BotConfig> {
@@ -42,5 +51,7 @@ export async function getBotConfig(): Promise<BotConfig> {
       typeof saved.notifyRestaurantOnDelivery === "boolean" ? saved.notifyRestaurantOnDelivery : DEFAULT_BOT_CONFIG.notifyRestaurantOnDelivery,
     confirmDeliveryToCourier:
       typeof saved.confirmDeliveryToCourier === "boolean" ? saved.confirmDeliveryToCourier : DEFAULT_BOT_CONFIG.confirmDeliveryToCourier,
+    seenReminderMinutes: positive(saved.seenReminderMinutes) ?? DEFAULT_BOT_CONFIG.seenReminderMinutes,
+    seenAlertMinutes: positive(saved.seenAlertMinutes) ?? DEFAULT_BOT_CONFIG.seenAlertMinutes,
   };
 }

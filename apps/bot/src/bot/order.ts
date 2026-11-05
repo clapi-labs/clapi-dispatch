@@ -21,7 +21,7 @@ import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
-import { geocodeAddress } from "@/services/google/geocode";
+import { geocodeAddress, type GeocodeOutcome } from "@/services/google/geocode";
 import { interpretMessage } from "@/services/openai/extract";
 import { downloadImage, type DownloadedImage } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -133,10 +133,15 @@ export function readBack(d: DeliveryDraft) {
     `📍 ${fullAddress(d)}${doubt("direccionEntrega", "detalleDireccion")}`,
     customer ? `👤 ${customer}` : null,
     ready,
-    d.notas ? `📝 ${d.notas}${doubt("notas")}` : null,
+    d.notas ? `📝 Para el domiciliario: ${d.notas}${doubt("notas")}` : null,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** La entrega trae algo más que la dirección: vale la pena mostrársela. */
+export function hasOrderData(d: DeliveryDraft) {
+  return !!(d.nombreCliente || d.telefonoCliente || d.detalleDireccion || d.notas);
 }
 
 /** El resumen de todas las entregas, para revisar. */
@@ -201,6 +206,71 @@ function missingParts(quoted: DeliveryDraft[], config: BotConfig, restaurant: Re
 async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig) {
   const quote = await quoteByDistance(pickup, delivery);
   return { precio: quote.price, km: quote.km, outOfRange: config.maxKm !== null && quote.km > config.maxKm };
+}
+
+/**
+ * El mensaje con el precio de lo cotizado. Si solo preguntó el precio, el
+ * precio y ya: ni botón ni «¿queda confirmado?» (si lo quiere, lo dice). Si
+ * pide el servicio, el precio, la pregunta directa y lo que falte, para
+ * confirmar y completar en una sola respuesta.
+ */
+export function quoteMessage(
+  draft: OrderDraft,
+  opts: { config: BotConfig; restaurant: Restaurant | null; fromImage?: boolean; coverageNote?: string; intro?: string },
+): { text: string; buttons?: { id: string; title: string }[] } {
+  const quoted = draft.entregas.filter((d) => d.cotizacion);
+  const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
+  const list = quoted.map((d) => `• ${deliveryLabel(d)}: ${cop(d.cotizacion!.precio)}`).join("\n");
+  const join = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join("\n\n");
+
+  if (draft.soloPrecio) {
+    const body =
+      quoted.length === 1 ? `Hasta ${deliveryLabel(quoted[0])} el domicilio vale ${cop(total)} 🛵` : `Los domicilios quedan así 🛵\n${list}\nTotal: ${cop(total)}`;
+    return { text: join([opts.intro, body, opts.coverageNote]) };
+  }
+
+  const body = quoted.length === 1 ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵` : `Serían ${quoted.length} domicilios 🛵\n${list}\nTotal: ${cop(total)}`;
+  const pending = missingParts(quoted, opts.config, opts.restaurant, draft);
+  const question = `${quoted.length === 1 ? "¿Queda confirmado?" : "¿Quedan confirmados?"}${pending.length ? ` Si es así, envíame también ${joinLabels(pending)}.` : ""}`;
+  // Mandó el pedido con los datos del cliente: se le muestra cómo quedó
+  // separado (dirección, cliente, tiempo, indicaciones) para que confirme
+  // que está todo. Con solo una dirección no hay nada que revisar.
+  const showData = draft.verificar || quoted.some(hasOrderData);
+  return {
+    text: join([
+      opts.intro,
+      showData ? readBackAll(quoted, !!opts.fromImage) : null,
+      [body, showData ? CHECK_DATA : null, question].filter(Boolean).join("\n"),
+      opts.coverageNote,
+    ]),
+    buttons: [{ id: CONFIRM_BUTTON_ID, title: quoted.length === 1 ? "Confirmar servicio" : `Confirmar los ${quoted.length}` }],
+  };
+}
+
+/** Empieza así el motivo de una conversación pausada porque el bot le
+ *  preguntó una dirección a la central: el portal la reconoce por esto. */
+export const ADVISOR_QUERY_REASON = "Consulta de dirección:";
+
+/**
+ * El mapa no ubicó una o más direcciones (o no respondió): en vez de insistirle
+ * al restaurante, el bot le pregunta a la central si la dirección es válida y
+ * cuánto vale. El borrador se conserva; mientras el asesor responde en el
+ * portal, el bot no contesta en ese chat. La respuesta la aplica `advisor.ts`.
+ */
+async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraft[], mapDown: boolean) {
+  draft.consultaAsesor = { entregas: pending.map((d) => draft.entregas.indexOf(d)), desde: new Date().toISOString() };
+  const list = pending.map((d) => `«${fullAddress(d)}»`).join(" y ");
+  const why = mapDown ? "el mapa no respondió" : "no la encuentro en el mapa";
+  await updateConversation(ctx.conversation.id, {
+    botPaused: true,
+    escalationReason: `${ADVISOR_QUERY_REASON} ${why}. ¿Es válida ${list} y cuánto vale el domicilio?`,
+    draft,
+    failedAttempts: 0,
+  });
+  const text = mapDown
+    ? `No puedo ubicar direcciones en este momento 🙏 Ya le pregunto a la central cuánto vale el domicilio a ${list}. Te aviso en un momento.`
+    : `No logro ubicar ${list} en el mapa 🗺️ Ya le pregunto a la central si la dirección está bien y cuánto vale el domicilio. Te aviso en un momento 🙏`;
+  await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
 export async function handleRestaurant(ctx: Context) {
@@ -360,7 +430,8 @@ export async function handleRestaurant(ctx: Context) {
     pickupLocation = geocoded.kind === "found" ? geocoded.location : null;
     draft.ubicacionRecogida = pickupLocation;
     draft.recogidaUbicada = draft.origenRestaurante;
-    draft.entregas.forEach((d) => (d.cotizacion = null));
+    // Otra recogida: todo se vuelve a medir, también lo que validó el asesor.
+    draft.entregas.forEach((d) => Object.assign(d, { cotizacion: null, validadaPorAsesor: false }));
   }
   if (!pickupLocation) {
     const asked = draft.origenRestaurante
@@ -372,31 +443,28 @@ export async function handleRestaurant(ctx: Context) {
     return;
   }
 
+  // Lo que el mapa no ubique (o si no responde) se le pregunta a la central:
+  // si la dirección es válida y cuánto vale.
   const notFound: DeliveryDraft[] = [];
+  let mapDown = false;
   for (const d of deliveries) {
-    if (d.direccionEntrega === d.direccionUbicada && d.ubicacionEntrega) continue;
-    const geocoded = await geocodeAddress(d.direccionEntrega!);
-    if (geocoded.kind === "failed" || geocoded.kind === "disabled") {
-      await escalateLocationDown(ctx, draft);
-      return;
-    }
-    if (geocoded.kind === "not_found") {
-      d.direccionUbicada = null;
+    const unchanged = d.direccionEntrega === d.direccionUbicada;
+    if (unchanged && (d.ubicacionEntrega || d.validadaPorAsesor)) continue;
+    const geocoded: GeocodeOutcome = mapDown ? { kind: "failed" } : await geocodeAddress(d.direccionEntrega!);
+    if (geocoded.kind !== "found") {
+      mapDown ||= geocoded.kind === "failed" || geocoded.kind === "disabled";
+      Object.assign(d, { direccionUbicada: null, ubicacionEntrega: null, validadaPorAsesor: false, cotizacion: null });
       notFound.push(d);
       continue;
     }
     d.ubicacionEntrega = geocoded.location;
     if (geocoded.neighborhood) d.barrio = geocoded.neighborhood;
     d.direccionUbicada = d.direccionEntrega;
+    d.validadaPorAsesor = false;
     d.cotizacion = null;
   }
   if (notFound.length) {
-    const list = notFound.map((d) => `«${d.direccionEntrega}»`).join(" ni ");
-    if (await countAttempt(ctx, draft, false, `No se pudo ubicar en el mapa: ${notFound.map((d) => d.direccionEntrega).join(" / ")}`)) {
-      await say(conversation.id, message.phone, `No encuentro ${list} en el mapa 🗺️ ¿Me la confirmas con el número completo y el barrio? También puedes enviarme la ubicación.`, {
-        replyTo,
-      });
-    }
+    await askAdvisor(ctx, draft, notFound, mapDown);
     return;
   }
 
@@ -435,32 +503,8 @@ export async function handleRestaurant(ctx: Context) {
   if (newQuote || outOfRange.length) {
     draft.etapa = "cotizado";
     await save(ctx, draft);
-    const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
-    const list = quoted.map((d) => `• ${deliveryLabel(d)}: ${cop(d.cotizacion!.precio)}`).join("\n");
-
-    // Solo preguntó el precio: se le responde el precio y ya. Ni botón ni
-    // «¿queda confirmado?»: si lo quiere, lo dice.
-    if (draft.soloPrecio) {
-      const body =
-        quoted.length === 1
-          ? `Hasta ${deliveryLabel(quoted[0])} el domicilio vale ${cop(total)} 🛵`
-          : `Los domicilios quedan así 🛵\n${list}\nTotal: ${cop(total)}`;
-      await say(conversation.id, message.phone, [body, coverageNote].filter(Boolean).join("\n\n"), { replyTo });
-      return;
-    }
-
-    // Pide el servicio: el precio y la pregunta directa. Lo que falte se pide
-    // en la misma línea, para confirmar y completar en una sola respuesta.
-    const body = quoted.length === 1 ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵` : `Serían ${quoted.length} domicilios 🛵\n${list}\nTotal: ${cop(total)}`;
-    const pending = missingParts(quoted, config, restaurant, draft);
-    const question = `${quoted.length === 1 ? "¿Queda confirmado?" : "¿Quedan confirmados?"}${pending.length ? ` Si es así, envíame también ${joinLabels(pending)}.` : ""}`;
-    const text = [draft.verificar ? readBackAll(quoted, fromImage) : null, [body, draft.verificar ? CHECK_DATA : null, question].filter(Boolean).join("\n"), coverageNote]
-      .filter(Boolean)
-      .join("\n\n");
-    await say(conversation.id, message.phone, text, {
-      replyTo,
-      buttons: [{ id: CONFIRM_BUTTON_ID, title: quoted.length === 1 ? "Confirmar servicio" : `Confirmar los ${quoted.length}` }],
-    });
+    const quote = quoteMessage(draft, { config, restaurant, fromImage, coverageNote });
+    await say(conversation.id, message.phone, quote.text, { replyTo, buttons: quote.buttons });
     return;
   }
 
@@ -480,7 +524,10 @@ export async function handleRestaurant(ctx: Context) {
     await save(ctx, draft);
     return;
   }
-  if (draft.etapa !== "confirmado") {
+  // Un dato dudoso que llegó después de confirmar (un celular con un dígito
+  // de menos, una dirección que no cuadra) también se confirma antes de
+  // pedir la moto: es mejor preguntar que mandar al domiciliario a otro lado.
+  if (draft.etapa !== "confirmado" || draft.verificar) {
     if (await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin confirmar el servicio.`)) {
       // Revisando datos: se le muestra cómo quedaron después de su corrección.
       const text = draft.verificar

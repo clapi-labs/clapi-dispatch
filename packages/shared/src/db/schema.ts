@@ -291,6 +291,11 @@ export const assignments = pgTable(
     courierName: text("courier_name").notNull(),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    /** Cuándo el motorizado tocó «Vi el pedido» en su ficha. Sin esto la
+     *  central no sabe si lo vio o si el pedido se está enfriando. */
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    /** Cuándo se le recordó que confirmara (una sola vez por asignación). */
+    seenReminderAt: timestamp("seen_reminder_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("assignments_trip_idx").on(t.tripId)],
