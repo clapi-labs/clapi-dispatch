@@ -85,6 +85,13 @@
       "when": 1793843423174,
       "tag": "0011_fotos_y_restaurante_sin_numero",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793997953336,
+      "tag": "0012_flujo_domiciliario",
+      "breakpoints": true
     }
   ]
 }

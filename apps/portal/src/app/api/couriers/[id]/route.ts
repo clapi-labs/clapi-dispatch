@@ -1,4 +1,5 @@
 import { removeCourier, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
+import { notifyBot } from "@/lib/bot";
 import { isValidPhoto } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return Response.json({ error: "Estado inválido" }, { status: 400 });
   }
 
-  const courier = await updateCourierStatus(Number(id), body.status);
+  const { courier, returned } = await updateCourierStatus(Number(id), body.status);
+  await notifyBot({ unassigned: returned.map((tripId) => ({ tripId, courierId: Number(id) })) });
   return Response.json(courier);
 }

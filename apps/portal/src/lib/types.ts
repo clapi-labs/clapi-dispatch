@@ -24,12 +24,34 @@ export type Trip = {
   courierPhone: string | null;
   assignedAt: string | null;
   deliveredAt: string | null;
-  /** Cuándo el motorizado tocó «Vi el pedido». */
+  /** Cuándo WhatsApp avisó que leyó el mensaje. */
+  readAt?: string | null;
+  /** Cuándo el motorizado tocó «Voy en camino». */
   seenAt?: string | null;
-  /** Cuándo el bot le recordó que confirmara. */
+  /** Cuándo el bot le recordó «Voy en camino». */
   seenReminderAt?: string | null;
-  /** Desde cuándo sale en rojo si sigue sin confirmar. */
-  seenAlertAt?: string | null;
+  /** Cuándo el GPS lo vio llegar a la recogida. */
+  atPickupAt?: string | null;
+  /** Cuándo tocó «Recogí», o cuándo el GPS lo vio salir de la recogida. */
+  pickedUpAt?: string | null;
+  /** Cuándo el GPS lo vio llegar a la entrega, y salir sin haberla marcado. */
+  atDeliveryAt?: string | null;
+  leftDeliveryAt?: string | null;
+  /** Avisó que el cliente no contesta, y cuándo pasó a devolver el pedido. */
+  customerWaitAt?: string | null;
+  undeliveredAt?: string | null;
+  /** Cuándo el bot le recordó que ya estaba listo. */
+  pickupReminderAt?: string | null;
+  deliveryPlace?: "customer" | "gate" | null;
+  /** Entregó y está volviendo a recogida. */
+  returnStartedAt?: string | null;
+  finishedAt?: string | null;
+  /** Desde cuándo sale en rojo si sigue en esa fase. */
+  alertAt?: string | null;
+  /** Con el engine asignando: por qué sigue pendiente, y cuándo se despacha. */
+  dispatchNote?: string | null;
+  dispatchAt?: string | null;
+  pickupLocation?: { lat: number; lng: number } | null;
 };
 
 export type Courier = {
@@ -45,7 +67,7 @@ export type Courier = {
   lastAssignedAt: string | null;
   active: boolean;
   createdAt: string;
-  /** Últimos 7 días: cuántos pedidos confirmó con «Vi el pedido», en cuántos
+  /** Últimos 7 días: cuántos pedidos confirmó con «Voy en camino», en cuántos
    *  minutos en promedio y cuántas veces hubo que recordárselo. */
   seenStats?: { confirmed: number; avgMinutes: number | null; reminders: number } | null;
 };
@@ -56,6 +78,8 @@ export type CourierProfile = {
   documentId: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  /** Lo que se configura en la app de su celular para reportar el GPS. */
+  gpsDeviceId?: string | null;
 };
 
 export type SettlementRow = {

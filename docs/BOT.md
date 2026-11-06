@@ -26,7 +26,7 @@ El restaurante ya está registrado: por su número se conoce su nombre, su direc
    - **Solo pregunta el precio** («¿cuánto a Valle del Lili?», «¿qué vale hasta Pance?», «¿llegan a…?»): «Hasta Valle del Lili el domicilio vale $10.000 🛵», sin botón, sin pedir datos ni confirmación. A un «gracias» u «ok» no se le responde. Si pregunta por otra dirección, es otra cotización (no un segundo domicilio). Si después decide mandarlo («dale, mándalo», los datos del cliente, el tiempo), se vuelve pedido con el precio ya dado. Un pin después de un precio es un pedido aparte.
 3. **Al confirmar** con todo, se crea un viaje por entrega y se despacha. Si todavía falta algo, se le dice exactamente qué.
 4. **Despacho y avisos:** el restaurante siempre recibe la confirmación apenas confirma, haya moto libre o no: «✅ Servicio motorizado confirmado para el pedido B-12 · $7.000. 🛵 Va Wilians. El domiciliario estará ahí en 10 - 15 minutos» (solo el nombre, nunca el teléfono), y el motorizado su ficha. El tiempo lleva un margen implícito por tráfico (mayor en hora pico, 11:30–14:00 y 18:00–21:00) que no se le dice; el despacho busca que la moto llegue justo cuando la comida esté lista, así que por lo general llega antes. Si pasa de 15 minutos por nosotros (motos ocupadas o la más cercana viene lejos), se piden excusas y se dice la razón; si es porque la comida tarda más, «para cuando esté lista». Sin moto libre, cuando el despacho la asigna llega solo «🛵 Pedido B-12: va Wilians». Lo calcula `estimatePickup` en `apps/bot/src/bot/status.ts`.
-5. **Motorizado:** la ficha llega con un solo botón, **«✅ Vi el pedido»** (también vale responder «ok», «voy», «ya lo vi», 👍). Al confirmar se guarda la hora (`assignments.seen_at`) y se le responde «Listo 👍 Te esperan en…» con el botón **«Terminé el servicio»**. Si a los `seenReminderMinutes` (3) no ha confirmado, el bot se lo recuerda una vez citando la ficha; a los `seenAlertMinutes` (6) el viaje sale en rojo en el tablero («Sin confirmar hace 6 min») para que la central lo llame o le pase el pedido a otra moto. Pasarlo a otra moto lo decide una persona: una moto que solo iba manejando podría llegar igual. En Flota, cada motorizado muestra cuánto tarda en confirmar en promedio y cuántos recordatorios necesitó en los últimos 7 días. Los dos tiempos se cambian en `settings.bot_config`. No acepta ni rechaza: si no puede, lo escribe (ver «Motorizados»).
+5. **Motorizado:** recibe la información por partes ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)). El primer mensaje lleva solo lo necesario para ir a recoger, con los botones **«Voy en camino»** y **«Recogí»** (también vale responder «ok», «voy», 👍). Al tocar «Recogí» le llega la dirección, el cliente y una lista para marcar la entrega: «Entregado, terminé», «Entregado, vuelvo», «En portería, terminé» o «En portería, vuelvo». Si vuelve, le llega el botón «Ya volví». Tocar un botón no se cobra: «Voy en camino» no tiene respuesta y al terminar se le confirma, salvo que ya le haya llegado otro pedido. Si no sale a tiempo, el bot se lo recuerda una vez citando el mensaje, y si sigue igual el viaje sale en rojo en el tablero para que la central lo llame o le pase el pedido a otra moto; pasarlo a otra moto lo decide una persona. En Flota, cada motorizado muestra en qué va y cuánto tarda en salir en promedio. Los tiempos se cambian en `settings.bot_config`. No acepta ni rechaza: si no puede, lo escribe (ver «Motorizados»).
 
 Datos obligatorios por defecto: **dirección de entrega**, **nombre del cliente**, **teléfono del cliente** y **tiempo de preparación**. Además, para toda agencia: si la dirección es un conjunto, unidad o edificio, **torre y apartamento** (o número de casa). El teléfono se guarda en los 10 dígitos del celular, sin el +57; si no da 10 dígitos, se marca ❓ para que el restaurante lo confirme.
 
@@ -66,16 +66,17 @@ Cada mensaje que el bot envía cuesta (mensajes de servicio en Colombia: unos US
 |---|---|---|
 | Restaurante | Cotización (con lo que falte y el botón) | No |
 | Restaurante | Servicio motorizado confirmado: quién va (solo el nombre; nunca el teléfono del domiciliario: la agencia es la intermediaria) | No |
-| Restaurante | Quién va (solo si no había moto libre al confirmar) | No |
-| Restaurante | Servicio terminado | Sí: `settings.bot_config.notifyRestaurantOnDelivery` (encendido) |
-| Motorizado | Ficha del viaje con el botón «Vi el pedido» | No |
-| Motorizado | «Listo, te esperan en…» con el botón «Terminé el servicio» | No |
-| Motorizado | Recordatorio si no confirma en 3 min (solo si hace falta) | Se ajusta con `seenReminderMinutes` |
-| Motorizado | «Terminado, quedas libre» | Sí: `confirmDeliveryToCourier` (apagado: el botón ya le muestra que lo tocó) |
+| Restaurante | Quién va (solo si la moto se asigna después de confirmar) | Sí: `notifyRestaurantOnAssign` (encendido). Con el algoritmo es lo normal, porque espera a que la comida casi esté |
+| Restaurante | Entregado, con la hora real | Sí: `settings.bot_config.notifyRestaurantOnDelivery` (encendido). El de portería sale siempre |
+| Motorizado | Mensaje 1: a dónde ir a recoger, con «Voy en camino» y «Recogí» | No |
+| Motorizado | Mensaje 2: a dónde entregar, con la lista de entrega | No |
+| Motorizado | «Ya volví», solo si debe volver (con GPS, el regreso se cierra solo, pero el botón sigue de respaldo) | No |
+| Motorizado | Recordatorios si no sale o no recoge a tiempo (solo si hace falta) | Se ajustan en `settings.bot_config` |
+| Motorizado | «A-08 terminado», salvo que ya le haya llegado otro pedido | Sí: `confirmDeliveryToCourier` (encendido) |
 
-**Los mensajes por servicio** con la configuración por defecto (seis si hay que recordarle al motorizado): el «Listo, te esperan» es el costo de saber que el motorizado vio el pedido. Lo que no se manda nunca: aceptar o rechazar el servicio, recordatorios de efectivo, reenviar la ficha cada vez que el motorizado escribe. El «leído» y el «escribiendo…» no se cobran.
+**Son seis mensajes por servicio** en el caso normal (cinco si con la entrega ya le llega otro pedido), con la configuración por defecto; cada recordatorio, regreso o dato que falte suma uno. Lo que no se manda nunca: aceptar o rechazar el servicio, recordatorios de efectivo, reenviar la ficha cada vez que el motorizado escribe. El «leído» y el «escribiendo…» no se cobran.
 
-Medirlo: `npm run bot:mensajes` (últimos 30 días) o `npm run bot:mensajes -- 2026-10-01`. Da los mensajes a restaurantes y a motorizados, el promedio por servicio y el costo mensual estimado.
+Medirlo: `npm run bot:mensajes` (últimos 30 días) o `npm run bot:mensajes -- 2026-10-01`. Cuenta los del bot y los de la central. Da los mensajes a restaurantes y a motorizados, el promedio por servicio y el costo mensual estimado.
 
 ## Motorizados
 
@@ -83,15 +84,16 @@ Lo normal es que no escriban. Cuando escriben, el bot clasifica el mensaje (`app
 
 | Mensaje | Qué pasa |
 |---|---|
-| «Ok», «voy», «ya lo vi», «listo», 👍 con un pedido sin confirmar | Cuenta como «Vi el pedido» (el más viejo sin confirmar) |
+| «Ok», «voy», «ya lo vi», «listo», 👍 con un pedido sin confirmar | Cuenta como «Voy en camino» (el más viejo sin confirmar) |
+| «Ya recogí», «entregado», «lo dejé en portería», «ya volví» | Lo mismo que el botón, si solo hay un pedido al que le aplique. Lo demás sigue a la clasificación |
 | «Ok», «voy», «ya recogí», «listo» sin nada por confirmar | Nada: no se responde |
 | «Mándame la dirección», «la ficha» | Se le reenvía la ficha |
 | Novedad: «me accidenté», «no puedo ir», «el cliente no baja», «cancelo» | Queda **en emergencia** (rojo en Flota: no se le asigna nada más, conserva lo que lleva), su chat pasa a la central con el motivo, y se le responde «Recibido 🙏 La central ya te contacta». Ante la duda, se trata como novedad |
 | Estados en Flota | **Gris** (desconectado): recién agregado o desconectado; se conecta escribiéndole al bot. **Verde**: libre. **Amarillo**: en un viaje. **Rojo** (emergencia): la marca la central desde Flota o la pone una novedad; no recibe pedidos, su bot queda pausado y su chat fijado arriba en Conversaciones. Al quitarla vuelve el bot y queda libre, o en viaje si todavía lleva algo |
-| Pausa general | Botón «Pausar operación» del portal (`settings.business`), por ejemplo por lluvia. El bot no le responde a nadie y no entran pedidos nuevos; lo que está en curso sigue (el despacho asigna los pendientes, salen los avisos y el «Terminé el servicio» funciona). En Conversaciones todos los chats se escriben directo, sin intervenir, y al reanudar vuelven al bot |
+| Pausa general | Botón «Pausar operación» del portal (`settings.business`), por ejemplo por lluvia. El bot no le responde a nadie y no entran pedidos nuevos; lo que está en curso sigue (el despacho asigna los pendientes, salen los avisos y los botones del motorizado funcionan). En Conversaciones todos los chats se escriben directo, sin intervenir, y al reanudar vuelven al bot |
 | Escribe estando desconectado y sin viajes | Queda conectado |
 
-**Sin base:** si el motorizado no tiene cambio y le toca volver al restaurante, el servicio no ha terminado: toca «Terminé el servicio» al volver. Mientras tanto sigue ocupado y no se le asigna otro.
+**Sin base:** si el motorizado no tiene cambio y le toca volver al restaurante, marca la entrega con «vuelvo»: el restaurante recibe la hora real y él sigue ocupado hasta tocar «Ya volví». Solo él sabe si tiene que volver, porque depende de su base o del datáfono.
 
 Qué hace la central con una novedad: [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md).
 

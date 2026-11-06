@@ -1,4 +1,4 @@
-import { notifyAssigned, notifyDelivered } from "@/bot/notify";
+import { notifyAssigned, notifyDelivered, notifyUnassigned } from "@/bot/notify";
 
 import { isInternal } from "../auth";
 
@@ -12,9 +12,14 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   if (!isInternal(request)) return new Response("Unauthorized", { status: 401 });
 
-  const { assigned = [], delivered = [] } = (await request.json()) as { assigned?: number[]; delivered?: number[] };
+  const {
+    assigned = [],
+    delivered = [],
+    unassigned = [],
+  } = (await request.json()) as { assigned?: number[]; delivered?: number[]; unassigned?: { tripId: number; courierId: number }[] };
 
-  for (const id of delivered) await notifyDelivered(id);
+  for (const { tripId, courierId } of unassigned) await notifyUnassigned(tripId, courierId);
+  for (const id of delivered) await notifyDelivered(id, assigned);
   for (const id of assigned) await notifyAssigned(id);
 
   return Response.json({ ok: true });

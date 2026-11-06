@@ -40,6 +40,8 @@ export async function createTrip(
       pickupLocation: restaurant?.knownPickupLocation ?? pickup?.location ?? null,
       deliveryAddress: fullAddress(draft),
       deliveryLocation: draft.ubicacionEntrega ?? null,
+      // Lo primero que ve el motorizado de a dónde va, antes de recoger.
+      deliveryZone: draft.barrio ?? null,
       customerPhone: draft.telefonoCliente,
       customerName: draft.nombreCliente ?? null,
       valueToCollect: draft.valorACobrar,

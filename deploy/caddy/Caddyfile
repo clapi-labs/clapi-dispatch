@@ -24,12 +24,13 @@
 	reverse_proxy portal:3002
 }
 
-# Bot de WhatsApp. Desde internet solo se ven el webhook (Meta) y la salud.
+# Bot de WhatsApp. Desde internet solo se ven el webhook (Meta), la salud y el
+# receptor de GPS, que descarta los identificadores que no conoce.
 # /api/internal/* queda sin exponer: lo usan el portal y el worker por la red
 # interna de Docker.
 {$BOT_HOST} {
 	import seguridad
-	@publico path /api/webhook/whatsapp /api/health
+	@publico path /api/webhook/whatsapp /api/health /api/gps
 	handle @publico {
 		reverse_proxy bot:3001
 	}

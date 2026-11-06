@@ -3,7 +3,7 @@ import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { findCourier, handleCourier } from "@/bot/courier";
-import { DELIVER_BUTTON_PREFIX, SEEN_BUTTON_PREFIX } from "@/bot/notify";
+import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
 import { markRead, markReadAndTyping } from "@/services/whatsapp/client";
@@ -72,14 +72,14 @@ export async function handleIncoming(message: IncomingMessage) {
     incoming: asPayload(message),
   });
 
-  // El motorizado va primero: su «Terminé el servicio» tiene que funcionar
+  // El motorizado va primero: sus botones tienen que funcionar
   // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
   // se le responde, y un «escribiendo…» sin respuesta confunde.
   const courier = await findCourier(message.phone);
-  // Pausa general: el bot no le responde a nadie. Solo sigue funcionando el
-  // «Vi el pedido» y «Terminé el servicio», para cerrar lo que ya está en la calle.
+  // Pausa general: el bot no le responde a nadie. Solo sigue funcionando
+  // lo que marca el motorizado con sus botones, para cerrar lo que ya está en la calle.
   if ((await getBusinessState()).paused) {
-    const delivering = message.kind === "button" && (message.buttonId.startsWith(DELIVER_BUTTON_PREFIX) || message.buttonId.startsWith(SEEN_BUTTON_PREFIX));
+    const delivering = message.kind === "button" && parseCourierButton(message.buttonId) !== null;
     if (!(courier && delivering)) return;
   }
   if (courier) {

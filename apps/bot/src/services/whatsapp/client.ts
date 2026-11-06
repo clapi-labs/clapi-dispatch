@@ -18,6 +18,7 @@ export type SendResult =
   | { ok: false; reason: "network_error"; error: string };
 
 const MAX_BUTTON_TITLE = 20;
+const MAX_ROW_TITLE = 24;
 
 /** Modo simulado (`WHATSAPP_SIMULADO=true`): nada sale hacia Meta; cada
  *  envío se imprime en la terminal. Es el que usa `npm run bot:chat`. */
@@ -38,9 +39,15 @@ function simulate(payload: Record<string, unknown>): SendResult {
   if (payload.type === "text") {
     console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}${(payload.text as { body: string }).body}\n`);
   } else if (payload.type === "interactive") {
-    const interactive = payload.interactive as { body: { text: string }; action: { buttons: { reply: { id: string; title: string } }[] } };
-    const buttons = interactive.action.buttons.map((b) => `[${b.reply.title}] (${b.reply.id})`).join("  ");
-    console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}${interactive.body.text}\n   ${buttons}\n`);
+    const interactive = payload.interactive as {
+      body: { text: string };
+      action: { buttons?: { reply: { id: string; title: string } }[]; button?: string; sections?: { rows: { id: string; title: string }[] }[] };
+    };
+    const { buttons, button, sections } = interactive.action;
+    const options = buttons
+      ? buttons.map((b) => `[${b.reply.title}] (${b.reply.id})`).join("  ")
+      : `[${button}] ▾\n${sections?.flatMap((section) => section.rows).map((r) => `   · ${r.title} (${r.id})`).join("\n")}`;
+    console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}${interactive.body.text}\n   ${options}\n`);
   }
   return { ok: true, messageId };
 }
@@ -94,6 +101,26 @@ export function sendButtons(phone: string, text: string, buttons: { id: string; 
       body: { text },
       action: {
         buttons: buttons.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: b.title.slice(0, MAX_BUTTON_TITLE) } })),
+      },
+    },
+  });
+}
+
+export type ListOption = { button: string; rows: { id: string; title: string }[] };
+
+/** Lista de opciones: hasta 10 filas con títulos de 24 caracteres (Meta). Se
+ *  abre con un botón; es para cuando no alcanzan los 3 botones de respuesta. */
+export function sendList(phone: string, text: string, list: ListOption, options?: SendOptions) {
+  return post({
+    to: phone,
+    ...context(options),
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text },
+      action: {
+        button: list.button.slice(0, MAX_BUTTON_TITLE),
+        sections: [{ rows: list.rows.slice(0, 10).map((r) => ({ id: r.id, title: r.title.slice(0, MAX_ROW_TITLE) })) }],
       },
     },
   });

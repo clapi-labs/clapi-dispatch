@@ -1,5 +1,6 @@
 "use client";
 
+import { isTripOpen, PHASE_LABEL, tripPhase } from "@dispatch/shared/domain/phase";
 import { Check, ChevronDown, Copy, Eye, LocateFixed, Power, PowerOff, Siren, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -8,6 +9,7 @@ import { CourierDetails } from "@/components/CourierDetails";
 import { ConfirmDialog } from "@/components/Modal";
 import { PhoneLink } from "@/components/PhoneLink";
 import { PhotoButton } from "@/components/PhotoButton";
+import { useTrips } from "@/components/TripsProvider";
 import { chatHref } from "@/lib/chat";
 import { copyText } from "@/lib/clipboard";
 import { elapsedLabel, formatPhone } from "@/lib/format";
@@ -36,6 +38,10 @@ export function CourierCard({
   onPhoto: (photo: string | null) => Promise<void>;
 }) {
   const status = STATUS[courier.status];
+  const { trips } = useTrips();
+  // En un viaje, lo que importa es en qué va: se ve sin abrir «Ver más».
+  const open = trips.filter((t) => t.courierId === courier.id && isTripOpen(t));
+  const current = courier.status === "busy" ? open[open.length - 1] : undefined;
   const located = courier.lat != null && courier.lng != null;
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -57,7 +63,9 @@ export function CourierCard({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{courier.name}</p>
-          <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>{status.label}</span>
+          <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>
+            {current ? `${PHASE_LABEL[tripPhase(current)]} · ${current.code}${open.length > 1 ? ` · +${open.length - 1}` : ""}` : status.label}
+          </span>
         </div>
       </div>
 
@@ -85,7 +93,7 @@ export function CourierCard({
         </a>
       </div>
 
-      {/* Cómo responde a la ficha: para exigirle al que siempre se demora en confirmar. */}
+      {/* Cómo responde al mensaje: para exigirle al que siempre se demora en salir. */}
       {courier.seenStats && (
         <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-3" title="Últimos 7 días">
           <Eye size={12} className="shrink-0" />
@@ -127,10 +135,10 @@ export function CourierCard({
         <PhoneLink phone={courier.phone} name={courier.name} iconOnly wide />
         <PhoneLink phone={courier.phone} name={courier.name} call iconOnly wide />
         {/* Encendido de ida y vuelta: verde si está conectado (tocar lo desconecta), apagado
-            si no (tocar lo conecta). En un viaje o en emergencia no se toca. */}
+            si no (tocar lo conecta). En emergencia no se toca. */}
         <button
           type="button"
-          disabled={courier.status === "busy" || emergency}
+          disabled={emergency}
           onClick={() => (off ? onChange("available") : setConfirmingOff(true))}
           aria-label={off ? "Conectar" : "Desconectar"}
           title={off ? "Conectar" : "Desconectar"}
@@ -176,7 +184,11 @@ export function CourierCard({
       {confirmingOff && (
         <ConfirmDialog
           title={`¿Desconectar a ${courier.name}?`}
-          points={["No le llegan más pedidos.", "Vuelve a conectarse cuando le escriba al bot, o tocando aquí el mismo botón."]}
+          points={[
+            "No le llegan más pedidos.",
+            ...(open.length ? ["Lo que no ha recogido se asigna a otra moto y termina lo que ya lleva."] : []),
+            "Vuelve a conectarse cuando le escriba al bot, o tocando aquí el mismo botón.",
+          ]}
           confirmLabel="Sí, desconectar"
           onConfirm={() => onChange("offline")}
           onClose={() => setConfirmingOff(false)}

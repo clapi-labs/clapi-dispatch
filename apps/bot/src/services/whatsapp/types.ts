@@ -8,7 +8,7 @@ export type WaTextMessage = {
   text: { body: string };
 };
 
-/** Respuesta a un botón de respuesta rápida (el «Terminé el servicio» de la ficha). */
+/** Respuesta a un botón de respuesta rápida (el «Recogí» del mensaje al motorizado). */
 export type WaInteractiveMessage = {
   id: string;
   from: string;
@@ -57,6 +57,7 @@ export type WaStatus = {
   id: string;
   status: "sent" | "delivered" | "read" | "failed";
   recipient_id: string;
+  errors?: { code?: number; title?: string }[];
 };
 
 export type WaWebhookPayload = {

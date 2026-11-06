@@ -95,7 +95,7 @@ Copia un caso existente y cámbialo. El formato es este:
 | `motos[].entregas` | Entregas que lleva hoy |
 | `motos[].min_sin_pedido` | Minutos desde su última entrega o desde que se conectó, lo más reciente (para la equidad) |
 | `motos[].cuota` | Opcional. Cuota justa acumulada en el turno (especificaciones.md, 4.A). Si falta, se usa el promedio de entregas del grupo, que equivale a que todas lleven conectadas todo el turno |
-| `motos[].pedidos_en_curso` | Pedidos que ya lleva. `recogido: false` significa que todavía tiene que pasar por el restaurante. `cliente_no_contesta_hace: 4` significa que la moto está donde el cliente, que no contesta hace 4 minutos (le quedan 6 de espera antes de devolver el pedido). En ese caso, la posición de la moto debe ser la del cliente. |
+| `motos[].pedidos_en_curso` | Pedidos que ya lleva. `recogido: false` significa que todavía tiene que pasar por el restaurante. `cliente_no_contesta_hace: 4` significa que la moto está donde el cliente, que no contesta hace 4 minutos (le quedan 6 de espera antes de devolver el pedido). En ese caso, la posición de la moto debe ser la del cliente. `volviendo: true` significa que ya entregó y va de regreso al restaurante de ese pedido: puede recibir otros, pero el regreso cuenta en su ruta. `puede_volver: true`, con `recogido: true`, suma ese regreso después de entregar: es el peor caso que asume el bot, porque hasta entregar no se sabe si tendrá que volver. |
 | `pedidos[]` | Pedidos nuevos, en el **orden en que llegan**. Se numeran 1, 2, 3… |
 | `pedidos[].listo_en` | Minutos que faltan para que la comida esté lista |
 | `esperado[].pedido` | Número del pedido (1 = el primero de la lista `pedidos`) |

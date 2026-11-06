@@ -10,7 +10,8 @@
     "lint": "eslint",
     "chat": "tsx --env-file-if-exists=../../.env.local scripts/chat.ts",
     "restaurant:create": "tsx --env-file-if-exists=../../.env.local scripts/restaurant-create.ts",
-    "mensajes": "tsx --env-file-if-exists=../../.env.local scripts/messages-report.ts"
+    "mensajes": "tsx --env-file-if-exists=../../.env.local scripts/messages-report.ts",
+    "gps:sim": "tsx --env-file-if-exists=../../.env.local scripts/gps-sim.ts"
   },
   "dependencies": {
     "@dispatch/shared": "*",

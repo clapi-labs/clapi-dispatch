@@ -4,13 +4,13 @@
  *   npm run bot:mensajes                  # últimos 30 días
  *   npm run bot:mensajes -- 2026-10-01    # desde esa fecha
  *
- * Cuenta lo que el bot envió (no los «leído» ni «escribiendo…», que Meta no
- * cobra), separado entre restaurantes y motorizados, y lo divide entre los
- * servicios creados en el mismo periodo. El precio por mensaje y los gratis
+ * Cuenta lo que se envió, por el bot o por la central desde el portal, separado
+ * entre restaurantes y motorizados (no los «leído» ni «escribiendo…», que no son
+ * mensajes), y lo divide entre los servicios creados en el mismo periodo. El precio por mensaje y los gratis
  * por mes son los de Colombia para mensajes de servicio (docs/BOT.md,
  * «Mensajes por servicio»); cámbialos aquí si Meta los cambia.
  */
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
@@ -27,7 +27,7 @@ async function main() {
     .select({ courier: isCourier, count: sql<number>`count(*)::int` })
     .from(schema.messages)
     .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
-    .where(and(eq(schema.messages.role, "bot"), gte(schema.messages.createdAt, since)))
+    .where(and(inArray(schema.messages.role, ["bot", "agent"]), gte(schema.messages.createdAt, since)))
     .groupBy(isCourier);
 
   const [trips] = await db

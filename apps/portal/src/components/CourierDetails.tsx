@@ -1,5 +1,6 @@
 "use client";
 
+import { isTripOpen } from "@dispatch/shared/domain/phase";
 import { Pencil, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -110,6 +111,13 @@ export function CourierDetails({ courier }: { courier: Courier }) {
     };
   }, [courier.id, attempt]);
 
+  async function createGpsId() {
+    const res = await fetch(`/api/couriers/${courier.id}/gps`, { method: "POST" });
+    if (!res.ok) return;
+    const { gpsDeviceId } = (await res.json()) as { gpsDeviceId: string };
+    setProfile((prev) => (prev ? { ...prev, gpsDeviceId } : prev));
+  }
+
   async function save(draft: Draft) {
     const res = await fetch(`/api/couriers/${courier.id}/profile`, {
       method: "PUT",
@@ -123,7 +131,7 @@ export function CourierDetails({ courier }: { courier: Courier }) {
   }
 
   const mine = trips.filter((t) => t.courierId === courier.id);
-  const current = mine.find((t) => t.status === "en_route" || t.status === "assigned");
+  const current = mine.find((t) => isTripOpen(t));
   // De asignado a entregado: lo que le toma un viaje completo.
   const times = mine.flatMap((t) => (t.status === "delivered" && t.assignedAt && t.deliveredAt ? [Date.parse(t.deliveredAt) - Date.parse(t.assignedAt)] : []));
   const average = times.length > 0 ? times.reduce((sum, ms) => sum + ms, 0) / times.length / 1000 : null;
@@ -196,6 +204,21 @@ export function CourierDetails({ courier }: { courier: Courier }) {
               <Row label="Teléfono del contacto">
                 {profile.emergencyContactPhone && (
                   <PhoneLink phone={profile.emergencyContactPhone} name={profile.emergencyContactName ?? `Contacto de ${courier.name}`} />
+                )}
+              </Row>
+            </dl>
+          </section>
+
+          <section>
+            <Heading>GPS</Heading>
+            <dl>
+              <Row label="Identificador">
+                {profile.gpsDeviceId ? (
+                  <span className="font-mono">{profile.gpsDeviceId}</span>
+                ) : (
+                  <button type="button" onClick={createGpsId} className="font-semibold text-clapi-ink underline underline-offset-2">
+                    Generar
+                  </button>
                 )}
               </Row>
             </dl>
