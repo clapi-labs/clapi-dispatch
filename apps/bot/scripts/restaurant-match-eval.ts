@@ -8,7 +8,7 @@
  *
  * Termina con error si algún caso falla. Los nombres son inventados.
  */
-import { decideUnknownNumber, emptyDraft, exactScores, type RestaurantCandidate } from "@dispatch/shared";
+import { decideUnknownNumber, emptyDraft, exactScores, namedAsDestination, type RestaurantCandidate } from "@dispatch/shared";
 
 import { interpretMessage } from "../src/services/openai/extract";
 import { scoreRestaurantName } from "../src/services/openai/restaurant-match";
@@ -26,6 +26,7 @@ const RESTAURANTS: RestaurantCandidate[] = [
 /** El nombre que llega y lo que debe decidir el código. */
 const NAMES: { name: string; kind: string; id?: number }[] = [
   { name: "La Nona Pizzeria", kind: "link", id: 1 },
+  { name: "Pizza La Nona", kind: "link", id: 1 },
   { name: "pizzeria la nona cali 🍕", kind: "link", id: 1 },
   { name: "Pizeria la nona", kind: "link", id: 1 },
   { name: "Asadero el paisa", kind: "link", id: 5 },
@@ -52,6 +53,12 @@ const MESSAGES: { text: string; name: string | null }[] = [
   { text: "Domicilio a la Calle 5 # 40-20 para Juan Pérez 3001234567", name: null },
   { text: "Necesito una moto a la Cra 80 # 12-30, el cliente es Lucho", name: null },
   { text: "cuánto a Pance?", name: null },
+  { text: "Te escribo de Sushi Ya, una moto para la Cra 80 # 12-30", name: "Sushi Ya" },
+  { text: "Domicilio a Sushi Ya, Av 6N # 25-10 Granada, cliente Ana Ruiz 3001234567", name: null },
+  { text: "Domi para Pizzería La Nona, Calle 9 # 34-10", name: null },
+  { text: "Llevar a Donde Lucho en la Cra 66 # 10-45", name: null },
+  { text: "Domicilio a la Calle 5 # 40-20 San Fernando, queda al lado de Pizza Nona", name: null },
+  { text: "Una moto a la Cra 80 # 12-30, frente a Asadero El Paisa, cliente Ana", name: null },
 ];
 
 async function main() {
@@ -77,7 +84,8 @@ async function main() {
   console.log("\nLeer el nombre en el mensaje\n");
   for (const { text, name } of MESSAGES) {
     const outcome = await interpretMessage(text, emptyDraft());
-    const got = outcome.fields.nombreRestaurante ?? null;
+    const read = outcome.fields.nombreRestaurante ?? null;
+    const got = read && namedAsDestination(text, read) ? null : read;
     report(!outcome.failed && got === name, `«${text}» → ${got} (esperado ${name})`);
   }
 

@@ -56,9 +56,20 @@ export function looksLikeName(name: string) {
   return normalized.length > 0 && name.trim().length <= MAX_NAME_LENGTH;
 }
 
+/**
+ * El nombre va en el mensaje como destino o referencia («domi para Pizza Nona»,
+ * «al lado de Pizza Nona»), no como quien escribe. El modelo a veces lo lee como
+ * identificación, y de eso sale un número guardado: aquí no se le deja al azar.
+ */
+export function namedAsDestination(text: string, name: string) {
+  const wanted = normalizeName(name);
+  if (!wanted) return false;
+  return new RegExp(`(?:^|\\s)(?:a|para|hacia|hasta|lado de|frente de|cerca de|junto a)\\s+(?:(?:el|la|los|las)\\s+)?${wanted}(?:\\s|$)`, "u").test(normalizeName(text));
+}
+
 /** Palabras que no distinguen a un negocio de otro: artículos, el tipo de
  *  negocio y la ciudad. */
-const GENERIC_WORDS = new Set(["la", "el", "los", "las", "de", "del", "y", "restaurante", "pizzeria", "asadero", "cafe", "empanadas", "cali", "jamundi"]);
+const GENERIC_WORDS = new Set(["la", "el", "los", "las", "de", "del", "y", "restaurante", "pizza", "pizzas", "pizzeria", "asadero", "cafe", "empanadas", "cali", "jamundi"]);
 
 /** El nombre sin el orden ni lo genérico: «La Nona Pizzería» = «Pizzería La Nona». */
 function nameKey(name: string) {

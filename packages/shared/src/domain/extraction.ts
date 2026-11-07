@@ -311,7 +311,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
 
 {
   "origenRestaurante": string | null,   // dónde se recoge, si lo dice (nombre, dirección y barrio)
-  "nombreRestaurante": string | null,   // el nombre con que se identifica el NEGOCIO que escribe, solo si el mensaje nuevo lo dice ("soy de Pizza Nona", "habla Donde Lucho", "recoger en Sushi Ya"), sin dirección; nunca el nombre del cliente ni el de una persona
+  "nombreRestaurante": string | null,   // el nombre del NEGOCIO QUE ESCRIBE, solo si el mensaje nuevo se identifica así a propósito ("soy de Pizza Nona", "habla Donde Lucho", "te escribo de Sushi Ya"), sin dirección. null si el mensaje no dice que el negocio es quien escribe: un nombre tras "domi", "domicilio", "moto", "llevar", "a", "para" o "al lado de" es a dónde va el pedido o una referencia ("domi para Café Luna, Calle 3 # 4-5", "domicilio a Café Luna", "al lado de Café Luna"), o si es el de una persona o del cliente. Ante la duda, null
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados
     {
       "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio y barrio; SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)

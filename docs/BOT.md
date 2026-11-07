@@ -55,7 +55,7 @@ en 10
 | No registrado | Coincide con uno que tiene otro número | Pasa a la central con el pedido guardado. El otro número no cambia |
 | No registrado | Parecido a varios, no coincide o no viene | Restaurante nuevo |
 
-Los nombres se comparan sin mayúsculas, tildes, orden ni palabras genéricas («La Nona Pizzería» = «Pizzería La Nona»), sin gastar una llamada. Si no son iguales, el modelo da un puntaje de 0 a 1 y el código decide: hace falta 0.85 y 0.15 de ventaja sobre el segundo. Una palabra que distingue («El Paisa Express» y «El Paisa») deja el puntaje en 0.8 como máximo, diga lo que diga el modelo. Si OpenAI falla, gana el número; sin número, sigue como restaurante nuevo y lo intenta otra vez con el siguiente mensaje. Cada nombre se compara una vez por pedido. Al cambiar el prompt, el modelo o el umbral: `npm run bot:eval:restaurantes`.
+Los nombres se comparan sin mayúsculas, tildes, orden ni palabras genéricas («La Nona Pizzería» = «Pizzería La Nona»), sin gastar una llamada. Si no son iguales, el modelo da un puntaje de 0 a 1 y el código decide: hace falta 0.85 y 0.15 de ventaja sobre el segundo. Una palabra que distingue («El Paisa Express» y «El Paisa») deja el puntaje en 0.8 como máximo, diga lo que diga el modelo. Si OpenAI falla, gana el número; sin número, sigue como restaurante nuevo y lo intenta otra vez con el siguiente mensaje. Un nombre escrito como destino o referencia («domi para…», «al lado de…») no cuenta como identificación. Cada nombre se compara una vez por pedido. Al cambiar el prompt, el modelo o el umbral: `npm run bot:eval:restaurantes`.
 
 **El número de una moto gana:** un número registrado en Flota nunca se trata como restaurante.
 

@@ -6,6 +6,7 @@ import {
   decideUnknownNumber,
   exactScores,
   looksLikeName,
+  namedAsDestination,
   normalizeName,
   parseNameScores,
   type RestaurantCandidate,
@@ -39,6 +40,20 @@ describe("looksLikeName", () => {
   });
 });
 
+describe("namedAsDestination", () => {
+  it("el nombre como destino o referencia no identifica a quien escribe", () => {
+    assert.equal(namedAsDestination("Domi para Pizzería La Nona, Calle 9 # 34-10", "Pizzería La Nona"), true);
+    assert.equal(namedAsDestination("Domicilio a Sushi Ya, Av 6N", "Sushi Ya"), true);
+    assert.equal(namedAsDestination("Queda al lado de la Pizza Nona", "Pizza Nona"), true);
+  });
+
+  it("identificarse sigue contando", () => {
+    assert.equal(namedAsDestination("Soy de Pizza Nona, domi a la Calle 5", "Pizza Nona"), false);
+    assert.equal(namedAsDestination("Te escribo de Sushi Ya, una moto para la Cra 80", "Sushi Ya"), false);
+    assert.equal(namedAsDestination("Habla Donde Lucho", "Donde Lucho"), false);
+  });
+});
+
 describe("exactScores", () => {
   it("reconoce el mismo nombre escrito distinto, sin llamar al modelo", () => {
     assert.deepEqual([...exactScores("PIZZA nona.", ALL)], [[1, 1]]);
@@ -52,6 +67,7 @@ describe("exactScores", () => {
     const candidates = [{ id: 1, name: "Pizzería La Nona" }];
     assert.equal(exactScores("La Nona Pizzeria", candidates).get(1), 1);
     assert.equal(exactScores("la nona restaurante cali", candidates).get(1), 1);
+    assert.equal(exactScores("Pizza Nona", candidates).get(1), 1);
   });
 
   it("una palabra que distingue no es el mismo nombre", () => {

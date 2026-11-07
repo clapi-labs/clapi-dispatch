@@ -6,6 +6,7 @@ import {
   fullAddress,
   mergeTripFields,
   missingFields,
+  namedAsDestination,
   normalizeDraft,
   type DeliveryDraft,
   type DoubtfulField,
@@ -358,6 +359,7 @@ export async function handleRestaurant(ctx: Context) {
       (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, message.text));
 
     saidName = extraction.fields.nombreRestaurante ?? null;
+    if (saidName && namedAsDestination(message.text, saidName)) saidName = null;
 
     // Consultas: no cambian el pedido en curso, solo se responden.
     if (extraction.query === "estado") {
