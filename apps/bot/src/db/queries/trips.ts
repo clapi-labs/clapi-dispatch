@@ -12,7 +12,8 @@ function restaurantPickup(restaurant: Restaurant | null) {
 /** El viaje de una entrega del pedido confirmado. Quien llama ya comprobó
  *  que trae los datos obligatorios de la agencia. */
 export async function createTrip(
-  conversationId: number,
+  /** Nulo en un pedido que no llegó por WhatsApp (el simulador): no hay a quién avisarle. */
+  conversationId: number | null,
   order: { origenRestaurante: string; mensajeOrigen: string | null },
   draft: DeliveryDraft,
   price: number,
@@ -40,6 +41,8 @@ export async function createTrip(
       pickupLocation: restaurant?.knownPickupLocation ?? pickup?.location ?? null,
       deliveryAddress: fullAddress(draft),
       deliveryLocation: draft.ubicacionEntrega ?? null,
+      // Lo primero que ve el motorizado de a dónde va, antes de recoger.
+      deliveryZone: draft.barrio ?? null,
       customerPhone: draft.telefonoCliente,
       customerName: draft.nombreCliente ?? null,
       valueToCollect: draft.valorACobrar,

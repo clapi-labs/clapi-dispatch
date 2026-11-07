@@ -13,9 +13,10 @@ import {
   type OrderDraft,
   type OrderFieldKey,
 } from "@dispatch/shared";
-import { assignNextCourier, getBotConfig, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
+import { getBotConfig, getEngineConfig, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
+import { dispatchNewTrip } from "@/dispatch/engine";
 import { notifyAssigned } from "@/bot/notify";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
@@ -576,12 +577,16 @@ export async function handleRestaurant(ctx: Context) {
     );
     // El restaurante siempre queda confirmado y con un tiempo, haya moto
     // libre o no: la espera por eficiencia del despacho no es suya. Con moto
-    // libre, un solo mensaje con quién va; sin moto, la confirmación sale ya
+    // ya, un solo mensaje con quién va; sin moto, la confirmación sale ya
     // y quién va llega después (notifyAssigned).
-    if (await assignNextCourier(trip.id)) {
+    const engineLeads = (await getEngineConfig()).mode === "auto";
+    if (await dispatchNewTrip(trip.id)) {
       await notifyAssigned(trip.id, { atConfirmation: true });
     } else {
-      const estimate = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier: null });
+      // Con el engine, esperar es a propósito (que la moto llegue justo cuando
+      // la comida esté lista), no una demora por la que pedir disculpas.
+      const courier = engineLeads ? { lat: null, lng: null, locationUpdatedAt: null } : null;
+      const estimate = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier });
       await say(conversation.id, message.phone, confirmedText(trip.code, estimate, null, cop(trip.deliveryFee)), {
         replyTo: trip.sourceWaMessageId,
         tripId: trip.id,

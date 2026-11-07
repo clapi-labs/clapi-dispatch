@@ -126,6 +126,39 @@ Orden recomendado para rotar: generar el nuevo en el proveedor → `set-secret.s
 
 **Apagar o encender el bot:** `BOT_ACTIVE=false|true` con `set-secret.sh` y redesplegar.
 
+## 4b. Simulador (solo staging)
+
+Prueba el sistema completo con pedidos reales por WhatsApp sin un número por moto. Las motos simuladas son filas de `couriers` (marca «🧪 Simulada» en Flota, número `SIM<id>`, que no existe): el algoritmo y el portal las tratan como a cualquier moto. Un proceso aparte (`scripts/simulador.mjs`, servicio `simulator`, misma imagen que el worker) las mueve por sus paradas y reporta por `/api/gps`; no asigna, no envía y no marca estados. Si se cae o se detiene (`docker compose -f compose.yml stop simulator`), el bot y el portal siguen y las motos quedan sin señal: a los 2 min el algoritmo las excluye por «sin GPS».
+
+**Encenderlo:**
+```bash
+cd /opt/dispatch
+./set-secret.sh SIMULATOR_ENABLED      # el valor es 1 (no "true": compose lo usa como número de réplicas)
+./deploy.sh deploy "$(cat .tag)"
+```
+Y el engine en modo `auto` ([ALGORITMO.md](ALGORITMO.md), «Modo auto»). Al arrancar crea 8 motos alrededor de los restaurantes registrados.
+
+**Apagarlo:** `SIMULATOR_ENABLED` vacío y redesplegar. Sin ella no hay página `/simulador` (404), ni servicio `simulator` (0 réplicas), ni desvío de mensajes: cada moto recibe en su propio número, y el despacho deja de lado las simuladas. Nunca en producción.
+
+**Números de prueba.** Con el simulador encendido, toda moto con número real de Flota (agregada con el formulario normal) es un número de prueba: no recibe pedidos propios y toma la próxima moto simulada que reciba un pedido.
+
+1. Un número libre toma la próxima moto simulada sin número que reciba un pedido; con varios libres, el que lleva más tiempo libre.
+2. Recibe el mensaje de ese pedido con el nombre de la moto («🧪 Moto simulada: Fabio») y, si la moto ya llevaba otros, el de cada uno en la fase en que va.
+3. Conserva la moto hasta que no le quedan pedidos abiertos (con 15 s de margen para el «terminado»); entonces queda libre.
+4. Lo que escribe o toca lo hace la moto: queda en el chat de la moto en el portal. Los botones se resuelven por el pedido; el texto, por la moto que controla.
+5. La moto controlada sale cuando toca «Voy en camino», espera en la recogida a «Recogí» y en la entrega a que marque cómo quedó.
+6. Si se quita o desconecta el número en Flota, su moto sigue sola sin perder sus pedidos. Sin números libres, la moto se maneja sola y sus mensajes solo quedan en su chat.
+
+Cada número debe escribirle «hola» al bot antes de probar: así queda conectado y abre la ventana de 24 h de Meta.
+
+**El mapa** (`/simulador`, en el menú; siempre pide sesión, aunque `AUTH_DISABLED=1`): motos con su estado, pedidos y ruta, restaurantes y clientes, el ranking de cada pedido tal como quedó en `engine_evaluations.response`, cuánto falta para despachar cada pedido que espera y qué moto controla cada número. Controles: velocidad, radio del engine, porcentajes de portería, regreso y cliente que no contesta, agregar moto, mover a mano (queda detenida ahí hasta «Soltar»), desconectar, crear un pedido sin WhatsApp y reiniciar.
+
+**Reiniciar** borra solo lo simulado: las motos simuladas, sus chats, los pedidos que tuvieron y los creados desde el mapa. Restaurantes, usuarios y motos reales quedan igual.
+
+**Límite:** la velocidad acelera el movimiento, no la cocina: el sistema usa la hora real. Para probar rápido, «listo en 5».
+
+**Diagnóstico:** `docker compose -f compose.yml logs --tail=50 simulator`.
+
 ## 5. Usuarios del portal
 
 No hay registro público. Se crean en el servidor:

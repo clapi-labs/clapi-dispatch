@@ -66,11 +66,15 @@ def construir(caso, ahora=AHORA):
                 moto["paradas"][:0] = [
                     {"tipo": "W", "punto": p["cliente"], "pedido": id_pedido, "listo_ts": ahora + quedan * 60},
                     {"tipo": "V", "punto": p["restaurante"], "pedido": id_pedido}]
+            elif p.get("volviendo", False):  # ya entregó: solo le falta volver a recogida
+                moto["paradas"].append({"tipo": "B", "punto": p["restaurante"], "pedido": id_pedido})
             elif p.get("recogido", False):
                 moto["paradas"].append({"tipo": "C", "punto": p["cliente"], "pedido": id_pedido})
+                if p.get("puede_volver", False):  # el peor caso: después de entregar, regresa
+                    moto["paradas"].append({"tipo": "B", "punto": p["restaurante"], "pedido": id_pedido})
         for id_pedido, p in zip(ids, en_curso):
             listo_ts = ahora + p.get("listo_en", 0) * 60
-            if not p.get("recogido", False) and "cliente_no_contesta_hace" not in p:
+            if not p.get("recogido", False) and not p.get("volviendo", False) and "cliente_no_contesta_hace" not in p:
                 paradas = [dict(q, t_listo=max(0.0, (q["listo_ts"] - ahora) / 60)) if "listo_ts" in q else q
                            for q in moto["paradas"]]
                 ruta = algoritmo.mejor_insercion((m["lat"], m["lon"]), paradas, tuple(p["restaurante"]),

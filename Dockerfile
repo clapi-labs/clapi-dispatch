@@ -32,10 +32,11 @@ FROM build AS migrate
 CMD ["npm", "run", "db:migrate", "--workspace=@dispatch/shared"]
 
 # --- Worker: tareas periódicas, llama al bot (sin dependencias) ---
+# La misma imagen corre el simulador de staging (scripts/simulador.mjs).
 FROM node:${NODE_VERSION}-alpine AS worker
 ENV NODE_ENV=production
 WORKDIR /app
-COPY scripts/worker.mjs ./scripts/worker.mjs
+COPY scripts/worker.mjs scripts/simulador.mjs ./scripts/
 USER node
 CMD ["node", "scripts/worker.mjs"]
 

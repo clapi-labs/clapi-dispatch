@@ -114,6 +114,11 @@ export type OrderDraft = {
   /** El mapa no ubicó una dirección (o no respondió): se le preguntó a la
    *  central si es válida y cuánto vale. Lo responde en el portal. */
   consultaAsesor?: AdvisorQuery | null;
+  /** Un número registrado dijo ser otro restaurante: se le preguntó una vez si
+   *  habla con el suyo. Mientras responde, su mensaje espera aquí. */
+  confirmarIdentidad?: { registrado: string; dice: string; texto: string; mensaje: string; imagenes?: string[] } | null;
+  /** Ya respondió que sí: en este pedido no se le vuelve a preguntar. */
+  identidadConfirmada?: boolean;
 };
 
 /** Lo que devuelve el modelo por mensaje. */

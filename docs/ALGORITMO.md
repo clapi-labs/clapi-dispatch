@@ -1,6 +1,6 @@
 # Algoritmo de asignación
 
-Cómo se conecta al sistema el algoritmo de `algoritmoDeli` (score multi-factor para elegir motorizado) y cómo se prueba de forma aislada. Estado: **diseño acordado, sin implementar**.
+Cómo se conecta al sistema el algoritmo de `algoritmoDeli` (score multi-factor para elegir motorizado) y cómo se prueba de forma aislada. Estado: **implementado con los tres modos; `auto` solo se ha probado en local, con motos simuladas**. Staging sigue en `shadow`.
 
 ## Idea
 
@@ -22,8 +22,8 @@ flowchart LR
 ```
 
 - **El bot arma la foto y decide qué hacer con el resultado.** El engine solo calcula. Ofertas, reintentos y WhatsApp quedan fuera del algoritmo.
-- **Google Maps solo mide** (minutos y km). El algoritmo decide.
-- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Se empieza en `shadow`. La lógica actual en TypeScript convive como respaldo hasta pasar a `auto`.
+- **Google Maps solo mide** (minutos y km). El algoritmo decide. Por ahora solo se usa Haversine: Google queda pendiente.
+- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Se empieza en `shadow`. La cola sigue activa hasta pasar a `auto`, que se hace cuando el GPS funcione con motos reales: en `auto` la cola no asigna nada, y lo que el engine no pueda asignar lo asigna la central a mano.
 
 ## Cómo calcula los tiempos
 
@@ -100,16 +100,16 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 | `pedido.cliente` | Geocodificación de la dirección; obligatorio |
 | `motos[].lat`, `lon`, `sin_senal` | Traccar (`couriers.lat`, `lng`, `locationUpdatedAt`) |
 | `motos[].cuota` | La lleva el bot: en cada entrega completada, cada moto activa suma 1/N; las pausadas o desconectadas no suman; se reinicia por turno |
-| `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogido» y `C` con «Entregado» |
+| `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogí» y `C` al marcar la entrega. Si vuelve a recogida queda `B` hasta «Ya volví» |
 | `paradas[].listo_ts` | En `R`, cuándo está lista esa comida. En `W`, hasta cuándo se espera al cliente |
 
-Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante.
+Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` volver a recogida después de entregar. `B` no impide recibir otro pedido: la idea es mantener ocupadas las motos, pero su tiempo cuenta en la ruta. Como si tendrá que volver solo se sabe al entregar, el bot suma `B` después de cada entrega pendiente (`settings.engine_config.asumirRegreso`): es el peor caso.
 
 ### Respuesta
 
 ```jsonc
 {
-  "engine_version": "2026.10.1",
+  "engine_version": "2026.11.1",
   "modo": "pico",
   "pesos": [0.70, 0.20, 0.10],
   "despacho": {
@@ -153,19 +153,19 @@ Hoy no existe y el engine lo necesita:
 
 1. ~~Exigir y extraer el tiempo de preparación (`services/openai/extract.ts`) y guardarlo como hora exacta en el viaje.~~ Hecho: es un dato obligatorio más (`listoEnMinutos`) y se guarda en `trips.ready_at`, contado desde el mensaje que lo dijo.
 2. ~~Geocodificar la dirección del cliente y no evaluar sin coordenadas.~~ Hecho con Google Geocoding (`services/google/geocode.ts`): si no la ubica con precisión, se le pide corregir al restaurante y luego pasa a un asesor. Sin `GOOGLE_MAPS_API_KEY`, o si Google falla, el viaje sale sin coordenadas.
-3. Botón «Recogido» para el motorizado.
-4. Guardar el `plan` de cada asignación, para armar las `paradas`.
+3. ~~Botón «Recogí» para el motorizado.~~ Hecho (ver [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)).
+4. ~~Guardar el `plan` de cada asignación, para armar las `paradas`.~~ Hecho: `courier_routes` guarda el orden y lo pendiente sale de la fase de cada viaje.
 5. Llevar la `cuota` por moto y la hora de la última entrega o conexión.
-6. Recibir las posiciones de Traccar y marcar `sin_senal` tras 2 min sin reporte.
+6. ~~Recibir las posiciones y marcar `sin_senal` tras 2 min sin reporte.~~ Hecho. La app debe reportar aunque la moto esté quieta, o la moto cuenta como sin señal.
 7. ~~El modo, `radio_km` y `multipedido` en `settings`.~~ Hecho: `settings.engine_config` (ver «Modo sombra»).
 
 ## Modo sombra
 
-Implementado en `apps/bot/src/dispatch/` y corriendo en cada tick del worker, después de la asignación real (`/api/internal/tick`). La cola sigue asignando; el engine calcula al lado y no envía nada.
+Implementado en `apps/bot/src/dispatch/engine.ts` y corriendo en cada tick del worker, después de la asignación real (`/api/internal/tick`). La cola sigue asignando; el engine calcula al lado y no envía nada.
 
 - **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
 - **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
-- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true) y `sinSenalMin` (2).
+- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true), `sinSenalMin` (2) y `asumirRegreso` (true).
 - **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
 
 Comparar con lo que pasó de verdad:
@@ -186,10 +186,23 @@ Lo que todavía se aproxima, hasta que el bot aporte el dato:
 | Falta | Mientras tanto |
 |---|---|
 | Posición real de las motos (Traccar) | Sin GPS reciente toda moto cuenta como `sin_senal`: el engine no elige a nadie y la fila queda `waiting` con «Sin motos elegibles» |
-| Botón «Recogido» | Todo viaje en curso cuenta como por recoger (paradas R y C) |
-| `plan` guardado | Las paradas van en el orden en que se asignaron |
 | Cuota 1/N del turno | Promedio de entregas del grupo |
 | Decisiones encadenadas | Cada viaje se evalúa contra las asignaciones reales: lo que el engine «habría asignado» antes no ocupa a esa moto para el siguiente |
+
+## Modo `auto`
+
+El engine asigna de verdad, en cada tick, los pedidos pendientes, del más viejo al más nuevo:
+
+- **Si ya es hora** (`faltan_min = 0`): asigna a la ganadora, libre u ocupada, y guarda su ruta. Al confirmar se intenta de una vez, para que el restaurante reciba un solo mensaje con quién va.
+- **Si falta** (`faltan_min > 0`): espera. El restaurante ya tiene su confirmación, sin disculpas, porque la espera es a propósito.
+- **Sin ganadora o con el engine caído:** sigue pendiente con el motivo a la vista en el tablero («Sin motos elegibles (sin GPS: 6)»), y la central lo asigna a mano.
+
+Hoy se asigna directo, sin oferta ni rechazo. Cómo activarlo, cuando llegue el momento:
+
+```sql
+insert into settings (key, value) values ('engine_config', '{"mode":"auto"}')
+on conflict (key) do update set value = settings.value || excluded.value;
+```
 
 ## Cómo se prueba
 
@@ -219,8 +232,9 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
 3. ~~El bot llama al engine en modo `shadow` y guarda el ranking.~~ Hecho (ver «Modo sombra»). Decide de verdad cuando haya GPS.
 4. Google Maps para las 3 mejores, con respaldo a Haversine.
-5. GPS real (Traccar): identificadores aleatorios por moto (`moto-7f3k9q`); el receptor descarta los no registrados.
-6. Comparar con la realidad y pasar a `queue` o `auto` cuando los números convenzan.
+5. ~~GPS: identificadores aleatorios por moto; el receptor descarta los no registrados.~~ Hecho (`/api/gps`). Falta instalarlo en los celulares.
+6. ~~Modo `auto`.~~ Hecho (`apps/bot/src/dispatch/engine.ts`). Falta probarlo en la calle.
+7. Comparar con la realidad y pasar a `auto` cuando los números convenzan.
 
 ## Pendientes por decidir
 

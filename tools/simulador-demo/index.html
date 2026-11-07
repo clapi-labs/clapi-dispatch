@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador de despacho</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --fondo:#f6f7f9; --panel:#fff; --borde:#e3e6ea; --texto:#1d2329; --suave:#6b7480; --acento:#1f6feb; --ok:#1a7f37; --alerta:#bf5700; --mal:#cf222e; --wa:#e7fbd8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; color:var(--texto); background:var(--fondo); height:100vh; display:grid; grid-template-rows:auto 1fr; }
+  header { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--borde); }
+  header h1 { font-size:16px; margin:0 8px 0 0; }
+  header label { display:flex; gap:6px; align-items:center; color:var(--suave); }
+  select, input, button { font:inherit; }
+  button { border:1px solid var(--borde); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; }
+  button:hover { border-color:var(--acento); }
+  button.activo { background:var(--acento); color:#fff; border-color:var(--acento); }
+  .reloj { font-variant-numeric:tabular-nums; font-weight:600; }
+  .db { font-size:12px; color:var(--suave); margin-left:auto; }
+  main { display:grid; grid-template-columns:340px 1fr 420px; min-height:0; }
+  #mapa { min-height:0; }
+  aside { background:var(--panel); border-left:1px solid var(--borde); overflow:auto; padding:12px; }
+  aside.izq { border-left:0; border-right:1px solid var(--borde); display:flex; flex-direction:column; padding:0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--suave); margin:14px 0 8px; }
+  h2:first-child { margin-top:0; }
+  .chat { flex:1; overflow:auto; padding:12px; background:#efeae2; }
+  .chat .conv { text-align:center; font-size:11px; color:var(--suave); margin:10px 0 4px; }
+  .burbuja { max-width:85%; padding:6px 9px; border-radius:8px; margin:4px 0; white-space:pre-wrap; box-shadow:0 1px 0 #0001; font-size:13px; }
+  .burbuja.restaurant { background:#fff; }
+  .burbuja.bot, .burbuja.agent { background:var(--wa); margin-left:auto; }
+  .burbuja small { display:block; color:var(--suave); font-size:10px; text-align:right; }
+  .eventos { max-height:30vh; overflow:auto; border-top:1px solid var(--borde); padding:10px 12px; font-size:12px; }
+  .eventos div { padding:3px 0; border-bottom:1px dashed var(--borde); }
+  .pedido { border:1px solid var(--borde); border-radius:8px; padding:8px 10px; margin-bottom:8px; cursor:pointer; }
+  .pedido.sel { border-color:var(--acento); box-shadow:0 0 0 2px #1f6feb33; }
+  .pedido .fila { display:flex; justify-content:space-between; gap:8px; }
+  .chip { font-size:11px; padding:1px 7px; border-radius:10px; background:#eef1f4; white-space:nowrap; }
+  .chip.esperando { background:#fff1d6; color:var(--alerta); }
+  .chip.asignado, .chip.recogido { background:#ddf4ff; color:var(--acento); }
+  .chip.entregado { background:#dafbe1; color:var(--ok); }
+  .chip.cancelado, .chip.devuelto, .chip.cliente { background:#ffebe9; color:var(--mal); }
+  .suave { color:var(--suave); font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td, th { padding:4px 3px; text-align:left; border-bottom:1px solid var(--borde); vertical-align:top; }
+  th { color:var(--suave); font-weight:500; }
+  .barra { height:6px; background:#eef1f4; border-radius:3px; overflow:hidden; display:flex; }
+  .barra span { display:block; height:100%; }
+  .t { background:#1f6feb; } .r { background:#8250df; } .e { background:#1a7f37; }
+  .gana td { background:#f0f7ff; font-weight:600; }
+  .explica { background:#f0f7ff; border-radius:6px; padding:8px; margin:8px 0; }
+  .acciones { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .moto-ic { background:#fff; border:2px solid var(--acento); border-radius:12px; padding:1px 6px; font-size:11px; font-weight:600; white-space:nowrap; box-shadow:0 1px 3px #0003; }
+  .moto-ic.ocupada { border-color:var(--alerta); } .moto-ic.bloq { border-color:var(--mal); } .moto-ic.off { border-color:#999; color:#999; }
+  .pin { font-size:20px; text-shadow:0 1px 2px #0005; }
+  .ayuda { position:absolute; z-index:500; top:10px; left:50%; transform:translateX(-50%); background:#1d2329; color:#fff; padding:6px 12px; border-radius:6px; display:none; }
+  .leyenda { font-size:12px; color:var(--suave); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulador de despacho</h1>
+  <span class="reloj" id="reloj"></span>
+  <label>Horario
+    <select id="modo"><option value="">Según la hora</option><option value="pico">Hora pico</option><option value="valle">Hora valle</option></select>
+  </label>
+  <label><input type="checkbox" id="multi"> Varios pedidos por moto</label>
+  <label>Radio <input type="number" id="radio" min="1" max="20" step="0.5" style="width:60px"> km</label>
+  <label>Velocidad
+    <select id="vel"><option>1</option><option>2</option><option>5</option><option>10</option><option>20</option></select>×
+  </label>
+  <button id="bPedido">+ Pedido en el mapa</button>
+  <button id="bMoto">+ Moto</button>
+  <button id="bReiniciar">Reiniciar</button>
+  <span class="db" id="db"></span>
+</header>
+<main>
+  <aside class="izq">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--borde)"><b>WhatsApp</b> <span class="suave">lo que llega al bot real</span></div>
+    <div class="chat" id="chat"></div>
+    <div class="eventos" id="eventos"></div>
+  </aside>
+  <div style="position:relative;min-height:0"><div id="mapa" style="height:100%"></div><div class="ayuda" id="ayuda"></div></div>
+  <aside id="lateral"></aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const hora = (ts) => new Date(ts * 1000).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+const mapa = L.map("mapa").setView([3.372, -76.527], 14);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(mapa);
+const capaMotos = L.layerGroup().addTo(mapa), capaPedidos = L.layerGroup().addTo(mapa), capaRutas = L.layerGroup().addTo(mapa), capaSel = L.layerGroup().addTo(mapa);
+
+let S = null, popupAbierto = false, sel = null, clic = null, puntos = [], ultimoChat = 0;
+
+async function api(ruta, cuerpo) {
+  const r = await fetch("/api/" + ruta, { method: "POST", body: JSON.stringify(cuerpo ?? {}) });
+  const d = await r.json();
+  if (!r.ok) alertar(d.error);
+  refrescar();
+}
+function alertar(t) { const a = $("ayuda"); a.textContent = t; a.style.display = "block"; setTimeout(() => (a.style.display = clic ? "block" : "none", clic && ayuda()), 2500); }
+
+// --- controles ---
+$("modo").onchange = (e) => api("config", { modo: e.target.value });
+$("multi").onchange = (e) => api("config", { multipedido: e.target.checked });
+$("radio").onchange = (e) => api("config", { radio_km: e.target.value });
+$("vel").onchange = (e) => api("config", { velocidad: e.target.value });
+$("bReiniciar").onclick = () => api("reiniciar");
+$("bPedido").onclick = () => modoClic("pedido");
+$("bMoto").onclick = () => modoClic("moto");
+
+function modoClic(tipo, extra) {
+  clic = clic?.tipo === tipo && !extra ? null : { tipo, ...extra };
+  puntos = [];
+  $("bPedido").classList.toggle("activo", clic?.tipo === "pedido");
+  $("bMoto").classList.toggle("activo", clic?.tipo === "moto");
+  ayuda();
+}
+function ayuda() {
+  const t = !clic ? "" : clic.tipo === "moto" ? "Clic donde se conecta la moto" : clic.tipo === "mover" ? `Clic a dónde mover a ${clic.moto}`
+    : clic.tipo === "ubicar" ? `Clic en la ubicación ${clic.campo === "restaurante" ? "del restaurante" : "del cliente"}`
+    : puntos.length ? "Ahora clic en la casa del cliente" : "Clic en el restaurante";
+  $("ayuda").textContent = t; $("ayuda").style.display = t ? "block" : "none";
+}
+mapa.on("click", async (e) => {
+  if (!clic) return;
+  const p = [e.latlng.lat, e.latlng.lng];
+  if (clic.tipo === "moto") { const id = prompt("Nombre de la moto"); if (id !== null) await api("nueva_moto", { id, punto: p }); modoClic(null); }
+  else if (clic.tipo === "mover") { await api("moto", { moto: clic.moto, accion: "mover", punto: p }); modoClic(null); }
+  else if (clic.tipo === "ubicar") { await api("ubicar", { pedido: clic.pedido, campo: clic.campo, punto: p }); modoClic(null); }
+  else {
+    puntos.push(p);
+    if (puntos.length === 2) {
+      const listo = prompt("¿En cuántos minutos está lista la comida?", "10");
+      if (listo !== null) await api("pedido", { restaurante: puntos[0], cliente: puntos[1], listo_en: Number(listo) || 0 });
+      modoClic(null);
+    } else ayuda();
+  }
+});
+
+// --- dibujo ---
+const colores = ["#1f6feb", "#8250df", "#bf3989", "#1a7f37", "#bf5700", "#0a7ea4", "#6639ba", "#953800", "#116329", "#cf222e"];
+const colorMoto = (id) => colores[[...S.motos.map((m) => m.id)].indexOf(id) % colores.length];
+
+mapa.on("popupopen", () => (popupAbierto = true)).on("popupclose", () => (popupAbierto = false));
+function dibujar() {
+  if (popupAbierto) return;
+  capaMotos.clearLayers(); capaPedidos.clearLayers(); capaRutas.clearLayers(); capaSel.clearLayers();
+  for (const m of S.motos) {
+    const clase = !m.activa ? "off" : m.paradas.some((s) => s.tipo === "W" || s.tipo === "V") ? "bloq" : m.paradas.length ? "ocupada" : "";
+    const pedidosM = new Set(m.paradas.map((s) => s.pedido)).size;
+    L.marker([m.lat, m.lon], { icon: L.divIcon({ className: "", html: `<div class="moto-ic ${clase}" style="${clase ? "" : `border-color:${colorMoto(m.id)}`}">🛵 ${esc(m.id)}${pedidosM ? ` · ${pedidosM}` : ""}</div>`, iconAnchor: [30, 12] }) })
+      .bindPopup(() => popupMoto(m)).addTo(capaMotos);
+    if (m.paradas.length) L.polyline([[m.lat, m.lon], ...m.paradas.map((s) => s.punto)], { color: colorMoto(m.id), weight: 4, opacity: .75 }).addTo(capaRutas);
+  }
+  for (const p of S.pedidos) {
+    if (["entregado", "cancelado", "devuelto"].includes(p.estado)) continue;
+    const marca = sel === p.id ? "outline:3px solid #1f6feb;border-radius:50%" : "";
+    if (p.restaurante) L.marker(p.restaurante, { icon: L.divIcon({ className: "pin", html: `<span style="${marca}">🍔</span>` }) }).bindTooltip(`${esc(p.codigo)} · ${esc(p.restaurante_nombre)}`).on("click", () => seleccionar(p.id)).addTo(capaPedidos);
+    if (p.cliente) L.marker(p.cliente, { icon: L.divIcon({ className: "pin", html: `<span style="${marca}">🏠</span>` }) }).bindTooltip(`${esc(p.codigo)} · ${esc(p.entrega ?? "cliente")}`).on("click", () => seleccionar(p.id)).addTo(capaPedidos);
+  }
+  puntos.forEach((x) => L.marker(x, { icon: L.divIcon({ className: "pin", html: "🍔" }) }).addTo(capaSel));
+  const p = S.pedidos.find((x) => x.id === sel);
+  if (p?.estado === "esperando" && p.evaluacion) {
+    const radio = S.config.radio_km;
+    if (p.restaurante) L.circle(p.restaurante, { radius: radio * 1000, color: "#1f6feb", weight: 1, fillOpacity: .04, dashArray: "4" }).addTo(capaSel);
+    for (const m of p.evaluacion.motos.filter((m) => m.elegible).slice(0, 3)) {
+      const gana = m.id === p.evaluacion.ganador;
+      L.polyline(m.ruta_puntos, { color: gana ? "#1a7f37" : "#888", weight: gana ? 5 : 3, dashArray: gana ? null : "6 6", opacity: .9 }).addTo(capaSel);
+    }
+  }
+}
+
+function popupMoto(m) {
+  const div = document.createElement("div");
+  const w = m.paradas[0]?.tipo === "W";
+  div.innerHTML = `<b>${esc(m.id)}</b> · ${m.entregas} entregas hoy<br>
+    <span class="suave">${m.activa ? (m.paradas.length ? m.paradas.map((s) => ({ R: "Recoge", C: "Entrega", W: "Espera cliente", V: "Devuelve" })[s.tipo] + " " + codigo(s.pedido)).join(" → ") : "Libre, esperando pedido") : "Desconectada"}</span>
+    <div class="acciones"></div>`;
+  const acc = div.querySelector(".acciones");
+  const b = (t, f) => { const x = document.createElement("button"); x.textContent = t; x.onclick = () => { mapa.closePopup(); f(); }; acc.append(x); };
+  if (m.paradas.some((s) => s.tipo === "C") && !w) b("Cliente no contesta", () => api("moto", { moto: m.id, accion: "no_contesta" }));
+  if (w) b("El cliente contestó", () => api("moto", { moto: m.id, accion: "contesto" }));
+  b(m.activa ? "Desconectar" : "Conectar", () => api("moto", { moto: m.id, accion: m.activa ? "apagar" : "encender" }));
+  if (!m.paradas.length) b("Mover", () => modoClic("mover", { moto: m.id }));
+  return div;
+}
+const codigo = (id) => S.pedidos.find((p) => p.id === id)?.codigo ?? "#" + id;
+
+function seleccionar(id) { sel = id; pintar(); }
+
+function pintarLateral() {
+  const activos = S.pedidos.filter((p) => !["entregado", "cancelado", "devuelto"].includes(p.estado)).reverse();
+  const cerrados = S.pedidos.filter((p) => ["entregado", "cancelado", "devuelto"].includes(p.estado)).reverse();
+  const p = S.pedidos.find((x) => x.id === sel);
+  let h = "";
+  if (p) h += detalle(p);
+  h += `<h2>Pedidos activos (${activos.length})</h2>` + (activos.map(tarjeta).join("") || `<p class="suave">Escríbanle al bot por WhatsApp o creen uno con “+ Pedido en el mapa”.</p>`);
+  if (cerrados.length) h += `<h2>Terminados</h2>` + cerrados.map(tarjeta).join("");
+  h += `<h2>Motos</h2><table><tr><th>Moto</th><th>Entregas</th><th>Estado</th></tr>` + S.motos.map((m) =>
+    `<tr><td><span style="color:${colorMoto(m.id)}">●</span> ${esc(m.id)}</td><td>${m.entregas}</td><td class="suave">${!m.activa ? "desconectada" : m.paradas.length ? new Set(m.paradas.map((s) => s.pedido)).size + " pedido(s)" : "libre hace " + Math.max(0, Math.round((S.ahora - m.disponible_desde_ts) / 60)) + " min"}</td></tr>`).join("") +
+    `</table><p class="suave">Promedio del turno: ${S.cuota.toFixed(1)} entregas por moto. Clic en una moto del mapa para intervenir.</p>`;
+  $("lateral").innerHTML = h;
+  $("lateral").querySelectorAll("[data-p]").forEach((el) => (el.onclick = () => seleccionar(Number(el.dataset.p))));
+  $("lateral").querySelectorAll("[data-a]").forEach((el) => (el.onclick = (e) => { e.stopPropagation(); accion(el.dataset.a, Number(el.dataset.id), el.dataset.m); }));
+}
+
+function tarjeta(p) {
+  const falta = p.estado === "esperando" && p.listo_ts ? Math.round((p.listo_ts - S.ahora) / 60) : null;
+  return `<div class="pedido ${sel === p.id ? "sel" : ""}" data-p="${p.id}">
+    <div class="fila"><b>${esc(p.codigo)}</b><span class="chip ${p.estado.split(" ")[0]}">${esc(p.estado)}${p.moto ? " · " + esc(p.moto) : ""}</span></div>
+    <div class="suave">${p.origen === "whatsapp" ? "💬 " : "🖱️ "}${esc(p.restaurante_nombre)} → ${esc(p.entrega ?? "cliente")}</div>
+    ${falta != null ? `<div class="suave">Comida lista ${falta > 0 ? `en ${falta} min` : "ya"}</div>` : ""}
+  </div>`;
+}
+
+function detalle(p) {
+  let h = `<h2>Pedido ${esc(p.codigo)}</h2>`;
+  if (p.origen === "whatsapp") h += `<div class="suave">${esc(p.recogida ?? "")} → ${esc(p.entrega ?? "")}${p.valor ? ` · cobrar $${p.valor.toLocaleString("es-CO")}` : ""}${p.notas ? `<br>${esc(p.notas)}` : ""}</div>`;
+  if (!p.restaurante || !p.cliente) {
+    h += `<div class="explica">Falta la ubicación ${!p.restaurante ? "del restaurante" : "del cliente"} (el bot no la pudo ubicar).
+      <div class="acciones">${!p.restaurante ? `<button data-a="ubicar_r" data-id="${p.id}">Marcar restaurante</button>` : ""}${!p.cliente ? `<button data-a="ubicar_c" data-id="${p.id}">Marcar cliente</button>` : ""}</div></div>`;
+  }
+  const ev = p.estado === "esperando" ? p.evaluacion : p.evaluacion_final;
+  if (p.error) h += `<div class="explica" style="background:#ffebe9">${esc(p.error)}</div>`;
+  if (ev) {
+    const [w1, w2, w3] = ev.pesos;
+    h += `<div class="suave">${ev.modo === "pico" ? "Hora pico" : "Hora valle"}: pesa ${Math.round(w1 * 100)}% el tiempo, ${Math.round(w2 * 100)}% la ruta y ${Math.round(w3 * 100)}% la equidad</div>`;
+    if (p.estado === "esperando") {
+      h += ev.ganador
+        ? (ev.despacho.faltan_min > 0
+          ? `<div class="explica">⏳ Espera <b>${Math.ceil(ev.despacho.faltan_min)} min</b> para asignar: así la moto llega justo cuando la comida está lista y no se queda esperando. Hoy ganaría <b>${esc(ev.ganador)}</b>.</div>`
+          : `<div class="explica">Asignando…</div>`)
+        : `<div class="explica" style="background:#ffebe9">Ninguna moto puede tomarlo ahora. Se reintenta cada segundo.</div>`;
+    } else if (ev.explicacion) h += `<div class="explica">✅ ${esc(ev.explicacion)}${p.espera_moto_min != null ? `<br><span class="suave">La moto esperó ${p.espera_moto_min} min la comida</span>` : ""}</div>`;
+    h += `<table><tr><th>Moto</th><th>Puntaje</th><th>Llega en</th><th></th></tr>`;
+    for (const m of ev.motos) {
+      if (!m.elegible) { h += `<tr><td>${esc(m.id)}</td><td colspan="3" class="suave">✕ ${esc(m.motivo_texto)} · ${m.distancia_km.toFixed(1)} km</td></tr>`; continue; }
+      const t = m.f_tiempo * w1, r = (m.f_ruta ?? 0) * w2, e = m.f_equidad * w3;
+      h += `<tr class="${m.id === ev.ganador ? "gana" : ""}" title="${esc(m.secuencia)}"><td>${esc(m.id)}</td><td>${m.score}
+        <div class="barra"><span class="t" style="width:${t}%"></span><span class="r" style="width:${r}%"></span><span class="e" style="width:${e}%"></span></div></td>
+        <td>${m.t_a_min} min</td><td class="suave">${m.desvio_min != null ? `desvío ${m.desvio_min} min` : "libre"} · ${m.min_sin_pedido} min sin pedido</td></tr>`;
+    }
+    h += `</table><p class="leyenda"><span style="color:#1f6feb">■</span> tiempo <span style="color:#8250df">■</span> ruta <span style="color:#1a7f37">■</span> equidad. En el mapa: verde la ganadora, gris punteado las siguientes.</p>`;
+  }
+  if (["asignado", "moto en restaurante", "recogido", "en el cliente"].includes(p.estado)) {
+    h += `<div class="acciones"><button data-a="terminar" data-id="${p.id}">Terminé el servicio (sin WhatsApp)</button></div>`;
+  }
+  if (p.estado === "esperando" || p.estado === "asignado") {
+    h += `<div class="acciones">`;
+    if (p.estado === "esperando" && ev?.ganador && ev.despacho.faltan_min > 0) h += `<button data-a="forzar" data-id="${p.id}">Asignar ya a ${esc(ev.ganador)}</button>`;
+    h += `<select data-sel="${p.id}"><option value="">Asignar a mano…</option>${S.motos.filter((m) => m.activa && m.id !== p.moto).map((m) => `<option>${esc(m.id)}</option>`).join("")}</select>`;
+    h += `<button data-a="cancelar" data-id="${p.id}">Cancelar</button></div>`;
+  }
+  return h + `<hr style="border:0;border-top:1px solid var(--borde);margin:14px 0">`;
+}
+
+function accion(a, id) {
+  if (a === "forzar") api("forzar", { pedido: id });
+  else if (a === "terminar") api("terminar", { pedido: id });
+  else if (a === "cancelar") api("cancelar", { pedido: id });
+  else if (a === "ubicar_r") modoClic("ubicar", { pedido: id, campo: "restaurante" });
+  else if (a === "ubicar_c") modoClic("ubicar", { pedido: id, campo: "cliente" });
+}
+document.addEventListener("change", (e) => {
+  if (e.target.dataset.sel && e.target.value) api("asignar", { pedido: Number(e.target.dataset.sel), moto: e.target.value });
+});
+
+function pintarChat() {
+  const ultimo = S.mensajes.length + ":" + (S.mensajes.at(-1)?.id ?? 0);
+  if (ultimo === ultimoChat) return;
+  ultimoChat = ultimo;
+  let conv = null, h = "";
+  for (const m of S.mensajes) {
+    if (m.conversacion !== conv) { conv = m.conversacion; h += `<div class="conv">${esc(conv)}</div>`; }
+    h += `<div class="burbuja ${m.rol}">${esc(m.texto)}<small>${new Date(m.hora).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}${m.pedido ? " · " + esc(codigo(m.pedido)) : ""}</small></div>`;
+  }
+  $("chat").innerHTML = h || `<p class="suave" style="text-align:center">Aquí aparece la conversación cuando alguien le escriba al bot.</p>`;
+  $("chat").scrollTop = $("chat").scrollHeight;
+}
+
+function pintar() {
+  if (!S) return;
+  $("reloj").textContent = hora(S.ahora) + (S.velocidad > 1 ? ` (×${S.velocidad})` : "");
+  $("db").textContent = "Base: " + S.estadoDb + " · WhatsApp: " + S.whatsapp;
+  // Los controles siguen al servidor, salvo el que se está editando.
+  const sinFoco = (el) => document.activeElement !== el;
+  if (sinFoco($("modo"))) $("modo").value = S.config.modo ?? "";
+  if (sinFoco($("multi"))) $("multi").checked = S.config.multipedido;
+  if (sinFoco($("radio"))) $("radio").value = S.config.radio_km;
+  if (sinFoco($("vel"))) $("vel").value = S.velocidad;
+  dibujar();
+  if (!document.activeElement?.dataset?.sel) pintarLateral();
+  pintarChat();
+  $("eventos").innerHTML = "<b>Qué está pasando</b>" + S.eventos.map((e) => `<div><span class="suave">${hora(e.ts)}</span> ${esc(e.texto)}</div>`).join("");
+}
+
+async function refrescar() {
+  try { S = await (await fetch("/api/estado")).json(); pintar(); } catch {}
+}
+refrescar();
+setInterval(refrescar, 1000);
+</script>
+</body>
+</html>

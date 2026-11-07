@@ -1,5 +1,5 @@
 import { recordMessage } from "@/db/queries/conversation";
-import { sendButtons, sendText, type SendResult } from "@/services/whatsapp/client";
+import { sendButtons, sendList, sendText, type ListOption, type SendResult } from "@/services/whatsapp/client";
 
 export type OutgoingOptions = {
   /** El wamid que se cita: el mensaje con que el restaurante abrió el pedido. */
@@ -7,6 +7,7 @@ export type OutgoingOptions = {
   /** El viaje del que habla el mensaje, si ya existe. */
   tripId?: number | null;
   buttons?: { id: string; title: string }[];
+  list?: ListOption;
 };
 
 /**
@@ -15,9 +16,11 @@ export type OutgoingOptions = {
  * restaurante responda citando este mensaje, se sabe de qué pedido habla.
  */
 export async function say(conversationId: number | null, phone: string, text: string, options: OutgoingOptions = {}): Promise<SendResult> {
-  const result = options.buttons?.length
-    ? await sendButtons(phone, text, options.buttons, { replyTo: options.replyTo })
-    : await sendText(phone, text, { replyTo: options.replyTo });
+  const result = options.list
+    ? await sendList(phone, text, options.list, { replyTo: options.replyTo })
+    : options.buttons?.length
+      ? await sendButtons(phone, text, options.buttons, { replyTo: options.replyTo })
+      : await sendText(phone, text, { replyTo: options.replyTo });
 
   if (conversationId) {
     await recordMessage(conversationId, "bot", result.ok ? text : `${text}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`, {

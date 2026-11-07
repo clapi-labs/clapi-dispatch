@@ -1,5 +1,6 @@
 "use client";
 
+import { isTripOpen } from "@dispatch/shared/domain/phase";
 import { Inbox } from "lucide-react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 import { useState } from "react";
@@ -23,10 +24,11 @@ function bucket(trips: Trip[], key: ColumnKey) {
   if (key === "pending") return trips.filter((t) => t.status === "pending").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (key === "route")
     return trips
-      .filter((t) => t.status === "en_route" || t.status === "assigned")
+      // Quien entregó y va de regreso sigue aquí hasta que vuelva.
+      .filter((t) => isTripOpen(t))
       .sort((a, b) => (b.assignedAt ?? "").localeCompare(a.assignedAt ?? ""));
   return trips
-    .filter((t) => t.status === "delivered")
+    .filter((t) => t.status === "delivered" && !isTripOpen(t))
     .sort((a, b) => (b.deliveredAt ?? b.updatedAt).localeCompare(a.deliveredAt ?? a.updatedAt));
 }
 
@@ -35,7 +37,7 @@ function SkeletonCard() {
 }
 
 export default function ViajesPage() {
-  const { trips, loaded, deliver } = useTrips();
+  const { trips, loaded, deliver, finish, assign } = useTrips();
   // En el celular se ve una columna a la vez. Arranca en "Asignado": es lo
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
@@ -100,7 +102,7 @@ export default function ViajesPage() {
                   ) : (
                     <AnimatePresence mode="popLayout" initial={false}>
                       {groups[c.key].map((trip) => (
-                        <TripCard key={trip.id} trip={trip} onDeliver={deliver} />
+                        <TripCard key={trip.id} trip={trip} onDeliver={deliver} onFinish={finish} onAssign={assign} />
                       ))}
                     </AnimatePresence>
                   )}

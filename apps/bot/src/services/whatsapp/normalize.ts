@@ -1,9 +1,15 @@
-import type { IncomingMessage, WaMessage, WaWebhookPayload } from "./types";
+import type { IncomingMessage, WaMessage, WaStatus, WaWebhookPayload } from "./types";
+
+/** Los acuses de mensajes nuestros: se leyó o no se pudo entregar. Van por
+ *  aparte porque no son mensajes y nunca se les responde. */
+export function extractStatuses(payload: WaWebhookPayload): WaStatus[] {
+  return (payload.entry ?? []).flatMap((entry) => (entry.changes ?? []).flatMap((change) => change.value.statuses ?? []));
+}
 
 /**
  * Convierte una entrega del webhook en `IncomingMessage[]`. Pura, igual que
  * en CLAPI: descarta `statuses` (acuses de mensajes nuestros) — procesarlos
- * haría que el bot le contestara a su propio acuse.
+ * aquí haría que el bot le contestara a su propio acuse.
  *
  * A diferencia de CLAPI (que distingue texto/audio/imagen/botón porque el
  * cliente interactúa con menús y comprobantes), este bot solo necesita

@@ -1,9 +1,10 @@
 import { after } from "next/server";
 
 import { handleIncoming } from "@/bot/intake";
+import { handleMessageStatus } from "@/bot/message-status";
 import { markProcessedIfNew } from "@/db/queries/idempotency";
 import { env } from "@/env";
-import { extractIncomingMessages } from "@/services/whatsapp/normalize";
+import { extractIncomingMessages, extractStatuses } from "@/services/whatsapp/normalize";
 import type { WaWebhookPayload } from "@/services/whatsapp/types";
 import { handleVerification, isValidSignature } from "@/services/whatsapp/verify";
 
@@ -56,6 +57,8 @@ export async function POST(request: Request) {
  * seguidos, y uno tras otro cada mensaje esperaría solo.
  */
 async function processWebhook(payload: WaWebhookPayload) {
+  for (const status of extractStatuses(payload)) await handleMessageStatus(status);
+
   const fresh = [];
   for (const message of extractIncomingMessages(payload)) {
     if (await markProcessedIfNew(message.waMessageId)) fresh.push(message);

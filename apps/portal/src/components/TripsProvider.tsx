@@ -24,8 +24,15 @@ type TripsState = {
   online: boolean;
   soundOn: boolean;
   setSoundOn: (on: boolean) => void;
-  deliver: (tripId: number) => Promise<void>;
+  deliver: (tripId: number, outcome: DeliveryOutcome) => Promise<void>;
+  /** «Ya volvió»: termina el servicio de quien estaba de regreso. */
+  finish: (tripId: number) => Promise<void>;
+  /** Asigna a esa moto, o devuelve el viaje para que se asigne solo (`null`).
+   *  `false` si ya no se pudo: otra moto lo tomó o ya lo recogieron. */
+  assign: (tripId: number, courierId: number | null) => Promise<boolean>;
 };
+
+export type DeliveryOutcome = { place: "customer" | "gate"; returning: boolean };
 
 // Con NEXT_PUBLIC_DEMO=1 las rutas /api/* responden con datos de ejemplo (lib/demo.ts).
 // Va aquí, al cargar el módulo: antes de que cualquier pantalla pida algo.
@@ -132,18 +139,52 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   }, [toast]);
 
   const deliver = useCallback(
-    async (tripId: number) => {
-      setTrips((prev) => prev.map((t) => (t.id === tripId ? { ...t, status: "delivered", deliveredAt: new Date().toISOString() } : t)));
-      await fetch(`/api/trips/${tripId}/deliver`, { method: "POST" });
+    async (tripId: number, { place, returning }: DeliveryOutcome) => {
+      const now = new Date().toISOString();
+      setTrips((prev) =>
+        prev.map((t) =>
+          t.id === tripId
+            ? { ...t, status: "delivered", deliveredAt: now, deliveryPlace: place, returnStartedAt: returning ? now : null, finishedAt: returning ? null : now }
+            : t,
+        ),
+      );
+      await fetch(`/api/trips/${tripId}/deliver`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ place, returning }),
+      });
       refresh();
+    },
+    [refresh],
+  );
+
+  const finish = useCallback(
+    async (tripId: number) => {
+      const now = new Date().toISOString();
+      setTrips((prev) => prev.map((t) => (t.id === tripId ? { ...t, finishedAt: now } : t)));
+      await fetch(`/api/trips/${tripId}/finish`, { method: "POST" });
+      refresh();
+    },
+    [refresh],
+  );
+
+  const assign = useCallback(
+    async (tripId: number, courierId: number | null) => {
+      const res = await fetch(`/api/trips/${tripId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courierId }),
+      });
+      refresh();
+      return res.ok;
     },
     [refresh],
   );
 
   // El mismo objeto mientras nada cambie: así no se redibuja todo el que lo usa.
   const value = useMemo(
-    () => ({ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver }),
-    [trips, needsHelp, loaded, online, soundOn, deliver],
+    () => ({ trips, needsHelp, loaded, online, soundOn, setSoundOn, deliver, finish, assign }),
+    [trips, needsHelp, loaded, online, soundOn, deliver, finish, assign],
   );
 
   return (
