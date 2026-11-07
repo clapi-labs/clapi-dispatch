@@ -70,6 +70,12 @@ export type Courier = {
   /** Últimos 7 días: cuántos pedidos confirmó con «Voy en camino», en cuántos
    *  minutos en promedio y cuántas veces hubo que recordárselo. */
   seenStats?: { confirmed: number; avgMinutes: number | null; reminders: number } | null;
+  /** Moto simulada del simulador de staging. */
+  simulated?: boolean;
+  /** Si la central puede asignarle pedidos (con el simulador, solo a las simuladas). */
+  assignable?: boolean;
+  /** Con el simulador: moto simulada o número de prueba, y con quién va ahora. */
+  simulator?: { role: "simulated" | "test"; partner: string | null } | null;
 };
 
 export type CourierProfile = {

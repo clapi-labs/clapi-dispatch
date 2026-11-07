@@ -1,11 +1,13 @@
 import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 
-import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
+import { db, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { findCourier, handleCourier } from "@/bot/courier";
+import { resolveRestaurant } from "@/bot/identity";
 import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
+import { simulatedSender } from "@/simulator/inbound";
 import { markRead, markReadAndTyping } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
@@ -65,17 +67,22 @@ function content(message: IncomingMessage): schema.IncomingPayload {
   }
 }
 
-export async function handleIncoming(message: IncomingMessage) {
+export async function handleIncoming(incoming: IncomingMessage) {
+  // El motorizado va primero: sus botones tienen que funcionar
+  // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
+  // se le responde, y un «escribiendo…» sin respuesta confunde.
+  const sender = await findCourier(incoming.phone);
+  // Simulador: un número de prueba escribe en nombre de la moto que controla.
+  const actingFor = sender ? await simulatedSender(sender, incoming) : null;
+  const courier = actingFor ?? sender;
+  const message: IncomingMessage = actingFor ? { ...incoming, phone: actingFor.phone, profileName: null } : incoming;
+
   const conversation = await upsertConversationOnInbound(message.phone, message.profileName);
   const messageId = await recordMessage(conversation.id, "restaurant", asText(message), {
     waMessageId: message.waMessageId,
     incoming: asPayload(message),
   });
 
-  // El motorizado va primero: sus botones tienen que funcionar
-  // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
-  // se le responde, y un «escribiendo…» sin respuesta confunde.
-  const courier = await findCourier(message.phone);
   // Pausa general: el bot no le responde a nadie. Solo sigue funcionando
   // lo que marca el motorizado con sus botones, para cerrar lo que ya está en la calle.
   if ((await getBusinessState()).paused) {
@@ -109,8 +116,10 @@ export async function handleIncoming(message: IncomingMessage) {
     // Se relee en cada turno: el anterior pudo cambiar el borrador o pausar el bot.
     const [fresh] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
     if (!fresh || fresh.botPaused) return;
-    const restaurant = await findRestaurantByPhone(message.phone);
-    await handleRestaurant({ conversation: fresh, message: turn, restaurant });
+    // Quién es: por su número y el nombre que dice (bot/identity.ts).
+    const who = await resolveRestaurant(fresh, turn);
+    if (!who) continue;
+    await handleRestaurant(who);
   }
 }
 

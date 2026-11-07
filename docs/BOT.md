@@ -45,7 +45,19 @@ en 10
 
 **Lo leído se confirma antes de pedir la moto.** Si el pedido vino en una imagen, o el modelo no está seguro de algún dato (letra borrosa, un celular con dígitos de menos, «Cra 15 o 16»), la cotización empieza con lo que entendió («Esto leí en la imagen 👇»: dirección, cliente, teléfono, cobro, tiempo, notas) y marca con ❓ lo dudoso. El restaurante confirma con el botón o escribe el dato correcto. Con cada corrección se le muestra de nuevo cómo quedó, y la duda de ese dato desaparece. Confirmar acepta el precio y los datos. Un pedido escrito claro que trae los datos del cliente (nombre, celular, torre y apto o indicaciones) también muestra el resumen, sin ❓ («Esto entendí del pedido 👇»), para que el restaurante vea cómo quedó separado y que las indicaciones van para el domiciliario («📝 Para el domiciliario: …»). Solo una dirección, o una pregunta de precio, se cotiza directo, sin el resumen.
 
-**El número es el restaurante.** El bot reconoce al restaurante por el número que escribe (tabla `restaurants`) y asume su dirección de recogida. Un número nuevo dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. También se puede registrar a mano: `npm run restaurant:create`.
+**Reconocer al restaurante: número y nombre** (`bot/identity.ts`). El bot reconoce al restaurante por el número que escribe (tabla `restaurants`) y por el nombre: con los dos verifica, con uno alcanza, y si no hay ninguno claro entra al flujo de restaurante nuevo. Ya reconocido, asume su dirección de recogida.
+
+| Número | Nombre | Qué hace el bot |
+|---|---|---|
+| Registrado | Coincide con el de ese número, o no viene | Lo atiende como ese restaurante, sin preguntar |
+| Registrado | Dice ser otro restaurante registrado | No crea ni renombra nada. Pregunta una vez «¿Hablo con Donde Lucho?» con botones Sí y No; el pedido espera. Si dice que sí, sigue con ese pedido y no vuelve a preguntar en él. Si dice que no, pasa a la central |
+| No registrado | Coincide con un restaurante sin número | Lo atiende como ese restaurante y le guarda el número |
+| No registrado | Coincide con un restaurante que tiene otro número | No lo da por reconocido y pasa a la central; el otro número no cambia |
+| No registrado | Parecido a varios, o no coincide, o no viene | Flujo de restaurante nuevo |
+
+- **El nombre** es el que dice en su mensaje (los nombres registrados que aparecen como palabras completas; si uno está dentro de otro, como «Pizza» y «Pizza Nona», cuenta el más largo) o el de su perfil de WhatsApp, que debe coincidir completo. Se compara sin mayúsculas, tildes ni espacios de más, y nombres de menos de 4 letras no cuentan. El perfil suele ser personal: si no coincide, no es un conflicto, solo que no vino nombre.
+- **El número de una moto gana:** un número registrado en Flota nunca se trata como restaurante.
+- **Restaurante nuevo:** dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. Un restaurante ya reconocido no pasa por aquí, así que no se duplica. También se puede registrar a mano: `npm run restaurant:create`.
 
 ## La dirección: el formato lo pone la agencia
 

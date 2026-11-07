@@ -44,7 +44,7 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
   }, []);
 
   const options = (couriers ?? [])
-    .filter((c) => (c.status === "available" || c.status === "busy") && c.id !== trip.courierId)
+    .filter((c) => (c.status === "available" || c.status === "busy") && c.assignable !== false && c.id !== trip.courierId)
     .map((c) => {
       const located = c.lat != null && c.lng != null && c.locationUpdatedAt && now - Date.parse(c.locationUpdatedAt) < FRESH_MS;
       return {

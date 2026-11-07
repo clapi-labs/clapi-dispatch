@@ -14,6 +14,11 @@ export const SESSION_COOKIE = "session";
 export function authDisabled(): boolean {
   return process.env.AUTH_DISABLED === "1";
 }
+/** El simulador de staging y su API: siempre con sesión, aunque el login esté apagado. */
+export function isSimulatorPath(pathname: string): boolean {
+  return pathname === "/simulador" || pathname.startsWith("/simulador/") || pathname.startsWith("/api/simulador");
+}
+
 export const SESSION_MAX_AGE = 12 * 60 * 60; // segundos
 
 type Payload = { u: number; exp: number };

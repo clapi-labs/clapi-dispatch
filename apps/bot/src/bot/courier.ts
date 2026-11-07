@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 
-import { closeUndeliveredTrip, deliverTrip, db, finishTrip, openTripCondition, schema } from "@dispatch/shared/db";
+import { closeUndeliveredTrip, deliverTrip, db, finishTrip, openTripCondition, schema, simulatorEnabled } from "@dispatch/shared/db";
 import { isBeforePickup, tripPhase, type DeliveryPlace } from "@dispatch/shared";
 
 import { say } from "@/bot/messaging";
@@ -215,10 +215,25 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     return;
   }
 
+  // Simulador: un número de prueba no recibe pedidos propios, controla motos
+  // simuladas. Se le dice, para que sepa qué esperar.
+  const testNumber = simulatorEnabled() && !courier.simulated;
+
   // Sin viajes y desconectado: escribir es conectarse. En pausa no: esa la
   // pone y la quita la central.
   if (!trips.length && courier.status === "offline") {
     await db.update(schema.couriers).set({ status: "available" }).where(eq(schema.couriers.id, courier.id));
-    await say(conversation.id, message.phone, `👋 ${courier.name.split(" ")[0]}, quedaste conectado. Te escribo apenas tengas un servicio 🛵`);
+    const first = courier.name.split(" ")[0];
+    await say(
+      conversation.id,
+      message.phone,
+      testNumber
+        ? `🧪 ${first}, quedaste conectado como número de prueba del simulador. Te llega el próximo pedido que reciba una moto simulada 🛵`
+        : `👋 ${first}, quedaste conectado. Te escribo apenas tengas un servicio 🛵`,
+    );
+    return;
+  }
+  if (testNumber && !trips.length && message.kind === "text") {
+    await say(conversation.id, message.phone, "🧪 Estás libre como número de prueba: te llega el próximo pedido que reciba una moto simulada.");
   }
 }

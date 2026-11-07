@@ -259,7 +259,27 @@ export const couriers = pgTable("couriers", {
   shiftStartedAt: timestamp("shift_started_at", { withTimezone: true }),
 
   active: boolean("active").notNull().default(true),
+  /** Moto del simulador de staging (docs/OPERACION.md): una fila más para el
+   *  algoritmo y el portal, con un número que no existe. Solo se usa con
+   *  `SIMULATOR_ENABLED`. */
+  simulated: boolean("simulated").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Simulador de staging: qué moto simulada controla cada número de prueba (una
+ * moto con número real de Flota). Sin moto (`sim_courier_id` nulo), el número
+ * está libre desde `since`; con moto, la controla desde `since`. Ver
+ * `db/simulator.ts`.
+ */
+export const simulatorControls = pgTable("simulator_controls", {
+  phoneCourierId: integer("phone_courier_id")
+    .primaryKey()
+    .references(() => couriers.id, { onDelete: "cascade" }),
+  simCourierId: integer("sim_courier_id")
+    .unique()
+    .references(() => couriers.id, { onDelete: "set null" }),
+  since: timestamp("since", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** La ficha del motorizado: su vehículo y sus datos personales. Tabla aparte

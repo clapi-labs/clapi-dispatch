@@ -4,6 +4,7 @@ import type { DeliveryPlace, RouteStop } from "../domain/phase";
 import { db } from "./client";
 import { getEngineConfig } from "./engine-config";
 import { assignments, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
+import { dispatchableCourier } from "./simulator-flag";
 
 /** Para una consulta con `trips` y `assignments`: lo que el motorizado todavía
  *  tiene encima, incluido un viaje entregado del que está volviendo. */
@@ -40,7 +41,7 @@ export async function assignNextCourier(tripId: number): Promise<{ courierId: nu
     const [candidate] = await db
       .select({ id: couriers.id })
       .from(couriers)
-      .where(and(eq(couriers.status, "available"), eq(couriers.active, true)))
+      .where(and(eq(couriers.status, "available"), eq(couriers.active, true), dispatchableCourier()))
       .orderBy(sql`${couriers.lastAssignedAt} asc nulls first`, asc(couriers.id))
       .limit(1);
 
@@ -65,7 +66,7 @@ async function bindCourier(tripId: number, courierId: number, from: ("available"
       lastAssignedAt: now,
       deliveriesThisShift: sql`${couriers.deliveriesThisShift} + 1`,
     })
-    .where(and(eq(couriers.id, courierId), eq(couriers.active, true), inArray(couriers.status, from)))
+    .where(and(eq(couriers.id, courierId), eq(couriers.active, true), dispatchableCourier(), inArray(couriers.status, from)))
     .returning({ id: couriers.id, name: couriers.name });
   if (!courier) return null;
 

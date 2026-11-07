@@ -52,6 +52,7 @@ services:
       ENGINE_URL: http://engine:3003
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
+      SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
     depends_on:
       migrate: { condition: service_completed_successfully }
     ports:
@@ -87,6 +88,22 @@ services:
       bot: { condition: service_healthy }
     restart: unless-stopped
 
+  # Simulador (SIMULATOR_ENABLED=1 en .env): motos que se mueven y reportan GPS.
+  simulator:
+    build:
+      <<: *build
+      target: worker
+    command: ["node", "scripts/simulador.mjs"]
+    deploy:
+      replicas: ${SIMULATOR_ENABLED:-0}
+    environment:
+      BOT_URL: http://bot:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
+      SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
+    depends_on:
+      bot: { condition: service_healthy }
+    restart: unless-stopped
+
   portal:
     build:
       <<: *build
@@ -100,6 +117,7 @@ services:
       PORT: 3002
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
       SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-solo-para-local-no-usar-en-prod}
+      SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
       BOT_URL: http://bot:3001
     depends_on:
       migrate: { condition: service_completed_successfully }

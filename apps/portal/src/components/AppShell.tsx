@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, CirclePause, CirclePlay, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -235,8 +235,10 @@ function PausedBanner() {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, simulator = false }: { children: React.ReactNode; simulator?: boolean }) {
   const pathname = usePathname();
+  // El simulador de staging solo aparece con SIMULATOR_ENABLED.
+  const nav = simulator ? [...NAV, { href: "/simulador", label: "Simulador", short: "Simulador", icon: FlaskConical, desktopOnly: true }] : NAV;
   const { trips, needsHelp } = useTrips();
   const pending = trips.filter((t) => t.status === "pending").length;
 
@@ -249,7 +251,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex flex-col gap-3">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname?.startsWith(href);
             const badge = badgeFor(href, pending, needsHelp);
             return (
@@ -297,7 +299,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             del escritorio acostado: azul noche, y la sección activa en su cápsula violeta.
             Se ven cinco, del mismo tamaño de siempre; las demás aparecen al deslizar. */}
         <nav className="no-scrollbar fixed inset-x-0 bottom-0 z-40 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-clapi-deep/95 pb-[env(safe-area-inset-bottom)] text-white backdrop-blur lg:hidden">
-          {NAV.filter((item) => !item.desktopOnly).map(({ href, short, icon: Icon }) => {
+          {nav.filter((item) => !item.desktopOnly).map(({ href, short, icon: Icon }) => {
             const active = pathname?.startsWith(href);
             const badge = badgeFor(href, pending, needsHelp);
             return (

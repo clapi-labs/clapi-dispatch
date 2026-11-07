@@ -13,10 +13,10 @@ import {
   type OrderDraft,
   type OrderFieldKey,
 } from "@dispatch/shared";
-import { assignNextCourier, getBotConfig, getEngineConfig, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
+import { getBotConfig, getEngineConfig, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
-import { dispatchTrip } from "@/dispatch/engine";
+import { dispatchNewTrip } from "@/dispatch/engine";
 import { notifyAssigned } from "@/bot/notify";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
@@ -580,7 +580,7 @@ export async function handleRestaurant(ctx: Context) {
     // ya, un solo mensaje con quién va; sin moto, la confirmación sale ya
     // y quién va llega después (notifyAssigned).
     const engineLeads = (await getEngineConfig()).mode === "auto";
-    if (engineLeads ? await dispatchTrip(trip.id) : await assignNextCourier(trip.id)) {
+    if (await dispatchNewTrip(trip.id)) {
       await notifyAssigned(trip.id, { atConfirmation: true });
     } else {
       // Con el engine, esperar es a propósito (que la moto llegue justo cuando

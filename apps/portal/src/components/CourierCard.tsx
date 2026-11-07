@@ -66,6 +66,13 @@ export function CourierCard({
           <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>
             {current ? `${PHASE_LABEL[tripPhase(current)]} · ${current.code}${open.length > 1 ? ` · +${open.length - 1}` : ""}` : status.label}
           </span>
+          {courier.simulator && (
+            <span className="ml-1.5 mt-0.5 inline-block rounded-md bg-clapi-soft px-2 py-0.5 text-xs font-semibold text-clapi-ink">
+              {courier.simulator.role === "simulated"
+                ? `🧪 Simulada${courier.simulator.partner ? ` · la controla ${courier.simulator.partner}` : ""}`
+                : `🧪 Número de prueba${courier.simulator.partner ? ` · controla a ${courier.simulator.partner}` : " · libre"}`}
+            </span>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, inArray, isNull, max, or } from "drizzle-orm";
 
-import { assignTripTo, db, getBotConfig, getEngineConfig, openTripCondition, saveCourierRoute, schema, type EngineConfig } from "@dispatch/shared/db";
+import { assignNextCourier, assignTripTo, db, dispatchableCourier, getBotConfig, getEngineConfig, openTripCondition, saveCourierRoute, schema, type EngineConfig } from "@dispatch/shared/db";
 import { customerWaitEndsAt, tripPhase, type RouteStop } from "@dispatch/shared";
 
 import { buildEvaluarRequest, type SnapshotCourier } from "@/dispatch/engine-request";
@@ -73,7 +73,7 @@ async function loadCouriers(): Promise<SnapshotCourier[]> {
   const couriers = await db
     .select()
     .from(schema.couriers)
-    .where(and(eq(schema.couriers.active, true), inArray(schema.couriers.status, ["available", "busy"])));
+    .where(and(eq(schema.couriers.active, true), dispatchableCourier(), inArray(schema.couriers.status, ["available", "busy"])));
   if (!couriers.length) return [];
   const ids = couriers.map((c) => c.id);
 
@@ -266,4 +266,12 @@ export async function dispatchTrip(tripId: number): Promise<boolean> {
     console.error(`[engine] no se pudo despachar el viaje ${tripId}:`, error);
     return false;
   }
+}
+
+/** Un pedido recién confirmado: con el engine al frente, lo despacha él cuando
+ *  sea la hora; si no, la cola le da la próxima moto libre. Devuelve si quedó
+ *  asignado ya. */
+export async function dispatchNewTrip(tripId: number): Promise<boolean> {
+  if ((await getEngineConfig()).mode === "auto") return dispatchTrip(tripId);
+  return Boolean(await assignNextCourier(tripId));
 }

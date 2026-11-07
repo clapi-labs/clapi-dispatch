@@ -1,4 +1,5 @@
 import { env } from "@/env";
+import { SIMULATED_ID_PREFIX, forTestNumber, rememberSent, routeRecipient } from "@/simulator/outbound";
 
 /**
  * Único camino de salida hacia WhatsApp — igual que CLAPI (RN-05 de su
@@ -52,7 +53,20 @@ function simulate(payload: Record<string, unknown>): SendResult {
   return { ok: true, messageId };
 }
 
-async function post(payload: Record<string, unknown>): Promise<SendResult> {
+async function post(original: Record<string, unknown>): Promise<SendResult> {
+  // Simulador de staging: lo de una moto simulada va al número de prueba que la
+  // controla, o a ninguno (queda solo en su chat del portal).
+  if (typeof original.message_id === "string" && original.message_id.startsWith(SIMULATED_ID_PREFIX)) return { ok: true, messageId: null };
+  const route = typeof original.to === "string" ? await routeRecipient(original.to) : null;
+  if (route?.simName && !route.to) return { ok: true, messageId: null };
+  const payload = route?.simName && route.to ? forTestNumber(original, route.to, route.simName) : original;
+
+  const result = await send(payload);
+  if (result.ok && route?.simName && route.to) rememberSent(result.messageId, route.to);
+  return result;
+}
+
+async function send(payload: Record<string, unknown>): Promise<SendResult> {
   if (env.whatsappSimulated) return simulate(payload);
   if (!env.botActive) return { ok: false, reason: "bot_inactive" };
 

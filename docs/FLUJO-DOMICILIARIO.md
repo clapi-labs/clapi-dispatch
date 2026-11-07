@@ -217,6 +217,12 @@ Cómo se configura cada celular, con [Traccar Client](https://www.traccar.org/cl
 
 Para probar en local, `npm run bot:gps` mueve motos de ejemplo y reporta por la misma ruta.
 
+### Probar en staging: el simulador
+
+Con `SIMULATOR_ENABLED=1`, staging tiene motos simuladas que el algoritmo asigna en modo `auto` y que se mueven solas, reportando por `/api/gps` como lo hará Traccar. Los estados por ubicación los marca `gps.ts` con esas posiciones; ni el simulador ni el mapa los calculan. Cada número de prueba de Flota recibe por WhatsApp los mensajes de una moto simulada y toca sus botones, que entran por el mismo código de `handleCourier`. Las motos sin número marcan solas la entrega, por el mismo camino, y una parte (configurable) deja en portería, vuelve a recogida o reporta un cliente que no contesta.
+
+Cómo se enciende y se usa: [OPERACION.md](OPERACION.md), «Simulador».
+
 ### Cliente que no contesta
 
 La lista de entrega también trae «Cliente no contesta». El domiciliario espera hasta 10 minutos (`customerWaitMinutes`) sin recibir pedidos, y el restaurante recibe el aviso para contactar al cliente, porque la agencia nunca le escribe. Si el cliente sale, marca la entrega. Si no, le llega «Devolví el pedido», el restaurante se entera y, al tocarlo, el viaje se cancela. Hoy un pedido devuelto no suma al arqueo.

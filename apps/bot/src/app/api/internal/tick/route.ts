@@ -1,4 +1,4 @@
-import { assignPendingTrips } from "@dispatch/shared/db";
+import { assignPendingTrips, releaseIdleControls, simulatorEnabled } from "@dispatch/shared/db";
 
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
 import { runEngine } from "@/dispatch/engine";
@@ -42,6 +42,15 @@ export async function POST(request: Request) {
     await closeCustomerWaits();
   } catch (error) {
     console.error("[tick] no se pudieron cerrar las esperas:", error);
+  }
+
+  // Simulador: el número de prueba cuya moto ya no tiene pedidos queda libre.
+  if (simulatorEnabled()) {
+    try {
+      await releaseIdleControls();
+    } catch (error) {
+      console.error("[tick] no se pudieron soltar las motos simuladas:", error);
+    }
   }
 
   return Response.json({ assigned, reminded });

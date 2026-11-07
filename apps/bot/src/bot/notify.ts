@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 
-import { db, getBotConfig, getEngineConfig, openTripCondition, schema } from "@dispatch/shared/db";
+import { claimControl, db, getBotConfig, getEngineConfig, openTripCondition, schema } from "@dispatch/shared/db";
 import {
   customerWaitEndsAt,
   goingReminderAt,
@@ -259,7 +259,20 @@ async function routeLineFor(tripId: number, courierId: number | null) {
 export async function notifyAssigned(tripId: number, opts: { atConfirmation?: boolean } = {}) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
+  // Simulador: si la moto es simulada y no tiene número, la toma el número de
+  // prueba libre que lleva más tiempo esperando.
+  const control = row.courier.simulated ? await claimControl(row.courier.id) : null;
   await sendCourierTicket(row.courier.phone, row.trip, row.courier.name, row.assignment);
+  // Lo tomó ahora: le llega también lo que la moto ya llevaba, en la fase en que va.
+  if (control?.taken) {
+    const others = await db
+      .select({ trip: schema.trips, assignment: schema.assignments })
+      .from(schema.assignments)
+      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+      .where(and(eq(schema.assignments.courierId, row.courier.id), openTripCondition(), ne(schema.trips.id, tripId)))
+      .orderBy(schema.assignments.assignedAt);
+    for (const other of others) await sendCourierTicket(row.courier.phone, other.trip, row.courier.name, other.assignment);
+  }
 
   const { notifyRestaurantOnAssign } = await getBotConfig();
   const restaurant = opts.atConfirmation || notifyRestaurantOnAssign ? await restaurantConversation(row.trip.conversationId) : null;

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, not, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, not, or, sql } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
@@ -30,17 +30,21 @@ export async function handleMessageStatus(status: WaStatus) {
   if (status.status !== "read") return;
 
   const [message] = await db
-    .select({ tripId: schema.messages.tripId })
+    .select({ tripId: schema.messages.tripId, phone: schema.conversations.phone })
     .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
     .where(eq(schema.messages.waMessageId, status.id))
     .limit(1);
   if (!message?.tripId) return;
 
+  // La moto es la dueña del chat donde quedó el mensaje. Con el simulador, lo
+  // lee un número de prueba en nombre de una moto simulada: el chat sigue
+  // siendo el de la moto, aunque el número que avisa sea otro.
   const last10 = status.recipient_id.replace(/\D/g, "").slice(-10);
   const courierIds = db
     .select({ id: schema.couriers.id })
     .from(schema.couriers)
-    .where(sql`right(regexp_replace(${schema.couriers.phone}, '\\D', '', 'g'), 10) = ${last10}`);
+    .where(or(eq(schema.couriers.phone, message.phone), sql`right(regexp_replace(${schema.couriers.phone}, '\\D', '', 'g'), 10) = ${last10}`));
   await db
     .update(schema.assignments)
     .set({ readAt: new Date() })
