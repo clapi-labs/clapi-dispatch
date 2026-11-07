@@ -11,7 +11,8 @@
     "chat": "tsx --env-file-if-exists=../../.env.local scripts/chat.ts",
     "restaurant:create": "tsx --env-file-if-exists=../../.env.local scripts/restaurant-create.ts",
     "mensajes": "tsx --env-file-if-exists=../../.env.local scripts/messages-report.ts",
-    "gps:sim": "tsx --env-file-if-exists=../../.env.local scripts/gps-sim.ts"
+    "gps:sim": "tsx --env-file-if-exists=../../.env.local scripts/gps-sim.ts",
+    "eval:restaurantes": "tsx --env-file-if-exists=../../.env.local scripts/restaurant-match-eval.ts"
   },
   "dependencies": {
     "@dispatch/shared": "*",

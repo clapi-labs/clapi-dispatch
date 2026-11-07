@@ -1,4 +1,4 @@
-import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 
 import { inServiceArea } from "../domain/coordinates";
 import { db } from "./client";
@@ -55,6 +55,21 @@ export async function saveRestaurant(input: {
     .values({ ...values, phone: normalizePhone(input.phone) })
     .returning();
   return { restaurant, created: true };
+}
+
+/**
+ * Le deja su número a un restaurante registrado sin él, una vez reconocido por
+ * su nombre. Null si ya tiene uno, o si ese número es de otro restaurante
+ * (uno inactivo, que `findRestaurantByPhone` no ve): no se le quita a nadie.
+ */
+export async function linkRestaurantPhone(id: number, phone: string): Promise<Restaurant | null> {
+  if (await phoneTaken(phone, id)) return null;
+  const [restaurant] = await db
+    .update(restaurants)
+    .set({ phone: normalizePhone(phone) })
+    .where(and(eq(restaurants.id, id), isNull(restaurants.phone)))
+    .returning();
+  return restaurant ?? null;
 }
 
 /** Lo que llega del formulario de restaurantes del portal, ya revisado. */

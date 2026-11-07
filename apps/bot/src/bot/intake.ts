@@ -14,7 +14,8 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  *
  * - **Motorizados** (su teléfono está en la flota): `bot/courier.ts`. Se les
  *   responde en el acto: tocan botones y esperan la confirmación.
- * - **Restaurantes** (cualquier otro número): `bot/order.ts`. Se espera un
+ * - **Restaurantes** (cualquier otro número): `bot/order.ts`, que los reconoce
+ *   por su número y su nombre (`bot/restaurant-identity.ts`). Se espera un
  *   momento antes de responder, como haría una persona.
  */
 

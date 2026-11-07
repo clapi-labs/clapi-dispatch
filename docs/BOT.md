@@ -9,7 +9,7 @@ El sistema sirve a cualquier agencia de domicilios, no solo al primer cliente. L
 | Núcleo (igual para todas) | Configurable por agencia |
 |---|---|
 | Flujo: dirección → cotización → confirmación → viaje → despacho → avisos | Qué datos son obligatorios para confirmar un pedido |
-| Restaurante reconocido por su número | Textos y tono de los mensajes |
+| Restaurante reconocido por su número y su nombre | Textos y tono de los mensajes |
 | Geocodificación una vez por dirección | Tabla de precios por km |
 | Cotización por distancia | Zona de servicio (ciudad, límites del mapa) |
 | Contrato con el despacho | Cuándo se escala a un asesor |
@@ -45,7 +45,19 @@ en 10
 
 **Lo leído se confirma antes de pedir la moto.** Si el pedido vino en una imagen, o el modelo no está seguro de algún dato (letra borrosa, un celular con dígitos de menos, «Cra 15 o 16»), la cotización empieza con lo que entendió («Esto leí en la imagen 👇»: dirección, cliente, teléfono, cobro, tiempo, notas) y marca con ❓ lo dudoso. El restaurante confirma con el botón o escribe el dato correcto. Con cada corrección se le muestra de nuevo cómo quedó, y la duda de ese dato desaparece. Confirmar acepta el precio y los datos. Un pedido escrito claro que trae los datos del cliente (nombre, celular, torre y apto o indicaciones) también muestra el resumen, sin ❓ («Esto entendí del pedido 👇»), para que el restaurante vea cómo quedó separado y que las indicaciones van para el domiciliario («📝 Para el domiciliario: …»). Solo una dirección, o una pregunta de precio, se cotiza directo, sin el resumen.
 
-**El número es el restaurante.** El bot reconoce al restaurante por el número que escribe (tabla `restaurants`) y asume su dirección de recogida. Un número nuevo dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. También se puede registrar a mano: `npm run restaurant:create`.
+**Reconocer al restaurante.** El bot reconoce al restaurante por su número y su nombre (tabla `restaurants`) y asume su dirección y coordenadas de recogida, sin volver a geocodificar. El nombre es el que dice en el mensaje o, si no dice ninguno, el de su perfil de WhatsApp. Lo decide `domain/restaurant-identity.ts`:
+
+| Número | Nombre | Qué hace el bot |
+| --- | --- | --- |
+| Registrado | Coincide, no viene o solo es el perfil (suele ser personal) | Lo atiende como ese restaurante |
+| Registrado | Dice en el mensaje ser otro | Pregunta una vez «¿Hablo con Donde Lucho?». Solo un «no» pasa a la central. No crea ni renombra nada |
+| No registrado | Coincide con uno sin número | Lo atiende como ese restaurante, le guarda el número y se lo avisa («Te reconocí como…») |
+| No registrado | Coincide con uno que tiene otro número | Pasa a la central con el pedido guardado. El otro número no cambia |
+| No registrado | Parecido a varios, no coincide o no viene | Restaurante nuevo |
+
+Los nombres se comparan sin mayúsculas, tildes, orden ni palabras genéricas («La Nona Pizzería» = «Pizzería La Nona»), sin gastar una llamada. Si no son iguales, el modelo da un puntaje de 0 a 1 y el código decide: hace falta 0.85 y 0.15 de ventaja sobre el segundo. Una palabra que distingue («El Paisa Express» y «El Paisa») deja el puntaje en 0.8 como máximo, diga lo que diga el modelo. Si OpenAI falla, gana el número; sin número, sigue como restaurante nuevo y lo intenta otra vez con el siguiente mensaje. Cada nombre se compara una vez por pedido. Al cambiar el prompt, el modelo o el umbral: `npm run bot:eval:restaurantes`.
+
+Un restaurante nuevo dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. También se puede registrar a mano: `npm run restaurant:create`.
 
 ## La dirección: el formato lo pone la agencia
 

@@ -18,13 +18,15 @@ Los mensajes de commit y de PR se escriben como si los hubiera escrito el equipo
 
 ## Comandos
 
-Monorepo con npm workspaces (Node según `.nvmrc`). No hay suite de tests; la verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`).
+Monorepo con npm workspaces (Node según `.nvmrc`). La verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`), más las pruebas unitarias de `npm test`.
 
 ```bash
 docker compose up --build          # Postgres + migraciones + bot (:3001) + portal (:3002)
 npm run dev:bot / dev:portal       # una app sola con next dev
 npm run bot:chat                   # conversar con el bot desde la terminal (WhatsApp simulado; necesita DATABASE_URL y OPENAI_API_KEY en .env.local)
 npm run bot:gps                    # motos de prueba que se mueven y reportan GPS al bot local (solo contra una base local)
+npm run bot:eval:restaurantes      # compara nombres de restaurantes contra OpenAI de verdad (gasta la llave; no va en CI)
+npm test                           # pruebas unitarias (*.test.ts en packages/shared)
 npm run lint                       # eslint en cada workspace
 npm run typecheck                  # tsc --build (project references)
 npm run build                      # next build de ambas apps (no necesita secretos)
