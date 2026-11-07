@@ -1,9 +1,8 @@
 import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 
-import { db, getBusinessState, schema } from "@dispatch/shared/db";
+import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { findCourier, handleCourier } from "@/bot/courier";
-import { resolveRestaurant } from "@/bot/identity";
 import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
@@ -16,7 +15,8 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  *
  * - **Motorizados** (su teléfono está en la flota): `bot/courier.ts`. Se les
  *   responde en el acto: tocan botones y esperan la confirmación.
- * - **Restaurantes** (cualquier otro número): `bot/order.ts`. Se espera un
+ * - **Restaurantes** (cualquier otro número): `bot/order.ts`, que los reconoce
+ *   por su número y su nombre (`bot/restaurant-identity.ts`). Se espera un
  *   momento antes de responder, como haría una persona.
  */
 
@@ -116,10 +116,8 @@ export async function handleIncoming(incoming: IncomingMessage) {
     // Se relee en cada turno: el anterior pudo cambiar el borrador o pausar el bot.
     const [fresh] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
     if (!fresh || fresh.botPaused) return;
-    // Quién es: por su número y el nombre que dice (bot/identity.ts).
-    const who = await resolveRestaurant(fresh, turn);
-    if (!who) continue;
-    await handleRestaurant(who);
+    const restaurant = await findRestaurantByPhone(message.phone);
+    await handleRestaurant({ conversation: fresh, message: turn, restaurant });
   }
 }
 

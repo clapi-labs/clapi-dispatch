@@ -57,6 +57,21 @@ export async function saveRestaurant(input: {
   return { restaurant, created: true };
 }
 
+/**
+ * Le deja su número a un restaurante registrado sin él, una vez reconocido por
+ * su nombre. Null si ya tiene uno, o si ese número es de otro restaurante
+ * (uno inactivo, que `findRestaurantByPhone` no ve): no se le quita a nadie.
+ */
+export async function linkRestaurantPhone(id: number, phone: string): Promise<Restaurant | null> {
+  if (await phoneTaken(phone, id)) return null;
+  const [restaurant] = await db
+    .update(restaurants)
+    .set({ phone: normalizePhone(phone) })
+    .where(and(eq(restaurants.id, id), isNull(restaurants.phone)))
+    .returning();
+  return restaurant ?? null;
+}
+
 /** Lo que llega del formulario de restaurantes del portal, ya revisado. */
 export type RestaurantInput = {
   name: string;
@@ -154,50 +169,5 @@ export async function setRestaurantPhoto(id: number, photo: string | null) {
 /** Sus viajes se conservan: guardan el nombre y quedan sin el enlace al restaurante. */
 export async function deleteRestaurant(id: number) {
   const [restaurant] = await db.delete(restaurants).where(eq(restaurants.id, id)).returning();
-  return restaurant ?? null;
-}
-
-/** Para comparar nombres: sin mayúsculas, tildes ni espacios de más. */
-export function normalizeName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9ñ]+/g, " ")
-    .trim();
-}
-
-/** Más corto que esto, un nombre aparece por casualidad en cualquier mensaje. */
-const MIN_NAME_LENGTH = 4;
-
-/**
- * Los restaurantes activos que el texto nombra, como palabras completas. Si un
- * nombre está dentro de otro («Pizza» y «Pizza Nona»), queda el más largo.
- */
-export async function restaurantsNamedIn(text: string): Promise<Restaurant[]> {
-  const haystack = ` ${normalizeName(text)} `;
-  const all = await db.select().from(restaurants).where(eq(restaurants.active, true));
-  const named = all.filter((r) => {
-    const name = normalizeName(r.name);
-    return name.length >= MIN_NAME_LENGTH && haystack.includes(` ${name} `);
-  });
-  return named.filter((r) => !named.some((o) => o.id !== r.id && normalizeName(o.name).includes(normalizeName(r.name)) && o.name.length > r.name.length));
-}
-
-/** Los restaurantes activos que se llaman exactamente así (el perfil de WhatsApp). */
-export async function restaurantsNamed(name: string): Promise<Restaurant[]> {
-  const wanted = normalizeName(name);
-  if (wanted.length < MIN_NAME_LENGTH) return [];
-  const all = await db.select().from(restaurants).where(eq(restaurants.active, true));
-  return all.filter((r) => normalizeName(r.name) === wanted);
-}
-
-/** Le guarda el número a un restaurante que no tenía, solo si sigue sin uno. */
-export async function claimRestaurantPhone(id: number, phone: string): Promise<Restaurant | null> {
-  const [restaurant] = await db
-    .update(restaurants)
-    .set({ phone: normalizePhone(phone) })
-    .where(and(eq(restaurants.id, id), isNull(restaurants.phone)))
-    .returning();
   return restaurant ?? null;
 }

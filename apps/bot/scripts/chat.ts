@@ -8,6 +8,7 @@
  *
  * Comandos dentro del chat:
  *   /de <número>     cambia quién escribe (restaurante o motorizado)
+ *   /perfil <nombre> el nombre del perfil de WhatsApp de quien escribe
  *   /boton <id>      toca un botón (el id sale entre paréntesis en la respuesta)
  *   /ubicacion <lat>,<lng> [nombre]   envía un pin de ubicación
  *   /cita <id> <texto>  responde citando un mensaje (el id sale entre corchetes)
@@ -33,6 +34,7 @@ async function main() {
   type Incoming = Parameters<typeof handleIncoming>[0];
 
   let phone = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? DEFAULT_PHONE;
+  let profileName: string | null = null;
   let counter = 0;
 
   // El bot espera unos segundos antes de responder y junta los mensajes
@@ -46,7 +48,7 @@ async function main() {
     const message = {
       waMessageId: `sim-${Date.now()}-${counter++}`,
       phone,
-      profileName: null,
+      profileName,
       timestamp: new Date(),
       ...content,
     } as Incoming;
@@ -91,6 +93,9 @@ async function main() {
       if (command === "/de" && arg) {
         phone = arg.replace(/\D/g, "");
         console.log(`Ahora escribes como ${phone}.\n`);
+      } else if (command === "/perfil") {
+        profileName = arg || null;
+        console.log(`Perfil de WhatsApp: ${profileName ?? "(sin nombre)"}.\n`);
       } else if (command === "/ubicacion" && arg) {
         const [coords, ...label] = arg.split(" ");
         const [lat, lng] = coords.split(",").map(Number);

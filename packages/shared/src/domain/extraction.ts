@@ -114,16 +114,19 @@ export type OrderDraft = {
   /** El mapa no ubicó una dirección (o no respondió): se le preguntó a la
    *  central si es válida y cuánto vale. Lo responde en el portal. */
   consultaAsesor?: AdvisorQuery | null;
-  /** Un número registrado dijo ser otro restaurante: se le preguntó una vez si
-   *  habla con el suyo. Mientras responde, su mensaje espera aquí. */
-  confirmarIdentidad?: { registrado: string; dice: string; texto: string; mensaje: string; imagenes?: string[] } | null;
-  /** Ya respondió que sí: en este pedido no se le vuelve a preguntar. */
-  identidadConfirmada?: boolean;
+  /** Los nombres ya comparados con los restaurantes (normalizados): cada uno
+   *  se compara una sola vez por pedido. */
+  nombresRevisados?: string[];
+  /** Un número registrado dijo ser otro restaurante y se le preguntó si es
+   *  el suyo. Se pregunta una sola vez. */
+  preguntaIdentidad?: boolean;
 };
 
 /** Lo que devuelve el modelo por mensaje. */
 export type Interpretation = {
   origenRestaurante: string | null;
+  /** El nombre con que el restaurante se identifica en este mensaje. */
+  nombreRestaurante?: string | null;
   entregas: DeliveryFields[];
 };
 
@@ -308,6 +311,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
 
 {
   "origenRestaurante": string | null,   // dónde se recoge, si lo dice (nombre, dirección y barrio)
+  "nombreRestaurante": string | null,   // el nombre con que se identifica el NEGOCIO que escribe, solo si el mensaje nuevo lo dice ("soy de Pizza Nona", "habla Donde Lucho", "recoger en Sushi Ya"), sin dirección; nunca el nombre del cliente ni el de una persona
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados
     {
       "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio y barrio; SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
