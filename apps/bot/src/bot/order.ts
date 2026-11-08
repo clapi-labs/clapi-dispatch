@@ -8,6 +8,8 @@ import {
   missingFields,
   namedAsDestination,
   normalizeDraft,
+  normalizeName,
+  removeDeliveries,
   type DeliveryDraft,
   type DoubtfulField,
   type Interpretation,
@@ -20,6 +22,7 @@ import { say } from "@/bot/messaging";
 import { dispatchNewTrip } from "@/dispatch/engine";
 import { notifyAssigned } from "@/bot/notify";
 import { recognizeRestaurant } from "@/bot/restaurant-identity";
+import { pinAddress } from "@/bot/turns";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
@@ -27,7 +30,7 @@ import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trip
 import { geocodeAddress, type GeocodeOutcome } from "@/services/google/geocode";
 import { interpretMessage } from "@/services/openai/extract";
 import { downloadImage, type DownloadedImage } from "@/services/whatsapp/client";
-import type { IncomingMessage } from "@/services/whatsapp/types";
+import type { IncomingMessage, TurnPin } from "@/services/whatsapp/types";
 
 /**
  * La conversación con el restaurante (docs/BOT.md, «Flujo básico»):
@@ -47,28 +50,26 @@ export const CONFIRM_BUTTON_ID = "confirmar";
 export const IDENTITY_YES_BUTTON_ID = "identidad_si";
 export const IDENTITY_NO_BUTTON_ID = "identidad_no";
 
-const FIELD_LABEL: Record<OrderFieldKey, string> = {
-  origenRestaurante: "dónde se recoge",
-  direccionEntrega: "la dirección de entrega",
-  telefonoCliente: "el teléfono del cliente",
-  nombreCliente: "el nombre del cliente",
-  valorACobrar: "el valor a cobrar",
-  metodoPago: "si es en efectivo o por transferencia",
-  listoEnMinutos: "en cuántos minutos está lista la comida",
-  notas: "las indicaciones",
-  detalleDireccion: "la torre y el apartamento (o el número de casa)",
+/** Cómo se pide cada dato en el formato que llena el restaurante, en el
+ *  orden en que se pide. */
+const TEMPLATE_LABEL: Record<OrderFieldKey, string> = {
+  origenRestaurante: "Dirección de recogida",
+  direccionEntrega: "Dirección de entrega",
+  nombreCliente: "Nombre del cliente",
+  telefonoCliente: "Teléfono del cliente",
+  detalleDireccion: "Detalle (torre, apto, local o casa, si aplica)",
+  valorACobrar: "Valor a cobrar",
+  metodoPago: "Pago (efectivo o transferencia)",
+  listoEnMinutos: "Tiempo en que está listo el pedido",
+  notas: "Indicaciones",
 };
+const TEMPLATE_ORDER = Object.keys(TEMPLATE_LABEL) as OrderFieldKey[];
 
 const TECHNICAL_ERROR_MESSAGE =
   "Tuve un problema técnico leyendo tu mensaje 🙏 No se perdió nada de lo que ya me diste. ¿Me lo reenvías en un momento?";
 
 function cop(n: number) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
-}
-
-function joinLabels(labels: string[]) {
-  if (labels.length <= 1) return labels.join("");
-  return `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`;
 }
 
 type Context = {
@@ -151,11 +152,6 @@ export function readBack(d: DeliveryDraft) {
     .join("\n");
 }
 
-/** La entrega trae algo más que la dirección: vale la pena mostrársela. */
-export function hasOrderData(d: DeliveryDraft) {
-  return !!(d.nombreCliente || d.telefonoCliente || d.detalleDireccion || d.notas);
-}
-
 /** El resumen de todas las entregas, para revisar. */
 export function readBackAll(deliveries: DeliveryDraft[], fromImage: boolean) {
   const intro = fromImage ? "Esto leí en la imagen 👇" : "Esto entendí del pedido 👇";
@@ -179,8 +175,6 @@ export function splitPickup(said: string, profileName: string | null): { name: s
   return { name: profile ?? first, address: said.trim() };
 }
 
-const CHECK_DATA ="¿Los datos están bien? Si algo no es, escríbeme el dato correcto.";
-
 /** Sin ubicación no hay precio, y Google no respondió (o no está
  *  configurado): no es culpa del restaurante, lo resuelve una persona. */
 const LOCATION_DOWN_MESSAGE = "No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central.";
@@ -200,17 +194,39 @@ function changedDelivery(fields: Interpretation, known: OrderDraft) {
   return null;
 }
 
-/** Lo que falta para despachar, en palabras: del pedido y de cada entrega. */
-function missingParts(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft) {
+/**
+ * Lo que falta para pedir la moto, como un formato para llenar y mandar en un
+ * solo mensaje. Con varias entregas, un bloque por cada una que le falte algo.
+ * El detalle (torre y apto) va siempre que no lo haya dado, «si aplica»: que
+ * sea obligatorio lo decide `missingFields`, pero no siempre se sabe que es un
+ * conjunto. `null` si no falta nada.
+ */
+function dataRequest(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft) {
   const missingOrigin = !restaurant && !draft.origenRestaurante;
-  const missing = quoted.map((d) => ({ d, keys: missingFields(d, config.requiredFields) })).filter((m) => m.keys.length);
-  return [
-    ...(missingOrigin ? [FIELD_LABEL.origenRestaurante] : []),
-    ...missing.map((m) => {
-      const labels = joinLabels(m.keys.map((k) => FIELD_LABEL[k]));
-      return quoted.length === 1 ? labels : `${labels} del de ${deliveryLabel(m.d)}`;
-    }),
+  const missing = quoted
+    .map((d) => {
+      const keys: OrderFieldKey[] = missingFields(d, config.requiredFields);
+      if (keys.length && !d.detalleDireccion && !keys.includes("detalleDireccion")) keys.push("detalleDireccion");
+      return { d, keys };
+    })
+    .filter((m) => m.keys.length);
+  if (!missingOrigin && !missing.length) return null;
+  const lines = (keys: OrderFieldKey[]) =>
+    [...keys]
+      .sort((a, b) => TEMPLATE_ORDER.indexOf(a) - TEMPLATE_ORDER.indexOf(b))
+      .map((k) => `${TEMPLATE_LABEL[k]}:`)
+      .join("\n");
+  const blocks = [
+    missingOrigin ? lines(["origenRestaurante"]) : null,
+    ...missing.map((m) => (quoted.length === 1 ? lines(m.keys) : `*${deliveryLabel(m.d)}*\n${lines(m.keys)}`)),
   ];
+  return `Para pedir ${quoted.length === 1 ? "la moto" : "las motos"}, envíame en un solo mensaje:\n\n${blocks.filter(Boolean).join("\n\n")}`;
+}
+
+/** El pedido completo tal como se le mostró para confirmar: si cambia algo,
+ *  se le vuelve a mostrar antes de pedir la moto. */
+function summaryOf(quoted: DeliveryDraft[]) {
+  return `${readBackAll(quoted, false)}\n${quoted.map((d) => d.cotizacion?.precio).join(",")}`;
 }
 
 /** Lo que cuesta una entrega, por distancia desde la recogida. `outOfRange`
@@ -221,41 +237,38 @@ async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { l
 }
 
 /**
- * El mensaje con el precio de lo cotizado. Si solo preguntó el precio, el
- * precio y ya: ni botón ni «¿queda confirmado?» (si lo quiere, lo dice). Si
- * pide el servicio, el precio, la pregunta directa y lo que falte, para
- * confirmar y completar en una sola respuesta.
+ * La respuesta con el precio. Mientras falten datos: el precio y el formato
+ * con lo que falta, sin botón (confirmar sin los datos no pide ninguna moto).
+ * Con el pedido completo: lo que se entendió, el precio y el botón para
+ * confirmar; `summary` es lo que se le mostró (`summaryOf`). `withPrice`
+ * false: ya se le dio ese precio, así que solo se pide lo que falta.
  */
 export function quoteMessage(
   draft: OrderDraft,
-  opts: { config: BotConfig; restaurant: Restaurant | null; fromImage?: boolean; coverageNote?: string; intro?: string },
-): { text: string; buttons?: { id: string; title: string }[] } {
+  opts: { config: BotConfig; restaurant: Restaurant | null; fromImage?: boolean; coverageNote?: string; intro?: string; withPrice?: boolean },
+): { text: string; buttons?: { id: string; title: string }[]; summary?: string } {
   const quoted = draft.entregas.filter((d) => d.cotizacion);
   const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
   const list = quoted.map((d) => `• ${deliveryLabel(d)}: ${cop(d.cotizacion!.precio)}`).join("\n");
   const join = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join("\n\n");
+  const several = quoted.length > 1;
 
-  if (draft.soloPrecio) {
-    const body =
-      quoted.length === 1 ? `Hasta ${deliveryLabel(quoted[0])} el domicilio vale ${cop(total)} 🛵` : `Los domicilios quedan así 🛵\n${list}\nTotal: ${cop(total)}`;
-    return { text: join([opts.intro, body, opts.coverageNote]) };
+  const request = dataRequest(quoted, opts.config, opts.restaurant, draft);
+  if (request) {
+    const price = several
+      ? `${draft.soloPrecio ? "Los domicilios quedan así" : `Serían ${quoted.length} domicilios`} 🛵\n${list}\nTotal: ${cop(total)}`
+      : draft.soloPrecio
+        ? `Hasta ${deliveryLabel(quoted[0])} el domicilio vale ${cop(total)} 🛵`
+        : `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵`;
+    return { text: join([opts.intro, opts.withPrice === false ? null : price, request, opts.coverageNote]) };
   }
 
-  const body = quoted.length === 1 ? `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵` : `Serían ${quoted.length} domicilios 🛵\n${list}\nTotal: ${cop(total)}`;
-  const pending = missingParts(quoted, opts.config, opts.restaurant, draft);
-  const question = `${quoted.length === 1 ? "¿Queda confirmado?" : "¿Quedan confirmados?"}${pending.length ? ` Si es así, envíame también ${joinLabels(pending)}.` : ""}`;
-  // Mandó el pedido con los datos del cliente: se le muestra cómo quedó
-  // separado (dirección, cliente, tiempo, indicaciones) para que confirme
-  // que está todo. Con solo una dirección no hay nada que revisar.
-  const showData = draft.verificar || quoted.some(hasOrderData);
+  const price = several ? `Serían ${quoted.length} domicilios 🛵\n${list}\nTotal: ${cop(total)}` : `Serían ${cop(total)} 🛵`;
+  const ask = several ? `¿Confirmo los ${quoted.length} servicios?` : "¿Confirmo el servicio?";
   return {
-    text: join([
-      opts.intro,
-      showData ? readBackAll(quoted, !!opts.fromImage) : null,
-      [body, showData ? CHECK_DATA : null, question].filter(Boolean).join("\n"),
-      opts.coverageNote,
-    ]),
-    buttons: [{ id: CONFIRM_BUTTON_ID, title: quoted.length === 1 ? "Confirmar servicio" : `Confirmar los ${quoted.length}` }],
+    text: join([opts.intro, readBackAll(quoted, !!opts.fromImage), `${price}\n${ask}\nSi algo no es, escríbeme el dato correcto.`, opts.coverageNote]),
+    buttons: [{ id: CONFIRM_BUTTON_ID, title: several ? `Confirmar los ${quoted.length}` : "Confirmar servicio" }],
+    summary: summaryOf(quoted),
   };
 }
 
@@ -285,6 +298,41 @@ async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraf
   await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
+/**
+ * El pin de WhatsApp: coordenadas exactas, sin pagar geocodificación. Va a la
+ * última entrega si todavía no está ubicada; si no, es una nueva. Después de
+ * solo preguntar un precio, un pin suelto es un pedido aparte.
+ */
+function applyPin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">): OrderDraft {
+  const next: OrderDraft = draft.soloPrecio ? { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null, soloPrecio: false } : draft;
+  const last = next.entregas[next.entregas.length - 1];
+  const target = last && !last.ubicacionEntrega ? last : emptyDelivery();
+  if (target !== last) next.entregas.push(target);
+  const address = pin.label ?? target.direccionEntrega ?? pinAddress(pin);
+  Object.assign(target, { direccionEntrega: address, direccionUbicada: address, ubicacionEntrega: { lat: pin.lat, lng: pin.lng }, cotizacion: null });
+  return next;
+}
+
+/**
+ * Un pin que llegó después de algún texto: el modelo lo leyó en su lugar
+ * (`pinLine`) y la entrega de la que hablaba quedó con su dirección. Aquí
+ * recibe las coordenadas. Si el modelo no la usó, va a la última entrega sin
+ * ubicar, con la dirección que ya tenía escrita.
+ */
+function placePin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">) {
+  const address = normalizeName(pinAddress(pin));
+  const unplaced = draft.entregas.filter((d) => !d.ubicacionEntrega);
+  const target =
+    unplaced.find((d) => d.direccionEntrega && (normalizeName(d.direccionEntrega).includes(address) || address.includes(normalizeName(d.direccionEntrega)))) ??
+    unplaced[unplaced.length - 1];
+  if (!target) {
+    draft.entregas.push(emptyDelivery());
+    return placePin(draft, pin);
+  }
+  target.direccionEntrega ??= pinAddress(pin);
+  Object.assign(target, { direccionUbicada: target.direccionEntrega, ubicacionEntrega: { lat: pin.lat, lng: pin.lng }, cotizacion: null });
+}
+
 export async function handleRestaurant(ctx: Context) {
   const { conversation, message } = ctx;
   let { restaurant } = ctx;
@@ -297,51 +345,63 @@ export async function handleRestaurant(ctx: Context) {
   let fromImage = false;
   let saidName: string | null = null;
 
+  // Lo que trae el turno: el texto (con sus fotos), los pines y los botones
+  // que mandó seguido (`bot/turns.ts`). Un mensaje suelto es un turno de uno.
+  const text = message.kind === "text" ? message.text : "";
+  const imageIds = message.kind === "text" ? (message.images ?? []) : [];
+  const pins: TurnPin[] =
+    message.kind === "location"
+      ? [{ lat: message.lat, lng: message.lng, label: message.label, beforeText: true }]
+      : message.kind === "text"
+        ? (message.pins ?? [])
+        : [];
+  const buttons = message.kind === "button" ? [message.buttonId] : message.kind === "text" ? (message.buttons ?? []).map((b) => b.buttonId) : [];
+  const reads = !!text.trim() || imageIds.length > 0;
+  const pressedConfirm = buttons.includes(CONFIRM_BUTTON_ID);
+
   // Se le preguntó si es el restaurante de este número. Solo un «no» lo pasa a
   // la central; cualquier otra respuesta sigue con el pedido y no se repite.
   const answersIdentity = !!known.preguntaIdentidad;
   if (answersIdentity) {
     draft.preguntaIdentidad = false;
-    const denied = message.kind === "button" ? message.buttonId === IDENTITY_NO_BUTTON_ID : message.kind === "text" && /^\s*no\b/i.test(message.text);
-    if (denied) {
+    if (buttons.includes(IDENTITY_NO_BUTTON_ID) || /^\s*no\b/i.test(text)) {
       await escalateIdentity(ctx, draft, `Escribe desde el número de ${restaurant?.name ?? "un restaurante registrado"}, pero dice que no es ese restaurante.`);
       return;
     }
   }
 
   // 1. Lo que trae el mensaje.
-  if (message.kind === "button") {
-    if (message.buttonId.startsWith(PICK_TRIP_PREFIX)) {
-      await pickTrip({ conversation, phone: message.phone }, message.buttonId, known);
+  const pick = buttons.find((id) => id.startsWith(PICK_TRIP_PREFIX));
+  if (pick) {
+    await pickTrip({ conversation, phone: message.phone }, pick, known);
+    return;
+  }
+  if (!reads && !pins.length) {
+    // Solo botones, o algo que todavía no se lee (un audio, un sticker).
+    if (!buttons.length) {
+      await say(conversation.id, message.phone, "Por ahora leo mensajes de texto y ubicaciones 🙏 ¿Me escribes la dirección de entrega?");
       return;
     }
-    if (message.buttonId === IDENTITY_YES_BUTTON_ID) {
-      if (!answersIdentity) return;
-    } else {
-      if (message.buttonId !== CONFIRM_BUTTON_ID) return;
-      if (!draft.entregas.some((d) => d.cotizacion)) {
-        await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
-        return;
-      }
-      confirms = true;
+    if (pressedConfirm && draft.entregas.some((d) => d.cotizacion)) confirms = true;
+    else if (!(answersIdentity && buttons.includes(IDENTITY_YES_BUTTON_ID))) {
+      if (pressedConfirm) await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
+      return;
     }
-  } else if (message.kind === "location") {
-    // El pin de WhatsApp: coordenadas exactas, sin pagar geocodificación. Va
-    // a la última entrega si todavía no está ubicada; si no, es una nueva.
-    // Después de solo preguntar un precio, un pin es un pedido aparte.
-    if (draft.soloPrecio) draft = { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null, soloPrecio: false };
-    const last = draft.entregas[draft.entregas.length - 1];
-    const target = last && !last.ubicacionEntrega ? last : emptyDelivery();
-    if (target !== last) draft.entregas.push(target);
-    const address = message.label ?? target.direccionEntrega ?? "Ubicación enviada por WhatsApp";
-    Object.assign(target, { direccionEntrega: address, direccionUbicada: address, ubicacionEntrega: { lat: message.lat, lng: message.lng }, cotizacion: null });
-  } else if (message.kind === "text") {
-    const images = (await Promise.all((message.images ?? []).map(downloadImage))).filter((i): i is DownloadedImage => !!i);
-    if (message.images?.length && !images.length && !message.text.trim()) {
+  }
+
+  // Un pin antes del texto: el texto se lee ya con esa entrega («me das un
+  // domi para esta dirección»).
+  for (const pin of pins.filter((p) => p.beforeText)) draft = applyPin(draft, pin);
+  // Contra esto se mide lo que cambió el texto.
+  const before = structuredClone(draft);
+
+  if (reads) {
+    const images = (await Promise.all(imageIds.map(downloadImage))).filter((i): i is DownloadedImage => !!i);
+    if (imageIds.length && !images.length && !text.trim() && !pins.length) {
       await say(conversation.id, message.phone, "No pude abrir la imagen 🙏 ¿Me escribes la dirección de entrega?");
       return;
     }
-    const extraction = await interpretMessage(message.text, draft, images);
+    const extraction = await interpretMessage(text, draft, images);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
     // escala y el borrador queda como estaba. Solo se le pide reenviar.
     if (extraction.failed) {
@@ -355,18 +415,17 @@ export async function handleRestaurant(ctx: Context) {
 
     // De qué pedido habla: el que citó o, si no citó, el que nombra por su
     // código («¿ya llegó el B-12?»).
-    const quoted =
-      (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, message.text));
+    const quoted = (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, text));
 
     saidName = extraction.fields.nombreRestaurante ?? null;
-    if (saidName && namedAsDestination(message.text, saidName)) saidName = null;
+    if (saidName && namedAsDestination(text, saidName)) saidName = null;
 
     // Consultas: no cambian el pedido en curso, solo se responden.
     if (extraction.query === "estado") {
       await answerStatus(conversation, message.phone, quoted);
       return;
     }
-    const asksAddress = !extraction.fields.entregas.some((e) => e.direccionEntrega) && !known.entregas.some((e) => e.direccionEntrega);
+    const asksAddress = !pins.length && !extraction.fields.entregas.some((e) => e.direccionEntrega) && !before.entregas.some((e) => e.direccionEntrega);
     if (extraction.query === "cobertura" && asksAddress) {
       await say(conversation.id, message.phone, "Envíame la dirección o la ubicación y te digo si llegamos y cuánto vale 🛵");
       return;
@@ -375,7 +434,7 @@ export async function handleRestaurant(ctx: Context) {
     // ¿Habla de un pedido ya creado? Si citó uno de sus mensajes, de ese; si
     // no hay un pedido a medio armar y el mensaje no trae una dirección,
     // de sus pedidos abiertos (casos 9 y 12: «ya está listo»).
-    const changed = changedDelivery(extraction.fields, known);
+    const changed = changedDelivery(extraction.fields, before);
     const update = changed ? tripUpdateFrom(changed.incoming, changed.before, message.timestamp) : null;
     const newAddress = !!changed?.incoming.direccionEntrega && changed.incoming.direccionEntrega !== changed.before.direccionEntrega;
     const updateCtx = { conversation, phone: message.phone };
@@ -387,7 +446,7 @@ export async function handleRestaurant(ctx: Context) {
       await applyTripUpdate(updateCtx, quoted, update);
       return;
     }
-    if (!quoted && update && !newAddress && known.entregas.length === 0 && (await routeTripUpdate(updateCtx, update, known))) return;
+    if (!quoted && update && !newAddress && before.entregas.length === 0 && !pins.length && (await routeTripUpdate(updateCtx, update, known))) return;
 
     // ¿Solo pregunta el precio o pide el servicio? Preguntar si llegan a una
     // dirección también es solo cotizar.
@@ -396,36 +455,31 @@ export async function handleRestaurant(ctx: Context) {
     // es otra cotización, no un segundo domicilio. Se empieza de nuevo con lo
     // que trae este mensaje; la recogida se conserva.
     let fields = extraction.fields;
-    if (known.soloPrecio && !extraction.confirms) {
-      const fresh = fields.entregas.filter((e) => e.direccionEntrega && !known.entregas.some((k) => k.direccionEntrega === e.direccionEntrega));
+    if (before.soloPrecio && !extraction.confirms) {
+      const fresh = fields.entregas.filter((e) => e.direccionEntrega && !before.entregas.some((k) => k.direccionEntrega === e.direccionEntrega));
       if (fresh.length) {
-        draft = { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null, verificar: false };
-        fields = { ...fields, entregas: fresh };
+        draft = { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null };
+        fields = { ...fields, entregas: fresh, quitar: [] };
       }
     }
     draft = mergeTripFields(draft, fields);
-    draft.soloPrecio = priceOnly || (extraction.intent !== "pedir" && !!known.soloPrecio && draft.entregas.length > 0);
+    draft.soloPrecio = priceOnly || (extraction.intent !== "pedir" && !!before.soloPrecio && draft.entregas.length > 0);
     if (restaurant) draft.origenRestaurante = restaurant.name;
-    // Leído de una foto, o con algún dato dudoso: antes de pedir la moto, el
-    // restaurante revisa lo que se entendió.
     fromImage = images.length > 0;
-    if (fromImage || extraction.fields.entregas.some((e) => e.dudas?.length)) draft.verificar = true;
     // El modelo repite el tiempo ya capturado: solo cuando cambia es un dato
     // nuevo, y se cuenta desde este mensaje.
-    let timeChanged = false;
     draft.entregas.forEach((d, i) => {
-      if (d.listoEnMinutos != null && d.listoEnMinutos !== known.entregas[i]?.listoEnMinutos) {
-        d.listoDesde = message.timestamp.toISOString();
-        timeChanged = true;
-      }
+      if (d.listoEnMinutos != null && d.listoEnMinutos !== before.entregas[i]?.listoEnMinutos) d.listoDesde = message.timestamp.toISOString();
     });
-    // Dar el tiempo después de la cotización también es aceptar el servicio
-    // (así confirman los restaurantes hoy: «5 mil» → «en 8 minutos»).
-    confirms = known.entregas.some((d) => d.cotizacion) && (extraction.confirms || timeChanged);
-  } else {
-    await say(conversation.id, message.phone, "Por ahora leo mensajes de texto y ubicaciones 🙏 ¿Me escribes la dirección de entrega?");
-    return;
+    // Las que pidió quitar («solo es 1», «el de Pance ya no va»). Como el
+    // pedido cambia, se le vuelve a mostrar antes de pedir la moto.
+    draft = removeDeliveries(draft, fields.quitar ?? []).draft;
+    // Vale solo si lo que acepta es el pedido completo que ya se le mostró
+    // (paso 5): dar los datos o el tiempo no es confirmar.
+    confirms = pressedConfirm || extraction.confirms;
   }
+
+  for (const pin of pins.filter((p) => !p.beforeText)) placePin(draft, pin);
 
   // Quién escribe: su número y su nombre (docs/BOT.md, «Reconocer al restaurante»).
   const recognition = await recognizeRestaurant({ byPhone: restaurant, saidName, profileName: conversation.displayName, reviewed: draft.nombresRevisados ?? [] });
@@ -568,57 +622,32 @@ export async function handleRestaurant(ctx: Context) {
     return;
   }
 
-  if (newQuote || outOfRange.length) {
+  // 5. Se pide la moto solo cuando aceptó el pedido completo tal como se le
+  // mostró. Mientras tanto: el precio con lo que falta, o el pedido completo
+  // con el botón. Confirmar también acepta los datos dudosos (❓).
+  const accepted = confirms && draft.resumenMostrado === summaryOf(quoted);
+  if (!accepted) {
+    const priceChanged = newQuote || outOfRange.length > 0;
+    // Solo había preguntado el precio y no decidió mandarlo («gracias», «ok»):
+    // no se le insiste ni cuenta como intento. El precio queda guardado por si
+    // después dice «dale» o manda los datos.
+    if (!priceChanged && draft.soloPrecio) {
+      await save(ctx, draft);
+      return;
+    }
+    const reply = quoteMessage(draft, { config, restaurant, fromImage, coverageNote, withPrice: priceChanged });
     draft.etapa = "cotizado";
-    await save(ctx, draft);
-    const quote = quoteMessage(draft, { config, restaurant, fromImage, coverageNote });
-    await say(conversation.id, message.phone, quote.text, { replyTo, buttons: quote.buttons });
+    draft.resumenMostrado = reply.summary ?? null;
+    // Un precio nuevo siempre se muestra, sin contar intentos.
+    const reason = reply.summary ? "sin confirmar el servicio" : "sin los datos que faltan";
+    if (priceChanged) await save(ctx, draft);
+    else if (!(await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos ${reason}.`))) return;
+    const text = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
+    await say(conversation.id, message.phone, text, { replyTo, buttons: reply.buttons });
     return;
   }
 
-  // 5. Esperando confirmación. Confirmar es aceptar el precio y, si se le
-  // mostraron, también los datos: dejan de ser dudosos.
-  if (confirms) {
-    draft.etapa = "confirmado";
-    draft.verificar = false;
-    draft.soloPrecio = false;
-    draft.entregas.forEach((d) => (d.dudas = null));
-  }
-  const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
-  // Solo había preguntado el precio y no decidió mandarlo («gracias», «ok»):
-  // no se le insiste ni cuenta como intento. El precio queda guardado por si
-  // después dice «dale».
-  if (draft.etapa !== "confirmado" && draft.soloPrecio) {
-    await save(ctx, draft);
-    return;
-  }
-  // Un dato dudoso que llegó después de confirmar (un celular con un dígito
-  // de menos, una dirección que no cuadra) también se confirma antes de
-  // pedir la moto: es mejor preguntar que mandar al domiciliario a otro lado.
-  if (draft.etapa !== "confirmado" || draft.verificar) {
-    if (await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin confirmar el servicio.`)) {
-      // Revisando datos: se le muestra cómo quedaron después de su corrección.
-      const text = draft.verificar
-        ? `${readBackAll(quoted, false)}\n\nAnotado ✅ ${CHECK_DATA}\nSi todo está bien, ¿queda confirmado el servicio de ${cop(total)}?`
-        : `Anotado ✅ ¿Queda confirmado el servicio de ${cop(total)}?`;
-      await say(conversation.id, message.phone, text, {
-        replyTo,
-        buttons: [{ id: CONFIRM_BUTTON_ID, title: quoted.length === 1 ? "Confirmar servicio" : `Confirmar los ${quoted.length}` }],
-      });
-    }
-    return;
-  }
-
-  // 6. Confirmado: lo que falte según la agencia, entrega por entrega.
-  const parts = missingParts(quoted, config, restaurant, draft);
-  if (parts.length) {
-    if (await countAttempt(ctx, draft, progressed || confirms, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin los datos que faltan.`)) {
-      await say(conversation.id, message.phone, `Listo ✅ Para pedir la moto me falta ${joinLabels(parts)}.`, { replyTo });
-    }
-    return;
-  }
-
-  // 7. Completo: un viaje por entrega, y cada uno se despacha.
+  // 6. Aceptado: un viaje por entrega, y cada uno se despacha.
   await save(ctx, null);
 
   // Un número nuevo: su recogida queda guardada con el primer pedido

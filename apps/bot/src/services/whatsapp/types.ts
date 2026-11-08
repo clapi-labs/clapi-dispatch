@@ -76,6 +76,12 @@ export type WaWebhookPayload = {
   }[];
 };
 
+/** Un pin dentro de un turno. `beforeText`: llegó antes de cualquier texto,
+ *  así que el texto se lee ya con la entrega del pin. */
+export type TurnPin = { lat: number; lng: number; label: string | null; beforeText: boolean };
+
+export type TurnButton = { buttonId: string; title: string };
+
 export type IncomingMessage = {
   waMessageId: string;
   phone: string;
@@ -84,9 +90,12 @@ export type IncomingMessage = {
   /** El wamid del mensaje que citó, si respondió a uno. */
   replyTo?: string | null;
 } & (
-  /** `images`: fotos que llegaron en el mismo turno (ids de Meta); el texto
-   *  es su pie de foto o lo que se escribió junto a ellas. */
-  | { kind: "text"; text: string; images?: string[] }
+  /** Un turno: lo que el restaurante mandó seguido, junto (`bot/turns.ts`).
+   *  `images`: fotos (ids de Meta); el texto es su pie de foto o lo que se
+   *  escribió junto a ellas. `pins` y `buttons`: ubicaciones y botones que
+   *  llegaron en el mismo turno. `unsupported`: también mandó algo que no se
+   *  lee (un audio, un sticker). */
+  | { kind: "text"; text: string; images?: string[]; pins?: TurnPin[]; buttons?: TurnButton[]; unsupported?: boolean }
   | { kind: "image"; mediaId: string; caption: string | null }
   | { kind: "location"; lat: number; lng: number; label: string | null }
   | { kind: "button"; buttonId: string; title: string }

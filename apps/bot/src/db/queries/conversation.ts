@@ -8,23 +8,17 @@ export type Conversation = typeof schema.conversations.$inferSelect;
  *  final — ese llega como dato dentro del viaje, no como un hilo propio. */
 export async function upsertConversationOnInbound(phone: string, profileName: string | null) {
   const now = new Date();
-
-  const [existing] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, phone)).limit(1);
-
-  if (existing) {
-    const [updated] = await db
-      .update(schema.conversations)
-      .set({ lastInboundAt: now, ...(profileName ? { displayName: profileName } : {}) })
-      .where(eq(schema.conversations.id, existing.id))
-      .returning();
-    return updated;
-  }
-
-  const [created] = await db
+  // En un solo paso: dos mensajes seguidos de un número nuevo llegan casi a
+  // la vez, y crear la conversación en dos pasos hacía fallar uno (y perderlo).
+  const [conversation] = await db
     .insert(schema.conversations)
     .values({ phone, displayName: profileName, lastInboundAt: now })
+    .onConflictDoUpdate({
+      target: schema.conversations.phone,
+      set: { lastInboundAt: now, ...(profileName ? { displayName: profileName } : {}) },
+    })
     .returning();
-  return created;
+  return conversation;
 }
 
 export async function updateConversation(id: number, patch: Partial<Conversation>) {
