@@ -18,7 +18,7 @@ Los mensajes de commit y de PR se escriben como si los hubiera escrito el equipo
 
 ## Comandos
 
-Monorepo con npm workspaces (Node según `.nvmrc`). La verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`), más las pruebas unitarias de `npm test`.
+Monorepo con npm workspaces (Node según `.nvmrc`). Se trabaja en una rama desde `dev` y se vuelve con un PR a `dev`; las tareas pendientes y su criterio de éxito están en `docs/PLAN.md`. La verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`), más las pruebas unitarias de `npm test`.
 
 ```bash
 docker compose up --build          # Postgres + migraciones + bot (:3001) + portal (:3002)
@@ -26,9 +26,9 @@ npm run dev:bot / dev:portal       # una app sola con next dev
 npm run bot:chat                   # conversar con el bot desde la terminal (WhatsApp simulado; necesita DATABASE_URL y OPENAI_API_KEY en .env.local)
 npm run bot:gps                    # motos de prueba que se mueven y reportan GPS al bot local (solo contra una base local)
 npm run bot:eval:restaurantes      # compara nombres de restaurantes contra OpenAI de verdad (gasta la llave; no va en CI)
-npm test                           # pruebas unitarias (*.test.ts en packages/shared)
+npm test                           # pruebas unitarias (*.test.ts en packages/shared y apps/bot)
 npm run lint                       # eslint en cada workspace
-npm run typecheck                  # tsc --build (project references)
+npm run typecheck                  # tsc --build (project references; el bot se revisa en el build o con tsc -p apps/bot)
 npm run build                      # next build de ambas apps (no necesita secretos)
 
 # Base de datos (DATABASE_URL=postgres://dispatch:dispatch@localhost:5432/dispatch con el compose local)
@@ -55,4 +55,4 @@ Cambios de esquema: editar `schema.ts`, correr `db:generate` y commitear la migr
 - VPS Hetzner (OpenTofu en `infra/`), Caddy delante (`deploy/caddy/Caddyfile`); solo `/api/webhook/whatsapp`, `/api/health` y `/api/gps` del bot son públicos.
 - `images.yml` publica `ghcr.io/clapi-labs/dispatch-*:<hash>` en cada push a `dev`/`main`; se despliega por hash con `deploy/deploy.sh` (nunca `latest`). Rama `dev` → staging; `main` → producción, solo vía PR desde `dev`.
 - Bot: `docs/BOT.md` (principios y flujo) y `docs/CONTRATO-BOT-DESPACHO.md` (interfaz con el despacho) y `docs/CONVERSACIONES-REALES.md` (ejemplos reales del cliente, base de los casos de prueba).
-- Documentación: `docs/INFRAESTRUCTURA.md` (arquitectura y estado), `docs/OPERACION.md` (servidor, secretos, diagnóstico), `docs/ALGORITMO.md`.
+- Documentación: `docs/INFRAESTRUCTURA.md` (arquitectura y estado), `docs/OPERACION.md` (servidor, secretos, diagnóstico), `docs/ALGORITMO.md`, `docs/PLAN.md` (lo que falta). Índice completo en `README.md`.

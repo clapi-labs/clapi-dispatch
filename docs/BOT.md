@@ -142,7 +142,7 @@ Qué hace la central con una novedad: [INTERVENCION-MANUAL.md](INTERVENCION-MANU
 
 ## Para después
 
-Capas que se agregan una vez el flujo básico funcione:
+Capas que se agregan una vez el flujo básico funcione. Lo que ya es tarea, con su criterio de éxito, está en [PLAN.md](PLAN.md), objetivo **B** (cancelar o vencer un pedido a medio armar, quitar un pedido creado, recogida de restaurantes nuevos, zonas sin cobertura, torre y apartamento).
 
 - **Sin confirmación para restaurantes que ya saben cómo es.** Reconocer a los que siempre envían el pedido completo, o que conocen los precios y no quieren confirmar, y crear el viaje directo. Habría que definir cómo se gana ese trato (por historial o marcado a mano) y cómo se quita.
 - **Saber mejor cuándo pedir torre y apartamento.** Hoy es obligatorio solo si el modelo marca la dirección como conjunto o edificio, o si la dirección lo nombra («conjunto», «edificio», «torre»…) sin traer la puerta. Un conjunto que el mensaje no nombra («Cra 98B # 42-40») pasa sin pedirlo, y no se mide cuántas veces el motorizado llega a la portería sin saber a quién buscar. Ideas: pedirlo siempre en una dirección que ya tuvo pedidos con torre y apto (sale de los viajes guardados), y leer de Google si el punto es un edificio o conjunto.

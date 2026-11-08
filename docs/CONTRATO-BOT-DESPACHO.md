@@ -104,6 +104,20 @@ Si el contrato se respeta, conectar el engine solo toca el interior de `despacha
 - el flujo de la conversación;
 - las rutas `/api/internal/*`.
 
+## En el código
+
+El contrato se escribió antes de construir; los nombres reales son estos:
+
+| En este documento | En el código |
+|---|---|
+| `despachar(tripId)` al crear el viaje | `dispatchNewTrip` (`apps/bot/src/dispatch/engine.ts`): en `auto` lo despacha el engine si ya es hora; si no, la cola le da la próxima moto libre (`assignNextCourier`). Devuelve si quedó asignado |
+| `despacharPendientes()` en el tick | `/api/internal/tick` corre `assignPendingTrips` (la cola, que no hace nada en `auto`) y `runEngine` (el engine, que solo asigna en `auto`) |
+| Asignar a mano desde el portal | `assignTripTo`; quitarle un pedido sin recoger a una moto, `returnTripToDispatch` (`packages/shared/src/db/dispatch-queue.ts`) |
+| `en_espera` / `sin_motos` | El viaje sigue `pending`; el motivo y la hora prevista quedan en `engine_evaluations` y el tablero los muestra |
+| `quoteByDistance` | Igual (`packages/shared/src/db/quote.ts`) |
+
+Los avisos los arma el bot con el resultado (`notifyAssigned` en `apps/bot/src/bot/notify.ts`), como dice el contrato.
+
 ## Cambios a este contrato
 
 Cualquier cambio a estas firmas se acuerda entre los dos lados y se actualiza aquí antes de implementarlo.
