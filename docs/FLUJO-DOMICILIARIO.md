@@ -1,6 +1,6 @@
 # Flujo del domiciliario y estados del servicio
 
-Plan acordado para guiar al domiciliario por WhatsApp, saber en qué va cada servicio y avisar cuando un pedido queda en portería. Estado: **fases 1 a 5 construidas y probadas en local, con WhatsApp y motos simulados; falta la fase 0 y probar con celulares reales**.
+Plan acordado para guiar al domiciliario por WhatsApp, saber en qué va cada servicio y avisar cuando un pedido queda en portería. Estado: **fases 1 a 5 construidas y funcionando en staging con el simulador** (motos simuladas y números de prueba que reciben sus mensajes). Falta la fase 0 y probar con domiciliarios y celulares reales ([PLAN.md](PLAN.md) D-1).
 
 ## Objetivo
 
@@ -185,7 +185,7 @@ Suman uno más cada uno de estos casos:
 - `engine-request.ts` envía las paradas reales: sin recogida si ya recogió, sin entrega si ya entregó.
 - Nueva parada para el regreso. La parada `V` no sirve: significa devolver un pedido no entregado y saca a la moto de la evaluación.
 - Las motos deben estar ocupadas siempre: quien está entregando o volviendo puede recibir otro pedido. El motor cuenta el peor caso, el regreso a recogida después de cada entrega, porque solo se sabe al entregar (`asumirRegreso`).
-- Aplica con `settings.engine_config.mode = "auto"`. Staging sigue en `shadow`, donde la cola solo le asigna a motos libres, hasta que el GPS funcione con motos reales.
+- Aplica con `settings.engine_config.mode = "auto"`, que es como está staging con el simulador. En `shadow` o `queue` la cola solo le asigna a motos libres.
 - «Recogí» y la entrega quedan como datos del contrato, en [ALGORITMO.md](ALGORITMO.md) y [CONTRATO-BOT-DESPACHO.md](CONTRATO-BOT-DESPACHO.md).
 
 ### Fase 5: GPS con Traccar

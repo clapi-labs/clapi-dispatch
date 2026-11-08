@@ -23,7 +23,7 @@ docker logs --tail 50 dispatch-bot-1        # registros del bot
 ```
 
 Lo importante:
-- Trabaja en una rama desde `dev`. Push a `dev` construye las imágenes; desplegar aún es manual.
+- Trabaja en una rama desde `dev` y vuelve con un PR a `dev`. El merge a `dev` construye las imágenes; desplegar aún es manual. Lo que hay por hacer: [`PLAN.md`](PLAN.md).
 - Los secretos solo viven en `/opt/dispatch/.env`. Nunca en el repo ni en el chat.
 - Para volver atrás, despliega el hash anterior.
 - ¿Sin acceso? Sigue la sección 1: genera tu llave y pásale la `.pub` al administrador.
@@ -64,10 +64,11 @@ Crea las cuentas que falten, actualiza llaves, elimina las que ya no estén y re
 
 ## 2. Flujo de trabajo y CI
 
-1. Trabaja en la rama `dev` (o una rama desde ella). Commits en español, sin firmas de IA (ver `CLAUDE.md`).
-2. **Push a `dev` o `main`** → `images.yml` construye y publica las imágenes en GHCR con el hash del commit. **Esto no despliega nada.**
-3. **PR hacia `main`** → `ci.yml` corre lint, tipos, build, migraciones y la comprobación de esquema. Debe quedar en verde.
-4. Cambios de esquema: edita `packages/shared/src/db/schema.ts`, corre `npm run db:generate` y commitea la migración nueva en `packages/shared/drizzle/`. Si falta, el CI falla.
+1. Cada tarea en su propia rama desde `dev` actualizado (`feat/…`, `fix/…`, `docs/…`, `chore/…`), con un PR hacia `dev` que otra persona revisa. Commits en español, en el estilo del historial (ver `CLAUDE.md`).
+2. Antes del PR, en tu equipo: `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`. CI todavía no corre en los PR hacia `dev` ([PLAN](PLAN.md) I-4).
+3. **Push a `dev` o `main`** (el merge del PR) → `images.yml` construye y publica las imágenes en GHCR con el hash del commit. **Esto no despliega nada.**
+4. **PR de `dev` hacia `main`** → `ci.yml` corre lint, tipos, build, migraciones y la comprobación de esquema. Debe quedar en verde.
+5. Cambios de esquema: edita `packages/shared/src/db/schema.ts`, corre `npm run db:generate` y commitea la migración nueva en `packages/shared/drizzle/`. Si falta, el CI falla.
 
 Seguimiento: pestaña *Actions* del repositorio.
 
@@ -95,7 +96,7 @@ Qué hace `deploy.sh`, en orden:
 5. Si algo no queda sano: muestra los registros y **vuelve a la versión anterior**.
 6. Anota el hash en `/opt/dispatch/.tag`.
 
-Versión activa: `cat /opt/dispatch/.tag`. Estado: `docker ps` o `docker compose -f /opt/dispatch/compose.yml ps`.
+Versión activa: `cat /opt/dispatch/.tag`. Estado: `docker ps`. Para los contenedores usa `docker` y no `docker compose`: el compose necesita `IMAGE_TAG`, que solo pone `deploy.sh`.
 
 ### Volver atrás
 Desplegar el hash anterior: `./deploy.sh deploy <hash-anterior>`. Cuidado: las migraciones no se revierten. Por eso deben ser compatibles con la versión previa (cambios de esquema en dos pasos).
@@ -128,7 +129,7 @@ Orden recomendado para rotar: generar el nuevo en el proveedor → `set-secret.s
 
 ## 4b. Simulador (solo staging)
 
-Prueba el sistema completo con pedidos reales por WhatsApp sin un número por moto. Las motos simuladas son filas de `couriers` (marca «🧪 Simulada» en Flota, número `SIM<id>`, que no existe): el algoritmo y el portal las tratan como a cualquier moto. Un proceso aparte (`scripts/simulador.mjs`, servicio `simulator`, misma imagen que el worker) las mueve por sus paradas y reporta por `/api/gps`; no asigna, no envía y no marca estados. Si se cae o se detiene (`docker compose -f compose.yml stop simulator`), el bot y el portal siguen y las motos quedan sin señal: a los 2 min el algoritmo las excluye por «sin GPS».
+Prueba el sistema completo con pedidos reales por WhatsApp sin un número por moto. Las motos simuladas son filas de `couriers` (marca «🧪 Simulada» en Flota, número `SIM<id>`, que no existe): el algoritmo y el portal las tratan como a cualquier moto. Un proceso aparte (`scripts/simulador.mjs`, servicio `simulator`, misma imagen que el worker) las mueve por sus paradas y reporta por `/api/gps`; no asigna, no envía y no marca estados. Si se cae o se detiene (`docker stop dispatch-simulator-1`), el bot y el portal siguen y las motos quedan sin señal: a los 2 min el algoritmo las excluye por «sin GPS».
 
 **Encenderlo:**
 ```bash
@@ -157,7 +158,9 @@ Cada número debe escribirle «hola» al bot antes de probar: así queda conecta
 
 **Límite:** la velocidad acelera el movimiento, no la cocina: el sistema usa la hora real. Para probar rápido, «listo en 5».
 
-**Diagnóstico:** `docker compose -f compose.yml logs --tail=50 simulator`.
+**Diagnóstico:** `docker logs --tail 50 dispatch-simulator-1`.
+
+**Estado actual (8 de noviembre de 2026):** encendido, con el engine en `auto`. Apagarlo al terminar las pruebas ([PLAN](PLAN.md), «Decisiones y pendientes del dueño»).
 
 ## 5. Usuarios del portal
 
@@ -188,6 +191,13 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 | En los registros del bot: `envío rechazado 400 ... (#133010) Account not registered` | Los mensajes llegan, pero Meta rechaza el envío. Con el ID y el token correctos, mandar un mensaje de prueba desde *API Setup* en Meta reactiva el número de pruebas |
 | El bot no responde | `BOT_ACTIVE` en `false`, token de WhatsApp vencido (el temporal dura ~24 h) o falla de OpenAI |
 | Certificado no emitido | DNS aún sin propagar o puertos 80/443 cerrados |
+| Un chat de prueba quedó con un pedido a medio armar que se mezcla con los nuevos | El borrador no vence ni se cancela todavía ([PLAN](PLAN.md) B-1). Se limpia a mano, abajo |
+
+**Limpiar un chat de prueba** (solo staging): borra el pedido a medio armar y devuelve el chat al bot; los mensajes quedan.
+```bash
+docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c \
+  "update conversations set draft = null, failed_attempts = 0, bot_paused = false, escalation_reason = null where phone = '<número>'"
+```
 
 ## 7. Infraestructura (solo el administrador)
 

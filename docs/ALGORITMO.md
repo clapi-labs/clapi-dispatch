@@ -1,6 +1,6 @@
 # Algoritmo de asignación
 
-Cómo se conecta al sistema el algoritmo de `algoritmoDeli` (score multi-factor para elegir motorizado) y cómo se prueba de forma aislada. Estado: **implementado con los tres modos; `auto` solo se ha probado en local, con motos simuladas**. Staging sigue en `shadow`.
+Cómo se conecta al sistema el algoritmo de `algoritmoDeli` (score multi-factor para elegir motorizado) y cómo se prueba de forma aislada. Estado: **implementado con los tres modos. Staging está en `auto` con las motos simuladas del simulador** ([OPERACION.md](OPERACION.md), «Simulador»); falta probarlo con motos reales y GPS. Lo pendiente está en [PLAN.md](PLAN.md), objetivo **D**.
 
 ## Idea
 
@@ -23,7 +23,7 @@ flowchart LR
 
 - **El bot arma la foto y decide qué hacer con el resultado.** El engine solo calcula. Ofertas, reintentos y WhatsApp quedan fuera del algoritmo.
 - **Google Maps solo mide** (minutos y km). El algoritmo decide. Por ahora solo se usa Haversine: Google queda pendiente.
-- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Se empieza en `shadow`. La cola sigue activa hasta pasar a `auto`, que se hace cuando el GPS funcione con motos reales: en `auto` la cola no asigna nada, y lo que el engine no pueda asignar lo asigna la central a mano.
+- El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Por defecto es `shadow`: la cola asigna y el engine solo calcula. En `auto` la cola no asigna nada, y lo que el engine no pueda asignar lo asigna la central a mano. Producción pasa a `auto` cuando el GPS funcione con motos reales y la comparación con la central convenza ([PLAN](PLAN.md) D-4).
 
 ## Cómo calcula los tiempos
 
@@ -155,7 +155,7 @@ Hoy no existe y el engine lo necesita:
 2. ~~Geocodificar la dirección del cliente y no evaluar sin coordenadas.~~ Hecho con Google Geocoding (`services/google/geocode.ts`): si no la ubica con precisión, se le pide corregir al restaurante y luego pasa a un asesor. Sin `GOOGLE_MAPS_API_KEY`, o si Google falla, el viaje sale sin coordenadas.
 3. ~~Botón «Recogí» para el motorizado.~~ Hecho (ver [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)).
 4. ~~Guardar el `plan` de cada asignación, para armar las `paradas`.~~ Hecho: `courier_routes` guarda el orden y lo pendiente sale de la fase de cada viaje.
-5. Llevar la `cuota` por moto y la hora de la última entrega o conexión.
+5. Llevar la `cuota` por moto y la hora de la última entrega o conexión. Pendiente ([PLAN](PLAN.md) D-2): hoy se manda el promedio de entregas del grupo.
 6. ~~Recibir las posiciones y marcar `sin_senal` tras 2 min sin reporte.~~ Hecho. La app debe reportar aunque la moto esté quieta, o la moto cuenta como sin señal.
 7. ~~El modo, `radio_km` y `multipedido` en `settings`.~~ Hecho: `settings.engine_config` (ver «Modo sombra»).
 
@@ -231,10 +231,10 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 1. ~~Escribir y acordar el contrato JSON.~~ Hecho (ver «Contrato»).
 2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
 3. ~~El bot llama al engine en modo `shadow` y guarda el ranking.~~ Hecho (ver «Modo sombra»). Decide de verdad cuando haya GPS.
-4. Google Maps para las 3 mejores, con respaldo a Haversine.
-5. ~~GPS: identificadores aleatorios por moto; el receptor descarta los no registrados.~~ Hecho (`/api/gps`). Falta instalarlo en los celulares.
-6. ~~Modo `auto`.~~ Hecho (`apps/bot/src/dispatch/engine.ts`). Falta probarlo en la calle.
-7. Comparar con la realidad y pasar a `auto` cuando los números convenzan.
+4. Google Maps para las 3 mejores, con respaldo a Haversine ([PLAN](PLAN.md) D-3).
+5. ~~GPS: identificadores aleatorios por moto; el receptor descarta los no registrados.~~ Hecho (`/api/gps`). Falta instalarlo en los celulares ([PLAN](PLAN.md) D-1).
+6. ~~Modo `auto`.~~ Hecho (`apps/bot/src/dispatch/engine.ts`). Probado en staging con el simulador; falta probarlo en la calle.
+7. Comparar con la realidad y pasar a `auto` cuando los números convenzan ([PLAN](PLAN.md) D-4).
 
 ## Pendientes por decidir
 

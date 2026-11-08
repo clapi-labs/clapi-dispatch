@@ -1,4 +1,4 @@
-# Klaviyo Dispatch — Banco de conversaciones reales
+# Clapi Dispatch — Banco de conversaciones reales
 
 ## Ejemplos Restaurante ↔ Empresa
 

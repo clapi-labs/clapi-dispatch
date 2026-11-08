@@ -80,8 +80,8 @@ Alternativa descartada por ahora: avisarle por WhatsApp a su número personal. L
 ## Fases
 
 1. ~~Novedad del motorizado: pausa y chat a la central.~~ Hecho.
-2. Alertas en el portal: notificación push (PWA) y sonido con el portal abierto.
-3. Acciones del portal: reasignar con la lista sugerida, devolver a la cola, cancelar con cobro, pausar y reactivar, registro.
-4. Liquidación: que cuente los cancelados según lo elegido.
+2. Alertas en el portal: notificación push (PWA) y sonido con el portal abierto ([PLAN](PLAN.md) C-1).
+3. Acciones del portal: ~~asignar a mano con la lista sugerida, pasar un pedido sin recoger a otra moto, emergencia y reactivar~~ (hecho); falta cancelar con cobro y el registro de acciones ([PLAN](PLAN.md) C-2).
+4. Liquidación: que cuente los cancelados según lo elegido ([PLAN](PLAN.md) C-2).
 
 La 3 y la 4 tocan el portal y la liquidación: coordinar con quien lleve el algoritmo (la reasignación debe pasar por el mismo despacho, ver [CONTRATO-BOT-DESPACHO.md](CONTRATO-BOT-DESPACHO.md)).

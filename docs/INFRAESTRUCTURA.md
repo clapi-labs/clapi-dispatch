@@ -10,13 +10,15 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | HTTPS automático (Caddy + Let's Encrypt) | Hecho |
 | Portal con login, bot, worker, Postgres | Hecho, funcionando en staging |
 | Migraciones versionadas (Drizzle) | Hecho |
-| CI (lint, tipos, build, migraciones) | Hecho, corre en PR hacia `main` |
+| CI (lint, tipos, build, migraciones) | Hecho, corre en PR hacia `main`. Falta en PR hacia `dev` y con `npm test` ([PLAN](PLAN.md) I-4) |
 | Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
-| Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
-| Servidor de producción (separado de staging) | Pendiente |
-| Backups | Pendiente (desactivados a propósito por ahora) |
-| Motor de asignación (`engine`) | En modo sombra: el bot lo llama en cada tick y guarda a quién habría asignado (`engine_evaluations`); la cola sigue asignando. El modo `auto`, donde asigna él, está listo y solo se ha probado en local. Sin GPS no elige a nadie |
-| GPS (Traccar Client) | Receptor en el bot (`/api/gps`), probado con posiciones simuladas. Falta instalar la app en los celulares y la autorización por escrito |
+| Despliegue automático desde GitHub | **Pendiente**: hoy se despliega a mano, ver `OPERACION.md` ([PLAN](PLAN.md) I-3) |
+| Servidor de producción (separado de staging) | Pendiente ([PLAN](PLAN.md) I-5) |
+| Backups | **Pendiente: no hay ninguno** ([PLAN](PLAN.md) I-1) |
+| Aviso de caídas | Pendiente ([PLAN](PLAN.md) I-2) |
+| Motor de asignación (`engine`) | En staging asigna en modo `auto` con motos simuladas. Con motos reales falta el GPS: sin él no elige a nadie |
+| Simulador (solo staging) | Encendido: motos simuladas que se mueven y reportan GPS, y números de prueba que reciben sus mensajes (`OPERACION.md`, «Simulador») |
+| GPS (Traccar Client) | Receptor en el bot (`/api/gps`), usado por el simulador. Falta instalar la app en los celulares y la autorización por escrito ([PLAN](PLAN.md) D-1) |
 
 ## Arquitectura de un entorno
 
@@ -48,13 +50,14 @@ flowchart TB
             WORKER[worker - cada 5 s]
             PG[(Postgres)]
             ENGINE[engine - algoritmo]
+            SIM[simulator - solo staging]
         end
     end
 
     WA -- webhook --> CADDY
     TR -.-> CADDY
     DESP -- HTTPS --> CADDY
-    CADDY -- "solo /api/webhook/whatsapp y /api/health" --> BOT
+    CADDY -- "solo /api/webhook/whatsapp, /api/health y /api/gps" --> BOT
     CADDY --> PORTAL
 
     BOT --> WA
@@ -64,7 +67,8 @@ flowchart TB
     PORTAL --> PG
     PORTAL -- "/api/internal" --> BOT
     WORKER -- "/api/internal/tick" --> BOT
-    BOT -- "modo sombra" --> ENGINE
+    BOT -- "POST /evaluar" --> ENGINE
+    SIM -- "posiciones simuladas" --> BOT
     ENGINE -.-> GM
 
     REPO --> GHCR
@@ -75,7 +79,7 @@ flowchart TB
     classDef pendiente stroke-dasharray: 5 5
 ```
 
-Las líneas y cajas punteadas son lo que falta. Cada entorno usa su propio número de WhatsApp, su propia base y su propio `.env`. El restaurante y el motorizado solo hablan con WhatsApp.
+Las líneas punteadas son lo que falta: el GPS de motos reales, los tiempos de Google en el engine y el despliegue automático. Cada entorno usa su propio número de WhatsApp, su propia base y su propio `.env`. El restaurante y el motorizado solo hablan con WhatsApp.
 
 ## Entornos y flujo de cambios
 
@@ -148,13 +152,14 @@ flowchart LR
     I[Internet] -- ":80 / :443" --> C{Caddy<br/>¿qué dominio?}
     C -- "staging.dispatch…" --> P[portal :3002]
     C -- "bot.staging.dispatch…" --> R{¿qué ruta?}
-    R -- "/api/webhook/whatsapp<br/>/api/health" --> B[bot :3001]
+    R -- "/api/webhook/whatsapp<br/>/api/health<br/>/api/gps" --> B[bot :3001]
     R -- "cualquier otra,<br/>incluida /api/internal/*" --> X[404 No encontrado]
     C -. "puerto 80" .-> H[redirige a HTTPS]
 ```
 
 - A todas las respuestas les añade cabeceras de seguridad (HSTS, `nosniff`, sin `Server`). Al portal, además, `X-Frame-Options: DENY`.
 - El portal y el bot no publican puertos: solo Caddy los alcanza por la red interna de Docker.
+- `/api/events` del portal (avisos en vivo al tablero) va sin compresión, para que llegue al momento.
 - La configuración es `deploy/caddy/Caddyfile` y viaja con cada despliegue.
 
 ### La API del bot
@@ -164,7 +169,8 @@ flowchart LR
 | `GET /api/webhook/whatsapp` | Meta, al configurar el webhook | `WHATSAPP_VERIFY_TOKEN` | Responde el reto de verificación |
 | `POST /api/webhook/whatsapp` | Meta, con cada mensaje | Firma `x-hub-signature-256` con `WHATSAPP_APP_SECRET` | Recibe mensajes y botones |
 | `GET /api/health` | Cualquiera | Ninguna (no expone datos) | Dice si faltan variables y si el bot está activo |
-| `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Asigna moto a los viajes pendientes y avisa |
+| `GET`/`POST /api/gps` | Traccar Client en el celular del motorizado, o el simulador | Identificador GPS aleatorio por moto; los no registrados se descartan | Guarda la posición y detecta llegadas (`bot/gps.ts`) |
+| `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Corre el despacho (engine o cola), avisa, manda recordatorios y cierra esperas de cliente |
 | `POST /api/internal/notify` | portal | `x-internal-secret` + no expuesta | Avisa por WhatsApp cuando el portal asigna o marca entregado |
 | `POST /api/internal/send` | portal | `x-internal-secret` + no expuesta | Un operador escribe en un chat; el bot se pausa en ese chat |
 
@@ -178,7 +184,7 @@ flowchart TB
     subgraph BOT[bot]
         W --> IN[intake: decide qué hacer]
         IN --> AI[OpenAI: extrae los datos del pedido]
-        IN --> Q[cola de asignación]
+        IN --> Q[despacho: engine o cola]
         T --> Q
         N --> NT[notify: arma los mensajes]
         Q --> NT
@@ -200,6 +206,8 @@ sequenceDiagram
     participant B as bot
     participant DB as Postgres
     participant AI as OpenAI
+    participant G as Google
+    participant E as engine
 
     M->>B: POST /api/webhook/whatsapp
     B->>B: verifica la firma (si falla: 403)
@@ -211,20 +219,24 @@ sequenceDiagram
     else nuevo
         B->>DB: guarda el mensaje en la conversación
         alt el teléfono es de un motorizado
-            B->>DB: marca la entrega: cierra el viaje y libera la moto, salvo que deba volver
-            B->>M: avisa al restaurante (y asigna un pendiente si lo hay)
-        else chat pausado por un operador
+            B->>DB: botón o texto: voy, recogí, entregué, volví o novedad
+            B->>M: siguiente mensaje del flujo y aviso al restaurante si corresponde
+        else chat pausado por la central
             B->>B: no responde
         else restaurante
-            B->>AI: extrae dirección, teléfono, valor, pago
-            AI-->>B: campos encontrados
-            alt pedido completo
-                B->>DB: crea el viaje, calcula tarifa por zona, asigna moto
-                B->>M: ficha al motorizado y confirmación al restaurante
-            else faltan datos
-                B->>M: «Solo me falta…»
-            else confuso o 3 intentos sin datos nuevos
-                B->>DB: pausa el chat y lo escala a un operador
+            B->>B: espera 6 s; lo que llegó seguido es un solo turno
+            B->>AI: extrae entregas, cliente, tiempo, intención
+            B->>G: ubica la dirección (una vez) y cotiza por km
+            alt faltan datos
+                B->>M: precio y formato con lo que falta
+            else pedido completo, sin confirmar
+                B->>M: resumen, precio y botón «Confirmar servicio»
+            else confirmó lo que se le mostró
+                B->>DB: un viaje por entrega (pending)
+                B->>E: ¿a quién y cuándo? (modo auto)
+                B->>M: confirmación al restaurante y mensaje 1 al motorizado
+            else dirección que no se ubica, o sin avances
+                B->>DB: pausa el chat y lo pasa a la central
             end
         end
     end
@@ -238,16 +250,20 @@ Dos reglas que explican mucho del comportamiento:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: pedido completo, sin moto libre
-    [*] --> en_route: pedido completo, hay moto libre
-    pending --> en_route: el worker (cada 5 s) o una moto que se libera
-    en_route --> delivered: entrega marcada por el motorizado o el portal
-    delivered --> [*]
+    [*] --> pending: el restaurante confirmó
+    pending --> en_route: el despacho le da moto (al confirmar o en un tick)
+    en_route --> pending: la central se lo quita a la moto antes de recoger
+    en_route --> delivered: el motorizado marca la entrega (al cliente o en portería)
+    en_route --> cancelled: el cliente no contestó y el pedido se devolvió
+    delivered --> [*]: terminó, o volvió a recogida con «Ya volví»
+    cancelled --> [*]
 ```
+
+Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida, llevando, en la entrega, de regreso…) sale de las horas guardadas en `assignments` (`packages/shared/src/domain/phase.ts`). Detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md).
 
 - El paso a `en_route` y a `delivered` es un `UPDATE` condicional (solo si el estado es el esperado). Por eso dos procesos a la vez nunca asignan el mismo viaje ni lo cierran dos veces.
 - El **worker** no tiene lógica: solo llama a `/api/internal/tick` cada 5 s, con espera creciente si el bot falla. Así los pendientes se asignan aunque nadie tenga el portal abierto.
-- Hoy la moto se elige con la cola simple de `packages/shared/src/db/dispatch-queue.ts`. El motor de `ALGORITMO.md` la reemplazará en ese mismo punto.
+- Quién elige la moto depende de `settings.engine_config.mode`: en `auto` el engine (`apps/bot/src/dispatch/engine.ts`, ver `ALGORITMO.md`); en `queue` o `shadow`, la cola de `packages/shared/src/db/dispatch-queue.ts`. Nunca los dos a la vez.
 
 ## Decisiones
 
@@ -298,8 +314,10 @@ stateDiagram-v2
 | `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas) |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | WhatsApp Cloud API |
 | `OPENAI_API_KEY` | Extracción de pedidos |
-| `GOOGLE_MAPS_API_KEY` | Ubicar la dirección de entrega (Geocoding API). Opcional: sin ella, los viajes salen sin coordenadas |
+| `GOOGLE_MAPS_API_KEY` | Ubicar la dirección de entrega (Geocoding API). Sin ella no hay precio: el bot le pregunta a la central. La llave está restringida a la IP del servidor |
 | `BOT_ACTIVE` | `true` para que el bot responda |
+| `SIMULATOR_ENABLED` | `1` enciende el simulador (solo staging). Vacío en producción |
+| `AUTH_DISABLED` | `1` deja entrar al portal sin login. Nunca en un servidor con datos reales |
 | `PORTAL_HOST`, `BOT_HOST`, `ACME_EMAIL`, `REGISTRY` | Dominios, correo de Let's Encrypt, registro de imágenes |
 
 ### Despliegue
@@ -322,7 +340,7 @@ flowchart LR
 
 | Workflow | Cuándo corre | Qué hace |
 |---|---|---|
-| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed. Además, los casos y las pruebas del contrato del engine |
+| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed. Además, los casos y las pruebas del contrato del engine. Todavía no corre `npm test` ni en PR hacia `dev` ([PLAN](PLAN.md) I-4) |
 | `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker`, `engine` y los publica en GHCR con el hash y el nombre de la rama |
 | `deploy-staging.yml` | **No existe aún** | Pendiente: al terminar `images.yml` en `dev`, ejecutar `deploy` por SSH con la llave restringida |
 
@@ -332,10 +350,8 @@ Plan de prod: despliegue por botón (`workflow_dispatch`) con un hash ya probado
 
 ## Lo que falta
 
-1. Workflow de despliegue automático a staging (requiere guardar la llave de despliegue y la huella del servidor en los secretos de GitHub).
-2. Servidor de producción aparte (`infra/prod`) y despliegue azul/verde.
-3. Backups: los de Hetzner (~20 % del costo del servidor) y un `pg_dump` diario fuera del servidor. Hoy **no hay ninguno**.
-4. Copia de seguridad de `terraform.tfstate`; sin él OpenTofu no sabe qué recursos le pertenecen.
-5. Token permanente de WhatsApp (usuario del sistema); el de pruebas dura ~24 h.
-6. Motor de asignación y receptor de GPS (ver `ALGORITMO.md`).
-7. Datos de ubicación: autorización por escrito (Ley 1581 de 2012) y retención definida antes de usar GPS real.
+Las tareas, con su criterio de éxito, están en [PLAN.md](PLAN.md), objetivo **I**: backups (I-1), aviso de caídas (I-2), despliegue automático a staging (I-3), CI en `dev` con pruebas (I-4), servidor de producción (I-5), repositorio privado (I-6) y recuperación tras una caída (I-7). Además:
+
+- Copia de seguridad de `terraform.tfstate`; sin él OpenTofu no sabe qué recursos le pertenecen.
+- Token permanente de WhatsApp (usuario del sistema) para producción; el de pruebas dura ~24 h.
+- Datos de ubicación: autorización por escrito (Ley 1581 de 2012) y retención definida antes de usar GPS real ([PLAN](PLAN.md) D-1).
