@@ -172,7 +172,12 @@ export async function interpretMessage(
     }
 
     return {
-      fields: { origenRestaurante: text(raw.origenRestaurante), nombreRestaurante: text(raw.nombreRestaurante), entregas },
+      fields: {
+        origenRestaurante: text(raw.origenRestaurante),
+        nombreRestaurante: text(raw.nombreRestaurante),
+        entregas,
+        quitar: Array.isArray(raw.quitar) ? raw.quitar.filter((n: unknown): n is number => Number.isInteger(n)) : [],
+      },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : null,
       confirms: raw.confirma === true,

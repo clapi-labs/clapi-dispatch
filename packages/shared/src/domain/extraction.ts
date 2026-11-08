@@ -11,6 +11,8 @@
  * cotización y confirmación, y cada una termina en su propio viaje.
  */
 
+import { normalizeName } from "./restaurant-identity";
+
 export type PaymentMethod = "efectivo" | "transferencia";
 
 /** Lo que el modelo lee de cada entrega. Las claves en español son las que
@@ -104,9 +106,10 @@ export type OrderDraft = {
   /** Un cambio para un pedido ya creado (por ejemplo «ya está listo») cuando
    *  hay varios abiertos y se preguntó a cuál se refiere. */
   actualizacionPendiente?: TripUpdate | null;
-  /** Los datos se leyeron de una imagen o el modelo dudó de alguno: antes de
-   *  pedir la moto, el restaurante ve lo que se entendió y lo confirma. */
-  verificar?: boolean;
+  /** El pedido completo que se le mostró con el botón de confirmar
+   *  (`summaryOf` en el bot). Confirmar pide la moto solo si sigue igual: si
+   *  algo cambió, se le vuelve a mostrar. */
+  resumenMostrado?: string | null;
   /** El restaurante solo preguntó el precio («¿cuánto a Pance?»): se le
    *  respondió sin pedirle que confirme. Pasa a pedido cuando decide
    *  mandarlo («dale», los datos del cliente, el tiempo). */
@@ -128,6 +131,8 @@ export type Interpretation = {
   /** El nombre con que el restaurante se identifica en este mensaje. */
   nombreRestaurante?: string | null;
   entregas: DeliveryFields[];
+  /** Posiciones (desde 1) de las entregas ya capturadas que pidió quitar. */
+  quitar?: number[];
 };
 
 /** Lo que se puede exigir por agencia antes de crear el viaje. */
@@ -258,8 +263,12 @@ export function countFields(draft: OrderDraft): number {
 
 function mergeDelivery(known: DeliveryDraft, incoming: DeliveryFields): DeliveryDraft {
   const merged: DeliveryDraft = { ...known };
+  // La dirección ya ubicada, reescrita por el modelo con las mismas palabras en
+  // otro orden, no es una corrección: se conserva, y con ella el punto exacto
+  // del pin (si no, se vuelve a buscar en el mapa).
+  const rewritten = !!known.ubicacionEntrega && sameWords(known.direccionEntrega, incoming.direccionEntrega);
   for (const key of DELIVERY_KEYS) {
-    if (key === "notas") continue;
+    if (key === "notas" || (key === "direccionEntrega" && rewritten)) continue;
     const value = incoming[key];
     if (value != null) (merged as Record<string, unknown>)[key] = value;
   }
@@ -278,23 +287,98 @@ function mergeDelivery(known: DeliveryDraft, incoming: DeliveryFields): Delivery
  * La memoria del pedido: lo que ya se sabía más lo que trajo el mensaje
  * nuevo. El modelo devuelve la lista completa de entregas hasta ahora, en el
  * mismo orden: la entrega N del mensaje se junta con la N que ya había, y
- * una de más es una entrega nueva. Un dato nuevo no nulo gana (es una
- * corrección o un dato que faltaba); un `null` nuevo NUNCA borra lo que ya se
- * tenía, y una entrega que el modelo "olvide" tampoco se pierde. Que lo
- * garantice el código y no el modelo.
+ * una de más es una entrega nueva, salvo que sea una que ya estaba
+ * (`sameDelivery`). Un dato nuevo no nulo gana (es una corrección o un dato
+ * que faltaba); un `null` nuevo NUNCA borra lo que ya se tenía, y una entrega
+ * que el modelo "olvide" tampoco se pierde. Que lo garantice el código y no
+ * el modelo. Quitar una entrega es aparte y explícito: `removeDeliveries`.
  */
 export function mergeTripFields(known: OrderDraft, incoming: Interpretation): OrderDraft {
-  const count = Math.max(known.entregas.length, incoming.entregas.length);
-  const entregas: DeliveryDraft[] = [];
-  for (let i = 0; i < count; i++) {
-    const base = known.entregas[i] ?? emptyDelivery();
-    entregas.push(incoming.entregas[i] ? mergeDelivery(base, incoming.entregas[i]) : base);
+  const fields = incoming.entregas.map(doorAsDetail);
+  const entregas = known.entregas.map((base, i) => (fields[i] ? mergeDelivery(base, fields[i]) : base));
+  for (const extra of fields.slice(known.entregas.length)) {
+    let twin = -1;
+    for (let i = entregas.length - 1; i >= 0 && twin === -1; i--) if (sameDelivery(entregas[i], extra)) twin = i;
+    if (twin === -1) entregas.push(mergeDelivery(emptyDelivery(), extra));
+    else entregas[twin] = mergeDelivery(entregas[twin], extra);
   }
   return {
     ...known,
     origenRestaurante: incoming.origenRestaurante ?? known.origenRestaurante,
     entregas,
   };
+}
+
+/** Solo la puerta: «casa 14», «Torre 4 apto 902», «apto 1203». Sin vía,
+ *  número de placa, conjunto ni barrio. */
+const DOOR_ONLY = /^(casa|apto|apartamento|apt|torre|bloque|interior|int|piso|oficina|of|local)\b[\s\w.-]*$/i;
+const STREET = /\b(calle|cl|carrera|cra|kr|cr|avenida|av|diagonal|dg|transversal|tv|conjunto|edificio|unidad|barrio|urbanizaci[oó]n)\b|#/i;
+
+/**
+ * El modelo a veces pone la puerta como dirección («Ana 300…, casa 14»): eso
+ * sobrescribía la dirección de la entrega o armaba otro pedido. Va a
+ * `detalleDireccion`, que es lo que es.
+ */
+function doorAsDetail(fields: DeliveryFields): DeliveryFields {
+  const address = fields.direccionEntrega?.trim();
+  const moved = !address || !DOOR_ONLY.test(address) || STREET.test(address) ? fields : { ...fields, direccionEntrega: null, detalleDireccion: fields.detalleDireccion ?? address };
+  // Y la puerta repetida en las notas («Para Torre 4 apto 902») no le dice nada nuevo al domiciliario.
+  const door = moved.detalleDireccion ? normalizeName(moved.detalleDireccion) : null;
+  const note = moved.notas ? normalizeName(moved.notas).replace(/^(para|en|a)\s+(la\s+|el\s+)?/, "") : null;
+  return door && note === door ? { ...moved, notas: null } : moved;
+}
+
+/** Una dirección dice lo mismo que la otra: todas sus palabras están en ella
+ *  (otro orden, sin la ciudad o el código postal). */
+function sameWords(known: string | null, incoming: string | null) {
+  if (!known || !incoming) return false;
+  const words = new Set(normalizeName(known).split(" "));
+  return normalizeName(incoming)
+    .split(" ")
+    .every((w) => words.has(w));
+}
+
+/** La misma dirección, aunque cambien mayúsculas, tildes o signos. */
+function sameAddress(a: string | null, b: string | null) {
+  return !!a && !!b && normalizeName(a) === normalizeName(b);
+}
+
+/** Lo que distingue a un cliente de otro en la misma dirección. */
+const CUSTOMER_KEYS = ["nombreCliente", "telefonoCliente", "detalleDireccion"] as const;
+
+/**
+ * ¿La entrega de más que devolvió el modelo es una que ya estaba? Pasa cuando
+ * los datos del cliente llegan después de la dirección o del pin: con «Jose
+ * David 311…, para torre 4 apto 902» el modelo a veces arma otro pedido a la
+ * misma dirección. Es la misma si trae la misma dirección (o ninguna) y ningún
+ * dato del cliente distinto. Dos clientes del mismo conjunto siguen siendo dos:
+ * su nombre, su teléfono o su apartamento no coinciden.
+ */
+function sameDelivery(known: DeliveryDraft, extra: DeliveryFields) {
+  if (extra.direccionEntrega != null && !sameAddress(known.direccionEntrega, extra.direccionEntrega)) return false;
+  return CUSTOMER_KEYS.every((k) => known[k] == null || extra[k] == null || normalizeName(String(known[k])) === normalizeName(String(extra[k])));
+}
+
+/**
+ * Quita las entregas que el restaurante pidió quitar («solo es 1», «el de
+ * Pance ya no va»), por posición desde 1. Nunca todas: cancelar el pedido
+ * entero lo resuelve la central. Lo que tenía una que se quita y le falta a
+ * otra con la misma dirección pasa a esa: con el pin en una entrega y los
+ * datos del cliente en otra, «solo es 1» deja una sola, completa.
+ */
+export function removeDeliveries(draft: OrderDraft, positions: number[]): { draft: OrderDraft; removed: boolean } {
+  const drop = new Set(positions.filter((p) => Number.isInteger(p) && p >= 1 && p <= draft.entregas.length).map((p) => p - 1));
+  if (!drop.size || drop.size >= draft.entregas.length) return { draft, removed: false };
+  const kept = draft.entregas.filter((_, i) => !drop.has(i)).map((d) => ({ ...d }));
+  for (const i of drop) {
+    const gone = draft.entregas[i];
+    let twin: DeliveryDraft | undefined;
+    for (let k = kept.length - 1; k >= 0 && !twin; k--) if (sameAddress(kept[k].direccionEntrega, gone.direccionEntrega)) twin = kept[k];
+    if (!twin) continue;
+    const target = twin as Record<string, unknown>;
+    for (const [key, value] of Object.entries(gone)) if (target[key] == null && value != null) target[key] = value;
+  }
+  return { draft: { ...draft, entregas: kept }, removed: true };
 }
 
 /** Cuántas veces se repregunta antes de pasar el pedido a una persona. */
@@ -312,7 +396,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
 {
   "origenRestaurante": string | null,   // dónde se recoge, si lo dice (nombre, dirección y barrio)
   "nombreRestaurante": string | null,   // el nombre del NEGOCIO QUE ESCRIBE, solo si el mensaje nuevo se identifica así a propósito ("soy de Pizza Nona", "habla Donde Lucho", "te escribo de Sushi Ya"), sin dirección. null si el mensaje no dice que el negocio es quien escribe: un nombre tras "domi", "domicilio", "moto", "llevar", "a", "para" o "al lado de" es a dónde va el pedido o una referencia ("domi para Café Luna, Calle 3 # 4-5", "domicilio a Café Luna", "al lado de Café Luna"), o si es el de una persona o del cliente. Ante la duda, null
-  "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados
+  "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados; también la dirección o el lugar por el que solo pregunta el precio
     {
       "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio y barrio; SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
       "telefonoCliente": string | null,   // solo dígitos
@@ -327,6 +411,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
       "dudas": string[]                   // nombres de los campos de ESTA entrega que leíste pero no estás seguro; [] si ninguno
     }
   ],
+  "quitar": number[],                   // posiciones (1 = la primera) de las entregas YA CAPTURADAS que el restaurante pide sacar del pedido; [] si ninguna
   "consulta": "estado" | "cobertura" | null,
   "intencion": "cotizar" | "pedir" | null,
   "confirma": boolean,
@@ -340,9 +425,13 @@ Reglas:
 - Una CORRECCIÓN ("perdón, era…", "me equivoqué…", "la dirección correcta es…", "el de Pance es…", "no, es la…") NO agrega una entrega: reemplaza la dirección de la entrega que corrige, y la lista queda del mismo tamaño. Si no dice cuál corrige y hay varias, corrige la última.
   Ejemplo: capturadas [El Caney, Pance]; mensaje "perdón, el de Pance es Cra 105 # 14-30, Ciudad Jardín" → [El Caney, Cra 105 # 14-30, Ciudad Jardín].
 - La MISMA dirección repetida (aunque esté escrita un poco distinto o venga con datos nuevos como torre, apto o tiempo) es la misma entrega: complétala, no agregues otra.
+  Ejemplo: capturada [Conjunto Los Pinos, Cl 22 Nte # 9, sin datos del cliente]; mensaje "listo en 10, Ana Ruiz 3001234567 para torre 4 apto 902" → una sola entrega: Conjunto Los Pinos con Ana Ruiz, su teléfono, "Torre 4 apto 902" y 10 minutos. "Para torre 4 apto 902" dice a qué puerta va, no es otro pedido.
 - Un dato suelto (solo un teléfono, solo un nombre) va a la entrega que le falte; si todas lo tienen o no se sabe, a la última.
+- "quitar": cuando el restaurante dice que sobra una entrega o que ya no va: "quita la 2", "el de Pance ya no va", "cancela el segundo", "solo es 1", "es uno solo", "no son dos". Pon la posición de las que sobran; si dice "solo es 1" sin decir cuál, las que repiten la dirección de otra o no tienen datos del cliente. Aun así devuelve en "entregas" todas las capturadas: el código las quita. [] si no pide quitar ninguna.
 - El tiempo de preparación dicho sin señalar una entrega ("en 10", "ya están los 2") aplica a todas las entregas que no lo tengan.
-- Preguntar el precio ("¿qué vale a…?", "¿cuánto a…?", "¿domis acá?") es una cotización normal: extrae la dirección o el lugar y no es confuso.
+- Preguntar el precio ("¿qué vale a…?", "¿cuánto a…?", "¿domis acá?") es una cotización normal: la dirección o el lugar SIEMPRE va en "entregas", aunque no traiga nada más, y no es confuso. Sin ella no hay con qué cotizar.
+  Ejemplo: "¿Cuánto a la Cra 98 # 45-30 Valle del Lili?" → "entregas": [{"direccionEntrega": "Cra 98 # 45-30, Valle del Lili", el resto null}], "intencion": "cotizar", "consulta": null.
+- Una línea "(Ubicación de WhatsApp: X)" es un pin que el restaurante mandó en ese punto del mensaje: es la dirección de la entrega de la que habla junto a él ("a esta", "para esta dirección", "aquí"). Usa X tal cual como su "direccionEntrega"; si esa entrega ya tenía una dirección escrita, el pin es su ubicación: deja la escrita.
 - Un lugar conocido sirve como dirección de entrega: "Clínica Farallones", "Centro Comercial Aquarela, local 12", "Unicentro". Guárdalo tal cual.
 - "Ya está pagado", "pagó por Nequi/transferencia", "pago Bancolombia", "Daviplata", "tarjeta", "crédito o débito", "pagado a través de Rappi" o "total a cobrar $0" = "transferencia" (y "valorACobrar" null: no se le cobra nada al cliente).
 - Fotos de facturas o comandas: lee los datos del domicilio (nombre, teléfono, dirección, barrio, pago). Los productos y precios del pedido no van en ningún campo. Los datos del restaurante que imprime la factura (su nombre, dirección, teléfono, NIT) NO son del cliente.
@@ -357,12 +446,12 @@ Reglas:
   "cotizar" = SOLO pregunta cuánto vale o si llegan, sin pedir que lo manden: "¿cuánto a Valle del Lili?", "¿qué vale un domi hasta Pance?", "¿cuánto cobran a la Cra 50 # 10-20?", "cotízame a…", "¿llegan a Jamundí y cuánto?".
   "pedir" = pide el servicio: manda el pedido o datos del cliente (nombre, teléfono, tiempo, valor, torre y apto), reenvía el pedido de su cliente, "necesito un domi para…", "envíame una moto", "para la Cra 50…", una dirección sola sin preguntar el precio, o decide mandar lo que ya cotizó ("dale, mándalo", "pídelo").
   null = ni lo uno ni lo otro (un saludo, "gracias", una consulta de estado). Si dudas entre "cotizar" y "pedir", "pedir".
-- "confirma": true solo si la etapa es "cotizado" o "confirmado" y el restaurante acepta el servicio: "sí", "dale", "listo", "confirmo", "ya están los 2", o da el tiempo de preparación. En la etapa "recibiendo", siempre false.
-  Si en los datos ya capturados "soloPrecio" es true (solo preguntó el precio), confirma SOLO si decide mandarlo: "dale, mándalo", "pídelo", "sí, envíalo", "listo, que vaya", o manda los datos del cliente o el tiempo. "Ok", "gracias", "vale", "ah bueno", "listo gracias" o "lo tengo en cuenta" son false.
+- "confirma": true solo si la etapa es "cotizado" o "confirmado" y el restaurante acepta el servicio con palabras: "sí", "dale", "listo", "confirmo", "ya están los 2". Mandar datos o el tiempo de preparación no es confirmar. En la etapa "recibiendo", siempre false.
+  Si en los datos ya capturados "soloPrecio" es true (solo preguntó el precio), confirma SOLO si decide mandarlo: "dale, mándalo", "pídelo", "sí, envíalo", "listo, que vaya" (si manda los datos del cliente o el tiempo, "intencion" es "pedir", pero no confirma). "Ok", "gracias", "vale", "ah bueno", "listo gracias" o "lo tengo en cuenta" son false.
 - Nunca inventes un valor: lo que no sepas va en null.
 - "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), un dato que no queda claro a qué entrega pertenece, o algo que no cuadra: una dirección sin tipo de vía ("la 42 con 83", no se sabe si es calle o carrera) o a medias (sin el número de la casa), dos teléfonos o dos nombres para el mismo cliente, un barrio que no corresponde a la dirección, o un dato distinto del ya capturado sin decir que es una corrección. Ante la duda, márcalo: el restaurante confirma antes de pedir la moto, y es mejor preguntar que mandar al domiciliario a otro lado. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
-- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"). En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
+- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"); ese lugar también va en "entregas". En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto, o se contradice sin aclarar cuál dato es el bueno. Saludos, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;
 }

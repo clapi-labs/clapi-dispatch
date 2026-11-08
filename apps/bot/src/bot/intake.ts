@@ -5,6 +5,8 @@ import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/s
 import { findCourier, handleCourier } from "@/bot/courier";
 import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
+import { PICK_TRIP_PREFIX } from "@/bot/trip-updates";
+import { mergeTurns } from "@/bot/turns";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
 import { simulatedSender } from "@/simulator/inbound";
 import { markRead, markReadAndTyping } from "@/services/whatsapp/client";
@@ -112,7 +114,7 @@ export async function handleIncoming(incoming: IncomingMessage) {
   if (!(await isLatest(conversation.id, messageId))) return;
 
   const pending = await claimPending(conversation, messageId);
-  for (const turn of mergeTurns(pending, message)) {
+  for (const turn of mergeTurns(pending, message, (id) => id.startsWith(PICK_TRIP_PREFIX))) {
     // Se relee en cada turno: el anterior pudo cambiar el borrador o pausar el bot.
     const [fresh] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
     if (!fresh || fresh.botPaused) return;
@@ -163,37 +165,4 @@ async function claimPending(conversation: Conversation, throughId: number) {
       ),
     )
     .orderBy(asc(schema.messages.id));
-}
-
-/**
- * Los textos seguidos se juntan en uno: «Calle 48 # 98-20» + «apto 402» +
- * «en 10» es un solo pedido. Un botón o una ubicación van aparte, en su
- * orden. El texto juntado conserva el wamid del primero, que es el que se
- * cita en los avisos.
- */
-function mergeTurns(rows: (typeof schema.messages.$inferSelect)[], from: IncomingMessage): IncomingMessage[] {
-  const turns: IncomingMessage[] = [];
-  for (const row of rows) {
-    const payload = row.incoming ?? { kind: "text" as const, text: row.text };
-    const base = { phone: from.phone, profileName: from.profileName, waMessageId: row.waMessageId ?? `msg-${row.id}`, timestamp: row.createdAt, replyTo: payload.replyTo ?? null };
-    const last = turns[turns.length - 1];
-    // Una foto se lee junto con el texto que la rodea: «este pedido» + captura.
-    const piece =
-      payload.kind === "image"
-        ? { text: payload.caption ?? "", images: [payload.mediaId] }
-        : payload.kind === "text"
-          ? { text: payload.text, images: [] }
-          : null;
-    if (piece && last?.kind === "text") {
-      last.text = [last.text, piece.text].filter(Boolean).join("\n");
-      if (piece.images.length) last.images = [...(last.images ?? []), ...piece.images];
-      continue;
-    }
-    if (piece) {
-      turns.push({ ...base, kind: "text", text: piece.text, ...(piece.images.length ? { images: piece.images } : {}) });
-      continue;
-    }
-    turns.push({ ...base, ...payload } as IncomingMessage);
-  }
-  return turns;
 }

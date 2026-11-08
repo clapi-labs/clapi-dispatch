@@ -56,12 +56,9 @@ export async function answerAdvisorQuery(conversationId: number, answers: Adviso
   }
 
   draft.consultaAsesor = null;
-  // Un precio nuevo siempre se muestra y se confirma.
-  if (!invalid.length) draft.etapa = "cotizado";
-  await updateConversation(conversationId, { botPaused: false, escalationReason: null, failedAttempts: 0, draft });
-
   const replyTo = draft.mensajeOrigen ?? null;
   if (invalid.length) {
+    await updateConversation(conversationId, { botPaused: false, escalationReason: null, failedAttempts: 0, draft });
     await say(
       conversationId,
       conversation.phone,
@@ -71,8 +68,12 @@ export async function answerAdvisorQuery(conversationId: number, answers: Adviso
     return { ok: true };
   }
 
+  // Un precio nuevo siempre se muestra: con lo que falte, o completo para confirmar.
   const [config, restaurant] = await Promise.all([getBotConfig(), findRestaurantByPhone(conversation.phone)]);
   const quote = quoteMessage(draft, { config, restaurant, intro: "La central confirmó la dirección ✅" });
+  draft.etapa = "cotizado";
+  draft.resumenMostrado = quote.summary ?? null;
+  await updateConversation(conversationId, { botPaused: false, escalationReason: null, failedAttempts: 0, draft });
   await say(conversationId, conversation.phone, quote.text, { replyTo, buttons: quote.buttons });
   return { ok: true };
 }
