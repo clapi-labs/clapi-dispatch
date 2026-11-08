@@ -5,14 +5,14 @@ import { emptyDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, t
 
 type DeliveryFields = Interpretation["entregas"][number];
 
-const CANELO = "Conjunto Residencial Canelo, Cl. 22 Nte. #9, Cali, 760046, Valle Del Cauca, CO";
+const ALMENDROS = "Conjunto Residencial Los Almendros, Cl. 15 Nte. #8, Cali, 760045, Valle Del Cauca, CO";
 
 /** Una entrega que llegó como pin: dirección, coordenadas y precio, sin cliente. */
-const pin = (address = CANELO): DeliveryDraft => ({
+const pin = (address = ALMENDROS): DeliveryDraft => ({
   ...emptyDelivery(),
   direccionEntrega: address,
   direccionUbicada: address,
-  ubicacionEntrega: { lat: 3.4636, lng: -76.5329 },
+  ubicacionEntrega: { lat: 3.47, lng: -76.525 },
   cotizacion: { precio: 15000, km: 13.4 },
 });
 
@@ -20,34 +20,34 @@ const fields = (patch: Partial<DeliveryFields>): DeliveryFields => ({ ...emptyDe
 
 const draftWith = (...entregas: DeliveryDraft[]): OrderDraft => ({ etapa: "confirmado", origenRestaurante: "prueba", entregas });
 
-const JOSE = { nombreCliente: "Jose David", telefonoCliente: "3116426370", detalleDireccion: "Torre 4 apto 902", listoEnMinutos: 10 };
+const MARTA = { nombreCliente: "Marta Ríos", telefonoCliente: "3009998877", detalleDireccion: "Torre 4 apto 902", listoEnMinutos: 10 };
 
 describe("mergeTripFields", () => {
   it("los datos del cliente que el modelo pone en otra entrega a la misma dirección completan la que ya estaba", () => {
-    // Lo que devolvió el modelo el 8/11 con «Esta listo en 10 min, Jose David 3116426370 para torre4 apto 902».
+    // Lo que devolvió el modelo el 8/11 con «Esta listo en 10 min, Marta Ríos 3009998877 para torre4 apto 902».
     const merged = mergeTripFields(draftWith(pin()), {
       origenRestaurante: null,
-      entregas: [fields({ direccionEntrega: CANELO }), fields({ direccionEntrega: CANELO, ...JOSE })],
+      entregas: [fields({ direccionEntrega: ALMENDROS }), fields({ direccionEntrega: ALMENDROS, ...MARTA })],
     });
     assert.equal(merged.entregas.length, 1);
-    assert.equal(merged.entregas[0].nombreCliente, "Jose David");
+    assert.equal(merged.entregas[0].nombreCliente, "Marta Ríos");
     assert.equal(merged.entregas[0].detalleDireccion, "Torre 4 apto 902");
-    assert.deepEqual(merged.entregas[0].ubicacionEntrega, { lat: 3.4636, lng: -76.5329 });
+    assert.deepEqual(merged.entregas[0].ubicacionEntrega, { lat: 3.47, lng: -76.525 });
   });
 
   it("también si la entrega de más llega sin dirección", () => {
     const merged = mergeTripFields(draftWith(pin()), {
       origenRestaurante: null,
-      entregas: [fields({ listoEnMinutos: 10 }), fields(JOSE)],
+      entregas: [fields({ listoEnMinutos: 10 }), fields(MARTA)],
     });
     assert.equal(merged.entregas.length, 1);
-    assert.equal(merged.entregas[0].telefonoCliente, "3116426370");
+    assert.equal(merged.entregas[0].telefonoCliente, "3009998877");
   });
 
   it("la misma dirección escrita distinto cuenta como la misma", () => {
     const merged = mergeTripFields(draftWith(pin()), {
       origenRestaurante: null,
-      entregas: [fields({}), fields({ direccionEntrega: "conjunto residencial canelo cl 22 nte 9 cali 760046 valle del cauca co", ...JOSE })],
+      entregas: [fields({}), fields({ direccionEntrega: "conjunto residencial los almendros cl 15 nte 8 cali 760045 valle del cauca co", ...MARTA })],
     });
     assert.equal(merged.entregas.length, 1);
   });
@@ -56,11 +56,11 @@ describe("mergeTripFields", () => {
     const ana = { ...pin(), nombreCliente: "Ana Ruiz", detalleDireccion: "Torre 1 apto 101" };
     const merged = mergeTripFields(draftWith(ana), {
       origenRestaurante: null,
-      entregas: [fields({}), fields({ direccionEntrega: CANELO, ...JOSE })],
+      entregas: [fields({}), fields({ direccionEntrega: ALMENDROS, ...MARTA })],
     });
     assert.equal(merged.entregas.length, 2);
     assert.equal(merged.entregas[0].nombreCliente, "Ana Ruiz");
-    assert.equal(merged.entregas[1].nombreCliente, "Jose David");
+    assert.equal(merged.entregas[1].nombreCliente, "Marta Ríos");
   });
 
   it("otra dirección es otra entrega", () => {
@@ -92,17 +92,17 @@ describe("mergeTripFields", () => {
 
   it("tampoco sobrescribe la dirección de su misma entrega", () => {
     const merged = mergeTripFields(draftWith(pin()), { origenRestaurante: null, entregas: [fields({ direccionEntrega: "Torre 4 apto 902" })] });
-    assert.equal(merged.entregas[0].direccionEntrega, CANELO);
+    assert.equal(merged.entregas[0].direccionEntrega, ALMENDROS);
     assert.equal(merged.entregas[0].detalleDireccion, "Torre 4 apto 902");
   });
 
   it("la puerta repetida en las notas no se guarda como nota", () => {
     const merged = mergeTripFields(draftWith(pin()), {
       origenRestaurante: null,
-      entregas: [fields({ ...JOSE, notas: "Para Torre 4 apto 902" })],
+      entregas: [fields({ ...MARTA, notas: "Para Torre 4 apto 902" })],
     });
     assert.equal(merged.entregas[0].notas, null);
-    const kept = mergeTripFields(draftWith(pin()), { origenRestaurante: null, entregas: [fields({ ...JOSE, notas: "Dejar en portería" })] });
+    const kept = mergeTripFields(draftWith(pin()), { origenRestaurante: null, entregas: [fields({ ...MARTA, notas: "Dejar en portería" })] });
     assert.equal(kept.entregas[0].notas, "Dejar en portería");
   });
 
@@ -120,15 +120,15 @@ describe("mergeTripFields", () => {
   it("la dirección del pin reescrita en otro orden se conserva, con su punto", () => {
     const merged = mergeTripFields(draftWith(pin()), {
       origenRestaurante: null,
-      entregas: [fields({ direccionEntrega: "Cl. 22 Nte. #9, Conjunto Residencial Canelo, Cali", ...JOSE })],
+      entregas: [fields({ direccionEntrega: "Cl. 15 Nte. #8, Conjunto Residencial Los Almendros, Cali", ...MARTA })],
     });
-    assert.equal(merged.entregas[0].direccionEntrega, CANELO);
-    assert.equal(merged.entregas[0].direccionUbicada, CANELO, "no se vuelve a buscar en el mapa");
+    assert.equal(merged.entregas[0].direccionEntrega, ALMENDROS);
+    assert.equal(merged.entregas[0].direccionUbicada, ALMENDROS, "no se vuelve a buscar en el mapa");
   });
 
   it("una dirección corregida sí cambia", () => {
-    const merged = mergeTripFields(draftWith(pin()), { origenRestaurante: null, entregas: [fields({ direccionEntrega: "Cl 22 Nte # 9-45, Santa Mónica" })] });
-    assert.equal(merged.entregas[0].direccionEntrega, "Cl 22 Nte # 9-45, Santa Mónica");
+    const merged = mergeTripFields(draftWith(pin()), { origenRestaurante: null, entregas: [fields({ direccionEntrega: "Cl 15 Nte # 8-45, Santa Mónica" })] });
+    assert.equal(merged.entregas[0].direccionEntrega, "Cl 15 Nte # 8-45, Santa Mónica");
   });
 
   it("una entrega que el modelo olvide no se pierde", () => {
@@ -139,10 +139,10 @@ describe("mergeTripFields", () => {
 
 describe("removeDeliveries", () => {
   it("«solo es 1» con el pin en una y los datos en otra deja una sola, completa", () => {
-    const { draft, removed } = removeDeliveries(draftWith(pin(), { ...pin(), ...JOSE }), [2]);
+    const { draft, removed } = removeDeliveries(draftWith(pin(), { ...pin(), ...MARTA }), [2]);
     assert.equal(removed, true);
     assert.equal(draft.entregas.length, 1);
-    assert.equal(draft.entregas[0].nombreCliente, "Jose David");
+    assert.equal(draft.entregas[0].nombreCliente, "Marta Ríos");
     assert.equal(draft.entregas[0].listoEnMinutos, 10);
   });
 
@@ -151,7 +151,7 @@ describe("removeDeliveries", () => {
     const { draft } = removeDeliveries(draftWith(pin(), pance, pin("Cra 98 # 45-30")), [2]);
     assert.deepEqual(
       draft.entregas.map((d) => d.direccionEntrega),
-      [CANELO, "Cra 98 # 45-30"],
+      [ALMENDROS, "Cra 98 # 45-30"],
     );
     assert.equal(draft.entregas[0].nombreCliente, null);
   });
@@ -164,7 +164,7 @@ describe("removeDeliveries", () => {
   });
 
   it("no cambia el borrador que recibe", () => {
-    const base = draftWith(pin(), { ...pin(), ...JOSE });
+    const base = draftWith(pin(), { ...pin(), ...MARTA });
     removeDeliveries(base, [2]);
     assert.equal(base.entregas.length, 2);
     assert.equal(base.entregas[0].nombreCliente, null);

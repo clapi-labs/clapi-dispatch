@@ -18,6 +18,9 @@ umask 007
 
 DIR="${DEPLOY_DIR:-/opt/dispatch}"
 REPO="${DEPLOY_REPO:-clapi-labs/clapi-dispatch}"
+# Llave de solo lectura del repositorio (dueño root, grupo docker, 640). Ver deploy/README.md.
+DEPLOY_KEY="${DEPLOY_KEY:-$DIR/github-deploy-key}"
+GITHUB_HOST_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 REQUEST="${SSH_ORIGINAL_COMMAND:-$*}"
 
 read -r ACTION TAG EXTRA <<< "$REQUEST"
@@ -45,8 +48,24 @@ echo "==> Desplegando ${TAG:0:12} (antes: ${PREVIOUS:0:12})"
 # 1) Archivos de ESE commit, validados antes de reemplazar nada.
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/caddy"
+if [ -f "$DEPLOY_KEY" ]; then
+  # Repositorio privado: se baja el commit con la deploy key (solo lectura, solo
+  # este repositorio). La huella de GitHub va fija: https://api.github.com/meta
+  echo "github.com $GITHUB_HOST_KEY" > "$STAGE/known_hosts"
+  export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o UserKnownHostsFile=$STAGE/known_hosts -o StrictHostKeyChecking=yes"
+  git init -q "$STAGE/repo"
+  git -C "$STAGE/repo" fetch -q --depth 1 "git@github.com:$REPO.git" "$TAG" \
+    || { echo "No se pudo bajar $TAG de GitHub con la deploy key." >&2; exit 1; }
+  for file in compose.yml caddy/Caddyfile; do
+    git -C "$STAGE/repo" show "$TAG:deploy/$file" > "$STAGE/$file"
+  done
+else
+  # Sin deploy key: solo sirve mientras el repositorio sea público.
+  for file in compose.yml caddy/Caddyfile; do
+    curl -fsSL --retry 3 "https://raw.githubusercontent.com/$REPO/$TAG/deploy/$file" -o "$STAGE/$file"
+  done
+fi
 for file in compose.yml caddy/Caddyfile; do
-  curl -fsSL --retry 3 "https://raw.githubusercontent.com/$REPO/$TAG/deploy/$file" -o "$STAGE/$file"
   [ -s "$STAGE/$file" ] || { echo "No se pudo descargar $file." >&2; exit 1; }
 done
 IMAGE_TAG="$TAG" docker compose --env-file .env -f "$STAGE/compose.yml" config -q
