@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { authDisabled, SESSION_COOKIE, verifySessionToken } from "@/lib/session";
+import { authDisabled, isSimulatorPath, SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /**
  * Todo el portal exige sesión salvo la pantalla de login y su API. Las
@@ -9,7 +9,10 @@ import { authDisabled, SESSION_COOKIE, verifySessionToken } from "@/lib/session"
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (authDisabled() || verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value) !== null) {
+  // El simulador pide sesión aunque el login esté apagado (AUTH_DISABLED): desde
+  // ahí se crean pedidos y se reinicia lo simulado.
+  const loginOptional = authDisabled() && !isSimulatorPath(pathname);
+  if (loginOptional || verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value) !== null) {
     return NextResponse.next();
   }
 

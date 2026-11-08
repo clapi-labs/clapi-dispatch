@@ -3,9 +3,10 @@ import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { findCourier, handleCourier } from "@/bot/courier";
-import { DELIVER_BUTTON_PREFIX, SEEN_BUTTON_PREFIX } from "@/bot/notify";
+import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
+import { simulatedSender } from "@/simulator/inbound";
 import { markRead, markReadAndTyping } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
@@ -14,7 +15,8 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  *
  * - **Motorizados** (su teléfono está en la flota): `bot/courier.ts`. Se les
  *   responde en el acto: tocan botones y esperan la confirmación.
- * - **Restaurantes** (cualquier otro número): `bot/order.ts`. Se espera un
+ * - **Restaurantes** (cualquier otro número): `bot/order.ts`, que los reconoce
+ *   por su número y su nombre (`bot/restaurant-identity.ts`). Se espera un
  *   momento antes de responder, como haría una persona.
  */
 
@@ -65,21 +67,26 @@ function content(message: IncomingMessage): schema.IncomingPayload {
   }
 }
 
-export async function handleIncoming(message: IncomingMessage) {
+export async function handleIncoming(incoming: IncomingMessage) {
+  // El motorizado va primero: sus botones tienen que funcionar
+  // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
+  // se le responde, y un «escribiendo…» sin respuesta confunde.
+  const sender = await findCourier(incoming.phone);
+  // Simulador: un número de prueba escribe en nombre de la moto que controla.
+  const actingFor = sender ? await simulatedSender(sender, incoming) : null;
+  const courier = actingFor ?? sender;
+  const message: IncomingMessage = actingFor ? { ...incoming, phone: actingFor.phone, profileName: null } : incoming;
+
   const conversation = await upsertConversationOnInbound(message.phone, message.profileName);
   const messageId = await recordMessage(conversation.id, "restaurant", asText(message), {
     waMessageId: message.waMessageId,
     incoming: asPayload(message),
   });
 
-  // El motorizado va primero: su «Terminé el servicio» tiene que funcionar
-  // siempre, aunque la central haya tomado su chat. Solo leído: casi nunca
-  // se le responde, y un «escribiendo…» sin respuesta confunde.
-  const courier = await findCourier(message.phone);
-  // Pausa general: el bot no le responde a nadie. Solo sigue funcionando el
-  // «Vi el pedido» y «Terminé el servicio», para cerrar lo que ya está en la calle.
+  // Pausa general: el bot no le responde a nadie. Solo sigue funcionando
+  // lo que marca el motorizado con sus botones, para cerrar lo que ya está en la calle.
   if ((await getBusinessState()).paused) {
-    const delivering = message.kind === "button" && (message.buttonId.startsWith(DELIVER_BUTTON_PREFIX) || message.buttonId.startsWith(SEEN_BUTTON_PREFIX));
+    const delivering = message.kind === "button" && parseCourierButton(message.buttonId) !== null;
     if (!(courier && delivering)) return;
   }
   if (courier) {

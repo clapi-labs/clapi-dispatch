@@ -30,7 +30,7 @@ export async function callBot(path: string, body: unknown): Promise<{ ok: boolea
 }
 
 /** Avisos por WhatsApp de viajes que cambiaron de estado desde el portal. */
-export function notifyBot(change: { assigned?: number[]; delivered?: number[] }) {
-  if (!change.assigned?.length && !change.delivered?.length) return Promise.resolve({ ok: true });
+export function notifyBot(change: { assigned?: number[]; delivered?: number[]; unassigned?: { tripId: number; courierId: number }[] }) {
+  if (!change.assigned?.length && !change.delivered?.length && !change.unassigned?.length) return Promise.resolve({ ok: true });
   return callBot("/api/internal/notify", change);
 }

@@ -9,6 +9,7 @@
     "./db/schema": "./src/db/schema.ts",
     "./domain/extraction": "./src/domain/extraction.ts",
     "./domain/coordinates": "./src/domain/coordinates.ts",
+    "./domain/phase": "./src/domain/phase.ts",
     "./auth/password": "./src/auth/password.ts"
   },
   "scripts": {

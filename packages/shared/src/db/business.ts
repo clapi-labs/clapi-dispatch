@@ -8,8 +8,8 @@ export const BUSINESS_KEY = "business";
 /**
  * La pausa general de la agencia (por lluvia, por ejemplo). En pausa el bot
  * no le responde a nadie ni toma pedidos nuevos; lo que ya está en curso
- * sigue: el despacho asigna los pendientes, los avisos salen y el
- * «Terminé el servicio» del motorizado funciona. Las conversaciones quedan
+ * sigue: el despacho asigna los pendientes, los avisos salen y lo que marca
+ * el motorizado funciona. Las conversaciones quedan
  * como un WhatsApp normal para la central.
  */
 export type BusinessState = { paused: boolean; pausedAt: string | null };

@@ -6,6 +6,7 @@ import {
   fullAddress,
   mergeTripFields,
   missingFields,
+  namedAsDestination,
   normalizeDraft,
   type DeliveryDraft,
   type DoubtfulField,
@@ -13,10 +14,12 @@ import {
   type OrderDraft,
   type OrderFieldKey,
 } from "@dispatch/shared";
-import { assignNextCourier, getBotConfig, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
+import { getBotConfig, getEngineConfig, linkRestaurantPhone, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
+import { dispatchNewTrip } from "@/dispatch/engine";
 import { notifyAssigned } from "@/bot/notify";
+import { recognizeRestaurant } from "@/bot/restaurant-identity";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
@@ -41,6 +44,8 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  */
 
 export const CONFIRM_BUTTON_ID = "confirmar";
+export const IDENTITY_YES_BUTTON_ID = "identidad_si";
+export const IDENTITY_NO_BUTTON_ID = "identidad_no";
 
 const FIELD_LABEL: Record<OrderFieldKey, string> = {
   origenRestaurante: "dónde se recoge",
@@ -86,6 +91,13 @@ async function escalateLocationDown(ctx: Context, draft: OrderDraft) {
     failedAttempts: 0,
   });
   await say(ctx.conversation.id, ctx.message.phone, LOCATION_DOWN_MESSAGE, { replyTo: draft.mensajeOrigen });
+}
+
+/** Algo no cuadra con quién escribe: lo resuelve la central. El borrador se
+ *  guarda, para retomar el pedido cuando el bot vuelva a este chat. */
+async function escalateIdentity(ctx: Context, draft: OrderDraft, reason: string) {
+  await updateConversation(ctx.conversation.id, { botPaused: true, escalationReason: reason, draft, failedAttempts: 0 });
+  await say(ctx.conversation.id, ctx.message.phone, ESCALATION_MESSAGE);
 }
 
 async function escalate(ctx: Context, reason: string) {
@@ -283,6 +295,19 @@ export async function handleRestaurant(ctx: Context) {
   let draft: OrderDraft = structuredClone(known);
   let confirms = false;
   let fromImage = false;
+  let saidName: string | null = null;
+
+  // Se le preguntó si es el restaurante de este número. Solo un «no» lo pasa a
+  // la central; cualquier otra respuesta sigue con el pedido y no se repite.
+  const answersIdentity = !!known.preguntaIdentidad;
+  if (answersIdentity) {
+    draft.preguntaIdentidad = false;
+    const denied = message.kind === "button" ? message.buttonId === IDENTITY_NO_BUTTON_ID : message.kind === "text" && /^\s*no\b/i.test(message.text);
+    if (denied) {
+      await escalateIdentity(ctx, draft, `Escribe desde el número de ${restaurant?.name ?? "un restaurante registrado"}, pero dice que no es ese restaurante.`);
+      return;
+    }
+  }
 
   // 1. Lo que trae el mensaje.
   if (message.kind === "button") {
@@ -290,12 +315,16 @@ export async function handleRestaurant(ctx: Context) {
       await pickTrip({ conversation, phone: message.phone }, message.buttonId, known);
       return;
     }
-    if (message.buttonId !== CONFIRM_BUTTON_ID) return;
-    if (!draft.entregas.some((d) => d.cotizacion)) {
-      await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
-      return;
+    if (message.buttonId === IDENTITY_YES_BUTTON_ID) {
+      if (!answersIdentity) return;
+    } else {
+      if (message.buttonId !== CONFIRM_BUTTON_ID) return;
+      if (!draft.entregas.some((d) => d.cotizacion)) {
+        await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
+        return;
+      }
+      confirms = true;
     }
-    confirms = true;
   } else if (message.kind === "location") {
     // El pin de WhatsApp: coordenadas exactas, sin pagar geocodificación. Va
     // a la última entrega si todavía no está ubicada; si no, es una nueva.
@@ -328,6 +357,9 @@ export async function handleRestaurant(ctx: Context) {
     // código («¿ya llegó el B-12?»).
     const quoted =
       (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, message.text));
+
+    saidName = extraction.fields.nombreRestaurante ?? null;
+    if (saidName && namedAsDestination(message.text, saidName)) saidName = null;
 
     // Consultas: no cambian el pedido en curso, solo se responden.
     if (extraction.query === "estado") {
@@ -393,6 +425,42 @@ export async function handleRestaurant(ctx: Context) {
   } else {
     await say(conversation.id, message.phone, "Por ahora leo mensajes de texto y ubicaciones 🙏 ¿Me escribes la dirección de entrega?");
     return;
+  }
+
+  // Quién escribe: su número y su nombre (docs/BOT.md, «Reconocer al restaurante»).
+  const recognition = await recognizeRestaurant({ byPhone: restaurant, saidName, profileName: conversation.displayName, reviewed: draft.nombresRevisados ?? [] });
+  if (recognition.reviewed) draft.nombresRevisados = [...(draft.nombresRevisados ?? []), recognition.reviewed];
+  const identity = recognition.identity;
+  if (identity.kind === "confirm") {
+    draft.preguntaIdentidad = true;
+    await save(ctx, draft);
+    await say(conversation.id, message.phone, `¿Hablo con ${recognition.restaurant!.name}?`, {
+      buttons: [
+        { id: IDENTITY_YES_BUTTON_ID, title: "Sí" },
+        { id: IDENTITY_NO_BUTTON_ID, title: "No" },
+      ],
+    });
+    return;
+  }
+  if (identity.kind === "other-number") {
+    await escalateIdentity(ctx, draft, `Escribe desde un número nuevo con el nombre de ${recognition.restaurant!.name}, que tiene otro número registrado.`);
+    return;
+  }
+  if (identity.kind === "link") {
+    const linked = await linkRestaurantPhone(identity.restaurantId, message.phone);
+    if (!linked) {
+      await escalateIdentity(ctx, draft, `Parece ser ${recognition.restaurant!.name}, pero no se le pudo guardar este número: ya es de otro restaurante.`);
+      return;
+    }
+    restaurant = linked;
+    // Lo que se haya cotizado era desde otra recogida.
+    draft.origenRestaurante = linked.name;
+    draft.ubicacionRecogida = null;
+    draft.recogidaUbicada = null;
+    draft.entregas.forEach((d) => Object.assign(d, { cotizacion: null, validadaPorAsesor: false }));
+    draft.etapa = "recibiendo";
+    confirms = false;
+    await say(conversation.id, message.phone, `📌 Te reconocí como ${linked.name}. Recogemos en ${linked.knownPickupAddress}. Si no es así, avísale a la central.`);
   }
 
   const located = (d: OrderDraft) => d.entregas.filter((e) => e.ubicacionEntrega).length;
@@ -576,12 +644,16 @@ export async function handleRestaurant(ctx: Context) {
     );
     // El restaurante siempre queda confirmado y con un tiempo, haya moto
     // libre o no: la espera por eficiencia del despacho no es suya. Con moto
-    // libre, un solo mensaje con quién va; sin moto, la confirmación sale ya
+    // ya, un solo mensaje con quién va; sin moto, la confirmación sale ya
     // y quién va llega después (notifyAssigned).
-    if (await assignNextCourier(trip.id)) {
+    const engineLeads = (await getEngineConfig()).mode === "auto";
+    if (await dispatchNewTrip(trip.id)) {
       await notifyAssigned(trip.id, { atConfirmation: true });
     } else {
-      const estimate = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier: null });
+      // Con el engine, esperar es a propósito (que la moto llegue justo cuando
+      // la comida esté lista), no una demora por la que pedir disculpas.
+      const courier = engineLeads ? { lat: null, lng: null, locationUpdatedAt: null } : null;
+      const estimate = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier });
       await say(conversation.id, message.phone, confirmedText(trip.code, estimate, null, cop(trip.deliveryFee)), {
         replyTo: trip.sourceWaMessageId,
         tripId: trip.id,

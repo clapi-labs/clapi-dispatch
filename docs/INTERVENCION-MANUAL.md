@@ -1,6 +1,6 @@
 # Intervención manual
 
-Estado: **por construir.** Lo que ya existe hoy: la novedad del motorizado (lo pausa y pasa su chat a la central, ver [BOT.md](BOT.md), «Motorizados») y tomar o soltar un chat desde el portal.
+Estado: **en parte construido.** Ya existen la novedad del motorizado (lo pausa y pasa su chat a la central, ver [BOT.md](BOT.md), «Motorizados»), tomar o soltar un chat desde el portal, marcar la entrega y asignar o pasar un pedido sin recoger a otra moto.
 
 ## La idea
 
@@ -35,7 +35,8 @@ En el portal, cada motorizado y cada pedido tienen un menú.
 |---|---|
 | Reasignar | Elige otro motorizado (ver abajo) y se le manda la ficha; al anterior se le avisa que ya no lo lleva |
 | Devolver a la cola | Lo toma el siguiente libre, automático |
-| Marcar terminado | Si el motorizado no pudo tocar el botón |
+| Marcar entrega | Si el motorizado no pudo marcarla: dónde quedó y si debe volver |
+| Ya volvió | Termina el servicio de quien estaba de regreso |
 | Editar datos | Dirección, teléfono, notas; si hay moto, se le avisa citando su ficha |
 | Cancelar | Pide el motivo y qué se cobra (ver abajo) |
 | Tomar el chat del restaurante | Le escribe directamente |

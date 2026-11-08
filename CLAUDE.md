@@ -18,12 +18,15 @@ Los mensajes de commit y de PR se escriben como si los hubiera escrito el equipo
 
 ## Comandos
 
-Monorepo con npm workspaces (Node según `.nvmrc`). No hay suite de tests; la verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`).
+Monorepo con npm workspaces (Node según `.nvmrc`). La verificación es lint + tipos + build + migraciones (lo mismo que corre CI en `.github/workflows/ci.yml`), más las pruebas unitarias de `npm test`.
 
 ```bash
 docker compose up --build          # Postgres + migraciones + bot (:3001) + portal (:3002)
 npm run dev:bot / dev:portal       # una app sola con next dev
 npm run bot:chat                   # conversar con el bot desde la terminal (WhatsApp simulado; necesita DATABASE_URL y OPENAI_API_KEY en .env.local)
+npm run bot:gps                    # motos de prueba que se mueven y reportan GPS al bot local (solo contra una base local)
+npm run bot:eval:restaurantes      # compara nombres de restaurantes contra OpenAI de verdad (gasta la llave; no va en CI)
+npm test                           # pruebas unitarias (*.test.ts en packages/shared)
 npm run lint                       # eslint en cada workspace
 npm run typecheck                  # tsc --build (project references)
 npm run build                      # next build de ambas apps (no necesita secretos)
@@ -40,15 +43,16 @@ Cambios de esquema: editar `schema.ts`, correr `db:generate` y commitear la migr
 
 ## Arquitectura
 
-- **`packages/shared` (`@dispatch/shared`)**: esquema Drizzle (Postgres), cliente de base, migraciones, CLIs de seed/usuarios y el dominio. `src/db/dispatch-queue.ts` contiene la asignación actual de viajes (`assignPendingTrips`); `src/domain/dispatch/` es el pipeline de scoring (haversine, ETA, celdas H3, ofertas). Ambas apps lo importan.
+- **`packages/shared` (`@dispatch/shared`)**: esquema Drizzle (Postgres), cliente de base, migraciones, CLIs de seed/usuarios y el dominio. `src/db/dispatch-queue.ts` contiene la asignación de viajes (la cola, `assignPendingTrips`, y lo que comparte con el engine); `src/domain/phase.ts` calcula en qué va cada servicio; `src/domain/dispatch/` es el pipeline de scoring (haversine, ETA, celdas H3, ofertas). Ambas apps lo importan.
 - **`apps/bot`**: Next.js solo API. Recibe el webhook de WhatsApp (`api/webhook/whatsapp`), normaliza y verifica (`services/whatsapp`), extrae pedidos con OpenAI (`services/openai/extract.ts`) y maneja la conversación (`bot/intake.ts`). Es el **único** con credenciales de WhatsApp. Expone `/api/internal/{send,notify,tick}` protegidos con el header `x-internal-secret` (`INTERNAL_SECRET`).
 - **`apps/portal`**: tablero del despachador (Next.js + Tailwind) con login por sesión firmada (`SESSION_SECRET`, `lib/session.ts`, `proxy.ts`). Lee y escribe la base directamente, pero para enviar WhatsApp llama al bot vía `lib/bot.ts`; si el envío falla, el cambio de estado igual se guarda.
+- **Simulador de staging** (`SIMULATOR_ENABLED=1`, solo staging): motos simuladas en `couriers`, `scripts/simulador.mjs` las mueve y reporta por `/api/gps`, el bot desvía sus mensajes a números de prueba (`apps/bot/src/simulator/`) y el portal tiene el mapa en `/simulador`. Ver `docs/OPERACION.md`, «Simulador».
 - **`scripts/worker.mjs`**: sin dependencias; cada 5 s hace `POST /api/internal/tick` al bot, que asigna viajes pendientes y notifica. El tick debe ser seguro en paralelo (los viajes se reclaman con UPDATE condicional).
-- **Pendiente**: servicio `engine` (algoritmo de asignación externo, `POST /evaluar`, modos `ASSIGNMENT_MODE = queue|shadow|auto` en la tabla `settings`). Ver `docs/ALGORITMO.md`.
+- **`apps/engine`**: algoritmo de asignación (`POST /evaluar`). `settings.engine_config.mode`: `queue`, `shadow` o `auto`, donde asigna él y la cola no se usa. Ver `docs/ALGORITMO.md`. El flujo del motorizado, sus estados y el GPS: `docs/FLUJO-DOMICILIARIO.md`.
 
 ## Despliegue e infraestructura
 
-- VPS Hetzner (OpenTofu en `infra/`), Caddy delante (`deploy/caddy/Caddyfile`); solo `/api/webhook/whatsapp` y `/api/health` del bot son públicos.
+- VPS Hetzner (OpenTofu en `infra/`), Caddy delante (`deploy/caddy/Caddyfile`); solo `/api/webhook/whatsapp`, `/api/health` y `/api/gps` del bot son públicos.
 - `images.yml` publica `ghcr.io/clapi-labs/dispatch-*:<hash>` en cada push a `dev`/`main`; se despliega por hash con `deploy/deploy.sh` (nunca `latest`). Rama `dev` → staging; `main` → producción, solo vía PR desde `dev`.
 - Bot: `docs/BOT.md` (principios y flujo) y `docs/CONTRATO-BOT-DESPACHO.md` (interfaz con el despacho) y `docs/CONVERSACIONES-REALES.md` (ejemplos reales del cliente, base de los casos de prueba).
 - Documentación: `docs/INFRAESTRUCTURA.md` (arquitectura y estado), `docs/OPERACION.md` (servidor, secretos, diagnóstico), `docs/ALGORITMO.md`.

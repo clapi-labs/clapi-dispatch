@@ -26,6 +26,7 @@ type Row = {
   trip: Trip;
   courierName: string | null;
   deliveredAt: Date | null;
+  deliveryPlace: "customer" | "gate" | null;
 };
 
 async function load(conversationId: number, tripId: number | null): Promise<Row[]> {
@@ -35,6 +36,7 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
       trip: schema.trips,
       courierName: schema.assignments.courierName,
       deliveredAt: schema.assignments.deliveredAt,
+      deliveryPlace: schema.assignments.deliveryPlace,
     })
     .from(schema.trips)
     .leftJoin(schema.assignments, eq(schema.assignments.tripId, schema.trips.id))
@@ -180,7 +182,7 @@ function describe(row: Row, withAddress: boolean) {
       return `✅ Servicio motorizado confirmado para el pedido ${trip.code}${where}: va ${courier}.\n\n${COURIER_CONTACT_NOTE}`;
     case "delivered":
       // Sin punto final: la hora ya termina en "p. m.".
-      return `✅ ${trip.code}${where}: entregado${row.deliveredAt ? ` a las ${time(row.deliveredAt)}` : ""}`;
+      return `✅ ${trip.code}${where}: ${row.deliveryPlace === "gate" ? "quedó en portería" : "entregado"}${row.deliveredAt ? ` a las ${time(row.deliveredAt)}` : ""}`;
     default:
       return `❌ ${trip.code}${where}: cancelado.`;
   }

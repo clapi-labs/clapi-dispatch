@@ -15,8 +15,8 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | Despliegue automático desde GitHub | **Pendiente** (hoy se despliega a mano, ver `OPERACION.md`) |
 | Servidor de producción (separado de staging) | Pendiente |
 | Backups | Pendiente (desactivados a propósito por ahora) |
-| Motor de asignación (`engine`) | En modo sombra: el bot lo llama en cada tick y guarda a quién habría asignado (`engine_evaluations`); la cola sigue asignando. Sin GPS todavía no elige a nadie |
-| GPS (Traccar) | Pendiente |
+| Motor de asignación (`engine`) | En modo sombra: el bot lo llama en cada tick y guarda a quién habría asignado (`engine_evaluations`); la cola sigue asignando. El modo `auto`, donde asigna él, está listo y solo se ha probado en local. Sin GPS no elige a nadie |
+| GPS (Traccar Client) | Receptor en el bot (`/api/gps`), probado con posiciones simuladas. Falta instalar la app en los celulares y la autorización por escrito |
 
 ## Arquitectura de un entorno
 
@@ -211,7 +211,7 @@ sequenceDiagram
     else nuevo
         B->>DB: guarda el mensaje en la conversación
         alt el teléfono es de un motorizado
-            B->>DB: botón «Entregado»: cierra el viaje y libera la moto
+            B->>DB: marca la entrega: cierra el viaje y libera la moto, salvo que deba volver
             B->>M: avisa al restaurante (y asigna un pendiente si lo hay)
         else chat pausado por un operador
             B->>B: no responde
@@ -241,7 +241,7 @@ stateDiagram-v2
     [*] --> pending: pedido completo, sin moto libre
     [*] --> en_route: pedido completo, hay moto libre
     pending --> en_route: el worker (cada 5 s) o una moto que se libera
-    en_route --> delivered: botón «Entregado» del motorizado o el portal
+    en_route --> delivered: entrega marcada por el motorizado o el portal
     delivered --> [*]
 ```
 

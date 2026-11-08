@@ -88,8 +88,10 @@ El engine no guarda nada: todo lo que necesita lo lee el despacho de la base. El
 | Ubicación del restaurante | `restaurants.known_pickup_location` | Una vez, al registrar el restaurante |
 | Ubicación de la entrega | `trips.delivery_location` | Al crear el viaje |
 | Hora en que la comida está lista | `trips.ready_at` | Al crear el viaje |
-| Recogido | Estado del viaje | Cuando el motorizado toca «Recogido» |
-| Entregado | `assignments.delivered_at` | Cuando el motorizado toca «Entregado» |
+| Recogido | `assignments.picked_up_at` | Cuando el motorizado toca «Recogí» |
+| Entregado | `assignments.delivered_at` y `delivery_place` | Cuando el motorizado marca la entrega |
+| De regreso | `assignments.return_started_at` | Cuando marca la entrega con «vuelvo» |
+| Terminado | `assignments.finished_at` | Al marcar la entrega con «terminé» o al tocar «Ya volví» |
 | Conexión del motorizado | `couriers.status` y la hora | Cuando escribe para conectarse |
 
 El despacho se encarga del resto: la `cuota`, el `plan` de cada asignación y `disponible_desde_ts`.

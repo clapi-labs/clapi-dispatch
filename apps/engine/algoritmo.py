@@ -9,7 +9,7 @@ contrato (docs/ALGORITMO.md) están en evaluar_peticion.
 import math
 from datetime import datetime, timedelta, timezone
 
-ENGINE_VERSION = "2026.10.1"
+ENGINE_VERSION = "2026.11.1"
 
 RADIO_TIERRA_KM = 6371.0
 # Colombia no tiene horario de verano: UTC−5 todo el año, sin depender de tzdata en la imagen.
@@ -110,7 +110,9 @@ def recorrer(pos, paradas, tiempo):
     """Recorre las paradas en orden. Devuelve la hora de llegada a cada una y los minutos en movimiento.
 
     Tipos de parada: "R" recoger, "C" entregar, "W" esperar a un cliente que no contesta,
-    "V" devolver al restaurante un pedido no entregado. Si la parada tiene t_listo (recoger
+    "V" devolver al restaurante un pedido no entregado, "B" volver a recogida después de entregar
+    (por el cambio o el datáfono, por ejemplo): no impide recibir otro pedido, pero su tiempo cuenta
+    en la ruta. Si la parada tiene t_listo (recoger
     o esperar al cliente), la moto no sigue antes de ese minuto.
     """
     reloj = viaje = 0.0
@@ -127,7 +129,8 @@ def recorrer(pos, paradas, tiempo):
 
 
 def describir(paradas):
-    nombres = {"R": "Recoge", "C": "Entrega", "W": "Espera al cliente de", "V": "Devuelve al restaurante"}
+    nombres = {"R": "Recoge", "C": "Entrega", "W": "Espera al cliente de", "V": "Devuelve al restaurante",
+               "B": "Vuelve a recogida de"}
     return " → ".join(f"{nombres[p['tipo']]} {'nuevo' if p['pedido'] is None else '#' + str(p['pedido'])}"
                       for p in paradas)
 
@@ -204,7 +207,8 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
             excluir("fuera_radio", f"Fuera del radio de {radio_km:g} km")
             continue
         paradas = m["paradas"]
-        en_curso = len({p["pedido"] for p in paradas})
+        # El regreso no ocupa lugar en la moto: lo ya entregado no cuenta como pedido.
+        en_curso = len({p["pedido"] for p in paradas if p["tipo"] != "B"})
         if any(p["tipo"] in "WV" for p in paradas):
             # Pendiente de definir con el cliente: qué pasa si una moto que espera a un cliente que no
             # contesta (o que vuelve a devolver ese pedido) recibe otro pedido. Mientras tanto, no participa.

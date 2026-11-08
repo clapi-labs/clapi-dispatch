@@ -87,11 +87,11 @@ const trips: Trip[] = [
   trip({ status: "pending", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Cra 66 #10-45, El Limonar", createdAt: ago(0.6), valueToCollect: 52_000 }),
   trip({ status: "pending", originRestaurantName: "Sushi Cali", deliveryAddress: "Calle 5 #38-20, Apto 502, Torre B", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(3.5), valueToCollect: 88_000, deliveryFee: 7_000 }),
   // En ruta: uno normal, uno que ya va largo (amarillo) y uno muy largo (rojo).
-  trip({ status: "en_route", originRestaurantName: "Donde Lucho", deliveryAddress: "Calle 18 #122-35, Valle del Lili", createdAt: ago(20), assignedAt: ago(9), ...courierOf(1) }),
-  trip({ status: "en_route", originRestaurantName: "La Brasa Roja", deliveryAddress: "Av. 6N #28-10, Granada", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(40), assignedAt: ago(28), valueToCollect: 64_500, deliveryFee: 8_000, ...courierOf(4) }),
+  trip({ status: "en_route", originRestaurantName: "Donde Lucho", deliveryAddress: "Calle 18 #122-35, Valle del Lili", createdAt: ago(20), assignedAt: ago(9), seenAt: ago(8), ...courierOf(1) }),
+  trip({ status: "en_route", originRestaurantName: "La Brasa Roja", deliveryAddress: "Av. 6N #28-10, Granada", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(40), assignedAt: ago(28), seenAt: ago(26), pickedUpAt: ago(14), valueToCollect: 64_500, deliveryFee: 8_000, ...courierOf(4) }),
   // Entregados hoy.
   trip({ status: "delivered", originRestaurantName: "Donde Lucho", deliveryAddress: "Cra 100 #11-60, Ciudad Jardín", createdAt: ago(130), assignedAt: ago(125), deliveredAt: ago(104), ...courierOf(1) }),
-  trip({ status: "delivered", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Calle 9 #43-12, San Fernando", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(160), assignedAt: ago(155), deliveredAt: ago(131), valueToCollect: 39_000, ...courierOf(2) }),
+  trip({ status: "delivered", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Calle 9 #43-12, San Fernando", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(160), assignedAt: ago(155), deliveredAt: ago(131), deliveryPlace: "gate", valueToCollect: 39_000, ...courierOf(2) }),
   trip({ status: "delivered", originRestaurantName: "Sushi Cali", deliveryAddress: "Cra 4 #12-41, Centro", createdAt: ago(200), assignedAt: ago(196), deliveredAt: ago(170), valueToCollect: 72_000, deliveryFee: 7_000, ...courierOf(3) }),
   trip({ status: "delivered", originRestaurantName: "La Brasa Roja", deliveryAddress: "Calle 70N #2A-30, Chipichape", createdAt: ago(250), assignedAt: ago(245), deliveredAt: ago(220), valueToCollect: 56_000, deliveryFee: 8_000, ...courierOf(4) }),
 ];
@@ -255,8 +255,22 @@ async function handle(method: string, path: string, body: string | null): Promis
   if ((m = path.match(/^\/api\/trips\/(\d+)\/deliver$/))) {
     const t = trips.find((x) => x.id === Number(m![1]));
     if (t && t.status === "en_route") {
+      const now = new Date().toISOString();
       t.status = "delivered";
-      t.deliveredAt = t.updatedAt = new Date().toISOString();
+      t.deliveredAt = t.updatedAt = now;
+      t.deliveryPlace = data.place === "gate" ? "gate" : "customer";
+      t.returnStartedAt = data.returning ? now : null;
+      t.finishedAt = data.returning ? null : now;
+      const c = couriers.find((x) => x.id === t.courierId);
+      if (c && !data.returning) c.status = "available";
+    }
+    return json({ ok: true });
+  }
+  if (path.match(/^\/api\/trips\/\d+\/assign$/)) return json({ ok: true });
+  if ((m = path.match(/^\/api\/trips\/(\d+)\/finish$/))) {
+    const t = trips.find((x) => x.id === Number(m![1]));
+    if (t && t.returnStartedAt && !t.finishedAt) {
+      t.finishedAt = t.updatedAt = new Date().toISOString();
       const c = couriers.find((x) => x.id === t.courierId);
       if (c) c.status = "available";
     }

@@ -1,10 +1,10 @@
+import { orderStops, stopsForPhase, type RouteStop, type StopKind, type TripPhase } from "@dispatch/shared";
+
 /**
  * Arma la petición a `POST /evaluar` (contrato en docs/ALGORITMO.md) con lo
  * que hay en la base. Pura: sin red ni base, para poder probarla sola.
  *
  * Lo que la base todavía no tiene se aproxima, y se dice dónde:
- * - Sin botón «Recogido», todo viaje en curso cuenta como por recoger (R y C).
- * - Sin el `plan` guardado, las paradas van en el orden en que se asignaron.
  * - Sin la cuota 1/N del turno, la cuota es el promedio de entregas del grupo.
  */
 
@@ -17,6 +17,9 @@ export type SnapshotTrip = {
   readyAt: Date | null;
 };
 
+/** Un viaje que el motorizado lleva encima: qué le falta depende de la fase. */
+export type SnapshotActiveTrip = SnapshotTrip & { phase: TripPhase; customerWaitEndsAt: Date | null };
+
 export type SnapshotCourier = {
   id: number;
   lat: number | null;
@@ -26,12 +29,14 @@ export type SnapshotCourier = {
   shiftStartedAt: Date | null;
   lastDeliveredAt: Date | null;
   /** Los viajes que lleva, en el orden en que se le asignaron. */
-  activeTrips: SnapshotTrip[];
+  activeTrips: SnapshotActiveTrip[];
+  /** El orden que dejó su última asignación. */
+  route: RouteStop[] | null;
 };
 
-export type EngineSettings = { radioKm: number; multipedido: boolean; sinSenalMin: number };
+export type EngineSettings = { radioKm: number; multipedido: boolean; sinSenalMin: number; asumirRegreso: boolean };
 
-type Parada = { tipo: "R" | "C"; punto: [number, number]; pedido: number; listo_ts?: number };
+type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
 
 export type EvaluarRequest = {
   ahora: number;
@@ -55,12 +60,19 @@ export type EvaluarRequest = {
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const point = ({ lat, lng }: LatLng): [number, number] => [lat, lng];
 
-function paradasDe(trips: SnapshotTrip[]): Parada[] {
-  return trips.flatMap((t) => {
-    if (!t.pickupLocation || !t.deliveryLocation) return []; // sin ubicación no se puede ubicar en la ruta
-    const recoger: Parada = { tipo: "R", punto: point(t.pickupLocation), pedido: t.id };
-    if (t.readyAt) recoger.listo_ts = seconds(t.readyAt);
-    return [recoger, { tipo: "C", punto: point(t.deliveryLocation), pedido: t.id }];
+function paradasDe(c: SnapshotCourier, trips: SnapshotActiveTrip[], asumirRegreso: boolean): Parada[] {
+  // Sin ubicación no se puede ubicar en la ruta.
+  const located = trips.filter((t) => t.pickupLocation && (t.deliveryLocation || t.phase === "returning" || t.phase === "undelivered"));
+  const stops = orderStops(
+    c.route,
+    located.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase, asumirRegreso) })),
+  );
+  return stops.map(({ tipo, pedido }) => {
+    const t = located.find((x) => x.id === pedido)!;
+    const punto = point(tipo === "C" || tipo === "W" ? t.deliveryLocation! : t.pickupLocation!);
+    if (tipo === "R" && t.readyAt) return { tipo, punto, pedido, listo_ts: seconds(t.readyAt) };
+    if (tipo === "W" && t.customerWaitEndsAt) return { tipo, punto, pedido, listo_ts: seconds(t.customerWaitEndsAt) };
+    return { tipo, punto, pedido };
   });
 }
 
@@ -108,7 +120,7 @@ export function buildEvaluarRequest(
           entregas: c.deliveriesThisShift,
           cuota,
           disponible_desde_ts: desde.length ? Math.max(...desde.map(seconds)) : seconds(now),
-          paradas: paradasDe(c.activeTrips.filter((t) => t.id !== trip.id)),
+          paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id), settings.asumirRegreso),
         };
       }),
       tiempos: "haversine",

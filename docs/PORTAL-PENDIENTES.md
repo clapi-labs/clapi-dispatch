@@ -64,3 +64,20 @@ Ya se suben y se ven en Restaurantes y Flota. Falta mostrarlas en la lista de ch
 ## Restaurantes sin número
 
 Un restaurante ya puede registrarse sin WhatsApp, pero el bot solo reconoce por número. Falta decidir si debe reconocerlos también por el nombre.
+
+## Flujo del domiciliario y estados
+
+Etiqueta de estado en Viajes y Flota, mensajes guiados, aviso de portería y recordatorios. Plan por fases en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md).
+
+## Repositorio privado
+
+El código es privado, así que el repositorio debe dejar de ser público. Hacerlo en este orden, porque con el repositorio privado `deploy/deploy.sh` ya no puede bajar el `compose.yml` y el `Caddyfile` sin autenticarse, y los despliegues fallan (lo que está corriendo sigue funcionando).
+
+1. PR para que `deploy.sh` baje esos archivos con un token de solo lectura.
+2. Crear el token en GitHub y guardarlo en el `.env` de cada servidor. Actualizar `/opt/dispatch/deploy.sh` a mano, porque el despliegue no lo reemplaza.
+3. Comprobar con un despliegue.
+4. Pasar el repositorio a privado y volver a desplegar para confirmar.
+5. Imágenes: hoy son públicas y se bajan sin credenciales, y un paquete público no se puede volver privado. Para ocultar el código compilado hay que publicarlas de otra forma y usar `GHCR_USER` y `GHCR_TOKEN` en el servidor.
+6. Revisar si el historial tiene secretos; lo que ya estuvo público se da por visto, así que cualquier secreto que aparezca se cambia.
+
+Pasar a privado no reemplaza el login: `AUTH_DISABLED` no debe activarse en un servidor con datos reales.

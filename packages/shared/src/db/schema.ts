@@ -14,6 +14,7 @@ import {
 
 import type { Interpretation, OrderDraft, PaymentMethod } from "../domain/extraction";
 import type { OfferOutcome } from "../domain/dispatch/types";
+import type { DeliveryPlace, RouteStop } from "../domain/phase";
 
 /**
  * Esquema de CLAPI Dispatch.
@@ -198,8 +199,9 @@ export const trips = pgTable(
     pickupZone: text("pickup_zone"),
     deliveryZone: text("delivery_zone"),
     paymentMethod: text("payment_method").$type<PaymentMethod>(),
-    /** Derivado de `paymentMethod`, pero congelado: si la regla de negocio
-     *  cambia mañana, un viaje de hoy no cambia de opinión retroactivamente. */
+    /** Sin uso: no se puede deducir el regreso del método de pago, porque
+     *  depende de la base o del datáfono. Lo dice el domiciliario al entregar
+     *  (`assignments.return_started_at`). */
     requiresCashReturn: boolean("requires_cash_return").notNull().default(false),
     /** Lo que el motorizado debe saber y no es un campo: "billete de 100
      *  mil", "torre A apto 705", "2 hamburguesas". */
@@ -257,7 +259,27 @@ export const couriers = pgTable("couriers", {
   shiftStartedAt: timestamp("shift_started_at", { withTimezone: true }),
 
   active: boolean("active").notNull().default(true),
+  /** Moto del simulador de staging (docs/OPERACION.md): una fila más para el
+   *  algoritmo y el portal, con un número que no existe. Solo se usa con
+   *  `SIMULATOR_ENABLED`. */
+  simulated: boolean("simulated").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Simulador de staging: qué moto simulada controla cada número de prueba (una
+ * moto con número real de Flota). Sin moto (`sim_courier_id` nulo), el número
+ * está libre desde `since`; con moto, la controla desde `since`. Ver
+ * `db/simulator.ts`.
+ */
+export const simulatorControls = pgTable("simulator_controls", {
+  phoneCourierId: integer("phone_courier_id")
+    .primaryKey()
+    .references(() => couriers.id, { onDelete: "cascade" }),
+  simCourierId: integer("sim_courier_id")
+    .unique()
+    .references(() => couriers.id, { onDelete: "set null" }),
+  since: timestamp("since", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** La ficha del motorizado: su vehículo y sus datos personales. Tabla aparte
@@ -274,6 +296,20 @@ export const courierProfiles = pgTable("courier_profiles", {
   documentId: text("document_id"),
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
+  /** El identificador con que su celular reporta el GPS. Aleatorio y difícil de
+   *  adivinar: es lo único que autoriza a reportar la posición de esta moto. */
+  gpsDeviceId: text("gps_device_id").unique(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** El orden en que la moto hace sus paradas: el `plan` del engine en su última
+ *  asignación. Solo el orden: qué le falta sale de la fase de cada viaje
+ *  (`domain/phase`), y así lo ya hecho no hay que borrarlo de aquí. */
+export const courierRoutes = pgTable("courier_routes", {
+  courierId: integer("courier_id")
+    .primaryKey()
+    .references(() => couriers.id, { onDelete: "cascade" }),
+  stops: jsonb("stops").notNull().$type<RouteStop[]>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -291,12 +327,38 @@ export const assignments = pgTable(
     courierName: text("courier_name").notNull(),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
-    /** Cuándo el motorizado tocó «Vi el pedido» en su ficha. Sin esto la
-     *  central no sabe si lo vio o si el pedido se está enfriando. */
+    /** Cuándo WhatsApp avisó que leyó el mensaje. Nulo no prueba que no lo
+     *  viera: hay quien tiene apagada la confirmación de lectura. */
+    readAt: timestamp("read_at", { withTimezone: true }),
+    /** Cuándo el motorizado tocó «Voy en camino». Sin esto la central no sabe
+     *  si ya salió o si el pedido se está enfriando. */
     seenAt: timestamp("seen_at", { withTimezone: true }),
     /** Cuándo se le recordó que confirmara (una sola vez por asignación). */
     seenReminderAt: timestamp("seen_reminder_at", { withTimezone: true }),
+    /** A qué distancia de la recogida estaba en su primer reporte de GPS: si
+     *  se acerca, ya salió aunque no haya tocado «Voy en camino». */
+    startDistanceM: real("start_distance_m"),
+    /** Cuándo el GPS lo vio llegar a la recogida. */
+    atPickupAt: timestamp("at_pickup_at", { withTimezone: true }),
+    /** Cuándo tocó «Recogí», o cuándo el GPS lo vio salir de la recogida. Nulo si
+     *  marcó la entrega sin nada de eso. */
+    pickedUpAt: timestamp("picked_up_at", { withTimezone: true }),
+    /** Cuándo se le recordó que ya está listo (una sola vez por asignación). */
+    pickupReminderAt: timestamp("pickup_reminder_at", { withTimezone: true }),
+    /** Cuándo el GPS lo vio llegar a la entrega, y salir sin haberla marcado. */
+    atDeliveryAt: timestamp("at_delivery_at", { withTimezone: true }),
+    leftDeliveryAt: timestamp("left_delivery_at", { withTimezone: true }),
+    /** Cuándo avisó que el cliente no contesta: empieza la espera. */
+    customerWaitAt: timestamp("customer_wait_at", { withTimezone: true }),
+    /** Pasó la espera: va de regreso a devolver el pedido. */
+    undeliveredAt: timestamp("undelivered_at", { withTimezone: true }),
+    /** La hora real de la entrega, aunque después tenga que volver. */
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    deliveryPlace: text("delivery_place").$type<DeliveryPlace>(),
+    /** Entregó y debe volver a recogida: sigue ocupado hasta `finishedAt`. */
+    returnStartedAt: timestamp("return_started_at", { withTimezone: true }),
+    /** Cuándo terminó el servicio y quedó libre. */
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("assignments_trip_idx").on(t.tripId)],
 );
