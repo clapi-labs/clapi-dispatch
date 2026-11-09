@@ -6,6 +6,7 @@ export * from "./restaurants";
 export * from "./quote";
 export * from "./bot-config";
 export * from "./business";
+export * from "./service-hours";
 export * from "./engine-config";
 export * from "./changes";
 export * from "./restricted-zones";

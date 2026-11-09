@@ -61,6 +61,9 @@ export const conversations = pgTable(
      *  ese tiempo: lo posterior a este id es lo que falta por procesar. */
     processedThroughMessageId: integer("processed_through_message_id"),
     lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+    /** Cuándo se le dijo por última vez que estaba fuera de horario: el aviso
+     *  no se repite hasta la próxima jornada (`domain/service-hours.ts`). */
+    closedNoticeAt: timestamp("closed_notice_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -147,6 +150,9 @@ export const restaurants = pgTable(
     /** Lo que ayuda al motorizado a encontrar la recogida: "Local 12, entrada
      *  por el parqueadero". Va en la ficha junto a la dirección. */
     pickupDetail: text("pickup_detail"),
+    /** Hasta qué hora recibe servicios, "HH:MM" de Cali (puede pasar la
+     *  medianoche). Null: la hora límite por defecto de la agencia. */
+    orderDeadline: text("order_deadline"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

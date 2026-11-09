@@ -4,3 +4,4 @@ export * from "./domain/coordinates";
 export * from "./domain/price-zones";
 export * from "./domain/phase";
 export * from "./domain/restaurant-identity";
+export * from "./domain/service-hours";

@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 
 import { inServiceArea } from "../domain/coordinates";
+import { normalizeClock } from "../domain/service-hours";
 import { db } from "./client";
 import { restaurants } from "./schema";
 
@@ -79,6 +80,8 @@ export type RestaurantInput = {
   pickupAddress: string;
   pickupDetail: string | null;
   pickupLocation: { lat: number; lng: number };
+  /** "HH:MM"; null: usa la hora límite por defecto. */
+  orderDeadline: string | null;
   active: boolean;
 };
 
@@ -99,12 +102,15 @@ export function validateRestaurant(body: unknown): { input: RestaurantInput } | 
   const loc = b.pickupLocation as { lat?: unknown; lng?: unknown } | null;
   const lat = Number(loc?.lat);
   const lng = Number(loc?.lng);
+  const deadlineText = text(b.orderDeadline);
+  const orderDeadline = deadlineText ? normalizeClock(deadlineText) : null;
 
   if (!name) return { error: "Falta el nombre" };
   if (phone && phone.length < 10) return { error: "El WhatsApp debe tener al menos 10 dígitos" };
   if (!pickupAddress) return { error: "Falta la dirección" };
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: "Faltan las coordenadas" };
   if (!inServiceArea({ lat, lng })) return { error: "Las coordenadas quedan fuera de Cali y Jamundí" };
+  if (deadlineText && !orderDeadline) return { error: "La hora límite no es válida" };
 
   return {
     input: {
@@ -114,6 +120,7 @@ export function validateRestaurant(body: unknown): { input: RestaurantInput } | 
       pickupAddress,
       pickupDetail,
       pickupLocation: { lat, lng },
+      orderDeadline,
       active: b.active !== false,
     },
   };
@@ -140,6 +147,7 @@ function rowValues(input: RestaurantInput) {
     knownPickupAddress: input.pickupAddress,
     knownPickupLocation: input.pickupLocation,
     pickupDetail: input.pickupDetail,
+    orderDeadline: input.orderDeadline,
     active: input.active,
   };
 }

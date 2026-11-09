@@ -83,6 +83,19 @@ El cliente quiere sistematizar los datos: que el restaurante se acomode al forma
 
 **Precio por distancia, con mínimo por zona.** El bot cobra lo de la tabla por km, pero nunca menos que el **precio mínimo de la zona donde se entrega**, si la central marcó una en el mapa (menú **Precio mínimo por zona**). Un domicilio a Ciudad Jardín con mínimo de 10.000 que por km da 6.000 se cotiza en 10.000; si por km da 12.000, se cobra 12.000. Fuera de toda zona se cobra exactamente lo de la tabla. Sale igual con pin o con dirección escrita (las dos dan un punto en el mapa) y el restaurante no tiene que decir el barrio: solo ve el precio final. El mínimo depende solo de la entrega, es igual para todos los restaurantes y aplica desde la siguiente cotización; un pedido ya confirmado conserva su precio. Detalle y zonas dentro de zonas: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Precio mínimo por zona». No hay tarifa por defecto: sin la dirección ubicada en el mapa no se cotiza. Si Google no ubica la dirección de entrega o falla, el bot le pregunta el precio a la central (ver arriba); si no ubica la recogida de un restaurante nuevo por una falla de Google, el chat pasa a la central; si la tabla de rangos por km está vacía, también. Detalle, ubicación simulada para pruebas y zonas sin cobertura: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md).
 
+## Horario
+
+Express recibe servicios desde una **hora de inicio** igual para todos (por defecto 10:00 a. m.) hasta la **hora límite** de cada restaurante. Si un restaurante no tiene una propia, o no está registrado, usa la **hora límite por defecto** (11:30 p. m.). Las tres se cambian en el portal, en **Restaurantes**: el horario general arriba y la hora de cada uno en su formulario. El bot las lee en cada mensaje, así que el cambio aplica desde el siguiente mensaje, sin redesplegar. Todas las horas son de Cali y valen igual todos los días.
+
+- **Puede pasar la medianoche.** Una hora límite de 1:30 a. m. es la 1:30 de esa misma noche: se recibe de 10:00 a. m. a 1:29 a. m.
+- **Fuera de horario no entran pedidos nuevos.** El bot responde «A esta hora ya no recibimos servicios para tu restaurante 🙏 Te esperamos mañana desde las 10:00 a. m.»; antes de abrir, en la mañana, dice «hoy» en vez de «mañana». No se crea el pedido y el chat **no** pasa a la central, ni siquiera si el mensaje es confuso, pide hablar con una persona o responde que no es el restaurante del número. El aviso sale una vez por cierre (`conversations.closed_notice_at`): si sigue escribiendo esa noche, no se repite.
+- **Recordatorio antes del cierre.** 10 minutos antes de su hora límite, quien tenga un pedido a medio armar de esa jornada recibe «⏰ Recibimos servicios hasta las 11:30 p. m. Confirma tu pedido antes de esa hora o ya no lo podremos recibir 🙏». Sale una sola vez por pedido y no le llega a quien solo preguntó un precio. Lo revisa el tick del worker (`apps/bot/src/bot/closing.ts`).
+- **Pasada la hora límite, lo que no se confirmó ya no se recibe**, aunque haya empezado antes: el tick descarta el pedido a medio armar y, si el restaurante confirma, recibe el aviso de fuera de horario.
+- **Lo que ya está creado sigue igual:** las consultas y los cambios sobre pedidos confirmados («¿ya llegó?», «se demora 5 más»), los mensajes y botones de los motorizados y lo que haga la central en el portal.
+- Con la central al frente del chat (bot en pausa) no se envía recordatorio ni se descarta nada.
+
+La regla está en `packages/shared/src/domain/service-hours.ts`, con sus pruebas (`npm test`).
+
 ## Mensajes por servicio
 
 Cada mensaje que el bot envía cuesta (mensajes de servicio en Colombia: unos US$0,0008 cada uno pasados los 1.000 gratis al mes por número). La meta es el mínimo posible sin dejar de cumplir. Lo de base, en el mejor caso:

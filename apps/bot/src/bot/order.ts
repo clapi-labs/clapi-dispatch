@@ -1,9 +1,12 @@
 import {
   ESCALATION_MESSAGE,
   MAX_CLARIFICATION_ATTEMPTS,
+  closedMessage,
+  closedNoticeDue,
   countFields,
   emptyDelivery,
   fullAddress,
+  isOpen,
   mergeTripFields,
   missingFields,
   namedAsDestination,
@@ -16,7 +19,17 @@ import {
   type OrderDraft,
   type OrderFieldKey,
 } from "@dispatch/shared";
-import { getBotConfig, getEngineConfig, linkRestaurantPhone, quoteByDistance, saveRestaurant, type BotConfig, type Restaurant } from "@dispatch/shared/db";
+import {
+  getBotConfig,
+  getEngineConfig,
+  getServiceHours,
+  hoursFor,
+  linkRestaurantPhone,
+  quoteByDistance,
+  saveRestaurant,
+  type BotConfig,
+  type Restaurant,
+} from "@dispatch/shared/db";
 
 import { say } from "@/bot/messaging";
 import { dispatchNewTrip } from "@/dispatch/engine";
@@ -99,6 +112,17 @@ async function escalateLocationDown(ctx: Context, draft: OrderDraft) {
 async function escalateIdentity(ctx: Context, draft: OrderDraft, reason: string) {
   await updateConversation(ctx.conversation.id, { botPaused: true, escalationReason: reason, draft, failedAttempts: 0 });
   await say(ctx.conversation.id, ctx.message.phone, ESCALATION_MESSAGE);
+}
+
+/**
+ * Fuera de horario (docs/BOT.md, «Horario»): el pedido no se recibe, lo que
+ * estuviera a medio armar se descarta y el chat no pasa a la central. El aviso
+ * sale una vez por cierre; si sigue escribiendo esa noche, no se repite.
+ */
+async function closedForOrders(ctx: Context, opensAt: string, now: Date) {
+  const due = closedNoticeDue(now, opensAt, ctx.conversation.closedNoticeAt);
+  await updateConversation(ctx.conversation.id, { draft: null, failedAttempts: 0, ...(due ? { closedNoticeAt: now } : {}) });
+  if (due) await say(ctx.conversation.id, ctx.message.phone, closedMessage(now, opensAt));
 }
 
 async function escalate(ctx: Context, reason: string) {
@@ -337,6 +361,10 @@ export async function handleRestaurant(ctx: Context) {
   const { conversation, message } = ctx;
   let { restaurant } = ctx;
   const config = await getBotConfig();
+  // Se mide con la hora en que el restaurante envió el mensaje.
+  const hours = await getServiceHours();
+  const now = message.timestamp;
+  const open = isOpen(now, hoursFor(restaurant, hours));
 
   const known = normalizeDraft(conversation.draft);
   if (restaurant) known.origenRestaurante = restaurant.name;
@@ -365,6 +393,11 @@ export async function handleRestaurant(ctx: Context) {
   if (answersIdentity) {
     draft.preguntaIdentidad = false;
     if (buttons.includes(IDENTITY_NO_BUTTON_ID) || /^\s*no\b/i.test(text)) {
+      // Fuera de horario no pasa a la central: el pedido igual no se recibe.
+      if (!open) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
       await escalateIdentity(ctx, draft, `Escribe desde el número de ${restaurant?.name ?? "un restaurante registrado"}, pero dice que no es ese restaurante.`);
       return;
     }
@@ -377,6 +410,12 @@ export async function handleRestaurant(ctx: Context) {
     return;
   }
   if (!reads && !pins.length) {
+    // Confirmar pasada la hora límite: el pedido ya no se recibe (y el tick
+    // pudo haberlo descartado), así que va el aviso de fuera de horario.
+    if (pressedConfirm && !open) {
+      await closedForOrders(ctx, hours.opensAt, now);
+      return;
+    }
     // Solo botones, o algo que todavía no se lee (un audio, un sticker).
     if (!buttons.length) {
       await say(conversation.id, message.phone, "Por ahora leo mensajes de texto y ubicaciones 🙏 ¿Me escribes la dirección de entrega?");
@@ -409,6 +448,11 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     if (extraction.confused) {
+      // Fuera de horario no hay a quién pasarle el chat: va el aviso de cierre.
+      if (!open) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
       await escalate(ctx, "El restaurante dio datos confusos o pidió hablar con una persona.");
       return;
     }
@@ -427,6 +471,10 @@ export async function handleRestaurant(ctx: Context) {
     }
     const asksAddress = !pins.length && !extraction.fields.entregas.some((e) => e.direccionEntrega) && !before.entregas.some((e) => e.direccionEntrega);
     if (extraction.query === "cobertura" && asksAddress) {
+      if (!open) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
       await say(conversation.id, message.phone, "Envíame la dirección o la ubicación y te digo si llegamos y cuánto vale 🛵");
       return;
     }
@@ -477,6 +525,13 @@ export async function handleRestaurant(ctx: Context) {
     // Vale solo si lo que acepta es el pedido completo que ya se le mostró
     // (paso 5): dar los datos o el tiempo no es confirmar.
     confirms = pressedConfirm || extraction.confirms;
+  }
+
+  // Lo que queda es pedir o cotizar: fuera de horario no se recibe. Las
+  // consultas y los cambios de pedidos ya creados se respondieron arriba.
+  if (!open) {
+    await closedForOrders(ctx, hours.opensAt, now);
+    return;
   }
 
   for (const pin of pins.filter((p) => !p.beforeText)) placePin(draft, pin);

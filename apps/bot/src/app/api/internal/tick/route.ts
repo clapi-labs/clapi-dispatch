@@ -1,5 +1,6 @@
 import { assignPendingTrips, releaseIdleControls, simulatorEnabled } from "@dispatch/shared/db";
 
+import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
 import { runEngine } from "@/dispatch/engine";
 
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
     await closeCustomerWaits();
   } catch (error) {
     console.error("[tick] no se pudieron cerrar las esperas:", error);
+  }
+
+  // Cierre de cada restaurante: el recordatorio antes de su hora límite y,
+  // pasada, el pedido a medio armar ya no se recibe.
+  try {
+    await handleClosing();
+  } catch (error) {
+    console.error("[tick] no se pudo revisar el cierre de los restaurantes:", error);
   }
 
   // Simulador: el número de prueba cuya moto ya no tiene pedidos queda libre.
