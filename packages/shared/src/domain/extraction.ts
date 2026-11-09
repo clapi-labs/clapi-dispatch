@@ -348,8 +348,8 @@ const CUSTOMER_KEYS = ["nombreCliente", "telefonoCliente", "detalleDireccion"] a
 
 /**
  * ¿La entrega de más que devolvió el modelo es una que ya estaba? Pasa cuando
- * los datos del cliente llegan después de la dirección o del pin: con «Jose
- * David 311…, para torre 4 apto 902» el modelo a veces arma otro pedido a la
+ * los datos del cliente llegan después de la dirección o del pin: con «Marta
+ * Ríos 300…, para torre 4 apto 902» el modelo a veces arma otro pedido a la
  * misma dirección. Es la misma si trae la misma dirección (o ninguna) y ningún
  * dato del cliente distinto. Dos clientes del mismo conjunto siguen siendo dos:
  * su nombre, su teléfono o su apartamento no coinciden.
@@ -425,7 +425,7 @@ Reglas:
 - Una CORRECCIÓN ("perdón, era…", "me equivoqué…", "la dirección correcta es…", "el de Pance es…", "no, es la…") NO agrega una entrega: reemplaza la dirección de la entrega que corrige, y la lista queda del mismo tamaño. Si no dice cuál corrige y hay varias, corrige la última.
   Ejemplo: capturadas [El Caney, Pance]; mensaje "perdón, el de Pance es Cra 105 # 14-30, Ciudad Jardín" → [El Caney, Cra 105 # 14-30, Ciudad Jardín].
 - La MISMA dirección repetida (aunque esté escrita un poco distinto o venga con datos nuevos como torre, apto o tiempo) es la misma entrega: complétala, no agregues otra.
-  Ejemplo: capturada [Conjunto Los Pinos, Cl 22 Nte # 9, sin datos del cliente]; mensaje "listo en 10, Ana Ruiz 3001234567 para torre 4 apto 902" → una sola entrega: Conjunto Los Pinos con Ana Ruiz, su teléfono, "Torre 4 apto 902" y 10 minutos. "Para torre 4 apto 902" dice a qué puerta va, no es otro pedido.
+  Ejemplo: capturada [Conjunto Los Pinos, Cl 15 Nte # 8, sin datos del cliente]; mensaje "listo en 10, Ana Ruiz 3001234567 para torre 4 apto 902" → una sola entrega: Conjunto Los Pinos con Ana Ruiz, su teléfono, "Torre 4 apto 902" y 10 minutos. "Para torre 4 apto 902" dice a qué puerta va, no es otro pedido.
 - Un dato suelto (solo un teléfono, solo un nombre) va a la entrega que le falte; si todas lo tienen o no se sabe, a la última.
 - "quitar": cuando el restaurante dice que sobra una entrega o que ya no va: "quita la 2", "el de Pance ya no va", "cancela el segundo", "solo es 1", "es uno solo", "no son dos". Pon la posición de las que sobran; si dice "solo es 1" sin decir cuál, las que repiten la dirección de otra o no tienen datos del cliente. Aun así devuelve en "entregas" todas las capturadas: el código las quita. [] si no pide quitar ninguna.
 - El tiempo de preparación dicho sin señalar una entrega ("en 10", "ya están los 2") aplica a todas las entregas que no lo tengan.

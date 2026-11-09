@@ -350,7 +350,7 @@ Plan de prod: despliegue por botón (`workflow_dispatch`) con un hash ya probado
 
 ## Lo que falta
 
-Las tareas, con su criterio de éxito, están en [PLAN.md](PLAN.md), objetivo **I**: backups (I-1), aviso de caídas (I-2), despliegue automático a staging (I-3), CI en `dev` con pruebas (I-4), servidor de producción (I-5), repositorio privado (I-6) y recuperación tras una caída (I-7). Además:
+Las tareas, con su criterio de éxito, están en [PLAN.md](PLAN.md), objetivo **I**: backups (I-1), aviso de caídas (I-2), despliegue automático a staging (I-3), CI en `dev` con pruebas (I-4), servidor de producción (I-5), repositorio privado (I-6, aplazada: el repositorio sigue público) y recuperación tras una caída (I-7). Además:
 
 - Copia de seguridad de `terraform.tfstate`; sin él OpenTofu no sabe qué recursos le pertenecen.
 - Token permanente de WhatsApp (usuario del sistema) para producción; el de pruebas dura ~24 h.

@@ -24,7 +24,7 @@ El restaurante ya está registrado: por su número se conoce su nombre, su direc
 2. **Siempre se cotiza primero.** Con la dirección se geocodifica una vez y se calcula la distancia desde el restaurante. La respuesta depende de lo que quiere el restaurante (el modelo lo dice en `intencion`):
    - **Mientras falten datos** (pide el servicio con solo la dirección o un pin, o solo pregunta el precio): el precio y, debajo, el formato con lo que falta para llenar y mandar en un solo mensaje. **Sin botón**: confirmar sin los datos no pide ninguna moto.
      ```
-     Serían $ 15.000 hasta Conjunto Residencial Canelo 🛵
+     Serían $ 15.000 hasta Conjunto Residencial Los Almendros 🛵
 
      Para pedir la moto, envíame en un solo mensaje:
 
@@ -44,9 +44,9 @@ Datos obligatorios por defecto: **dirección de entrega**, **nombre del cliente*
 Un pedido perfecto trae todo en un mensaje y sale sin preguntas:
 
 ```
-Carrera 85d #48-180, Comuna 17, Cali, Valle del Cauca, Colombia . Apto 401 torre C
-+57 300 2637169
-Lorena Mora
+Carrera 80 #40-120, Comuna 17, Cali, Valle del Cauca, Colombia . Apto 401 torre C
++57 300 5550101
+Laura Méndez
 en 10
 ```
 

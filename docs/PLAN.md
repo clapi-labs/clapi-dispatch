@@ -23,7 +23,7 @@ Lo que falta, en grande: un servidor de producción con backups y alertas, que e
 - **La documentación se actualiza en el mismo PR**: el documento del tema y la tarea en este archivo (marcada como hecha, con el número del PR).
 - **Después del merge**, se despliega en staging por hash y se comprueba ahí ([OPERACION.md](OPERACION.md), «Desplegar a staging»). Una tarea está terminada cuando su criterio de éxito se cumple **en staging**, no solo en local.
 - **Si hace falta una decisión** que no está escrita aquí, se pregunta antes de construir. Lo que ya se decidió y no se debe reabrir está marcado como «Decidido».
-- Reglas que no cambian: los secretos solo viven en `/opt/dispatch/.env`; el repositorio es público, así que nada de números de teléfono reales ni datos de clientes en el código, los commits o las pruebas; commits y PR en español, en el estilo del historial.
+- Reglas que no cambian: los secretos solo viven en `/opt/dispatch/.env`; el repositorio es público, así que nada de números de teléfono, nombres, direcciones ni coordenadas reales en el código, los commits, las pruebas o los documentos (ni copiando un caso de staging); commits y PR en español, en el estilo del historial.
 
 Tamaño aproximado: **S** hasta un día, **M** de dos a cuatro días, **L** una semana o más.
 
@@ -40,7 +40,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 1. **Primera ola:** I-1, I-2, I-4, B-1, B-2, C-4.
 2. **Segunda ola:** I-3, I-7, B-3, C-1, D-1, D-2.
-3. **Tercera ola:** I-5, I-6, B-4, B-5, C-2, C-3, D-3, D-4.
+3. **Tercera ola:** I-5, B-4, B-5, C-2, C-3, D-3, D-4. I-6 queda aplazada.
 
 ---
 
@@ -100,18 +100,13 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** `infra/staging`, `infra/modules/server`, `docs/INFRAESTRUCTURA.md` («Entornos»), `docs/OPERACION.md` («Infraestructura»).
 
-### I-6 · Repositorio privado · Infra · M
+### I-6 · Repositorio privado · Infra · M · aplazada
 
-**Objetivo:** que el código deje de ser público sin romper los despliegues.
+**Decidido (8 de noviembre de 2026):** el repositorio sigue público por ahora. En privado, GitHub cobra Actions pasados 2.000 minutos al mes y la protección de ramas pide un plan pago; hoy no vale la pena. Se revisó que lo publicado no tenga claves (no hay) y se cambiaron por inventados los datos personales que había en pruebas y ejemplos.
 
-**Éxito:**
-- El repositorio es privado y un despliegue a staging funciona después del cambio.
-- `deploy.sh` baja `compose.yml` y el `Caddyfile` con un token de solo lectura que vive en el `.env` del servidor.
-- Revisado el historial: cualquier secreto que haya estado público se rotó.
+**Mientras sea público:** nada de números de teléfono, nombres de clientes, direcciones ni coordenadas reales en el código, las pruebas, los commits ni los documentos. Los casos reales se copian cambiando esos datos. Los secretos siguen solo en `/opt/dispatch/.env`, y `AUTH_DISABLED` nunca se activa en un servidor con datos reales.
 
-**Orden obligatorio:** primero el cambio en `deploy.sh` y el token en cada servidor, después comprobar con un despliegue, y solo entonces pasar a privado. Si se hace al revés, los despliegues fallan. Las imágenes de GHCR son públicas y un paquete público no se puede volver privado: ocultarlas requiere publicarlas de otra forma (`GHCR_USER`, `GHCR_TOKEN` en el servidor).
-
-Pasar a privado no reemplaza el login: `AUTH_DISABLED` nunca se activa en un servidor con datos reales.
+**Si se retoma:** `deploy.sh` baja `compose.yml` y el `Caddyfile` de GitHub sin credenciales, así que primero hay que darle una deploy key de solo lectura en cada servidor y comprobar un despliegue, y solo entonces pasar a privado; al revés, los despliegues fallan. Hay una versión lista en el PR #27, cerrado sin merge. Las imágenes de GHCR son públicas y no se pueden volver privadas: habría que publicarlas con otros nombres.
 
 ### I-7 · Recuperarse de una caída · Bot · M
 
