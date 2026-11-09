@@ -76,11 +76,13 @@ input[type="text"], input[type="search"] { font: inherit; width: 100%; border: 1
 .leaflet-container { overflow: hidden; outline: 0; -webkit-tap-highlight-color: transparent; font-family: var(--font-body); }
 .leaflet-container.leaflet-touch-zoom { touch-action: pan-x pan-y; }
 .leaflet-container.leaflet-touch-drag { touch-action: none; }
-.leaflet-pane { z-index: 400; } .leaflet-overlay-pane { z-index: 400; } .leaflet-marker-pane { z-index: 600; } .leaflet-tooltip-pane { z-index: 650; } .leaflet-popup-pane { z-index: 700; }
+.leaflet-pane { z-index: 400; } .leaflet-tile-pane { z-index: 200; } .leaflet-overlay-pane { z-index: 400; } .leaflet-marker-pane { z-index: 600; } .leaflet-tooltip-pane { z-index: 650; } .leaflet-popup-pane { z-index: 700; }
 .leaflet-map-pane canvas { z-index: 100; } .leaflet-map-pane svg { z-index: 200; }
 .leaflet-zoom-animated { transform-origin: 0 0; }
 .leaflet-zoom-anim .leaflet-zoom-animated { transition: transform .25s cubic-bezier(0,0,.25,1); }
 .leaflet-interactive { cursor: pointer; }
+.leaflet-pane > svg path { pointer-events: none; }
+.leaflet-pane > svg path.leaflet-interactive { pointer-events: visiblePainted; pointer-events: auto; }
 .leaflet-grab { cursor: grab; } .leaflet-dragging .leaflet-grab { cursor: grabbing; }
 .leaflet-crosshair, .leaflet-crosshair .leaflet-interactive { cursor: crosshair; }
 .leaflet-marker-icon { display: block; }
@@ -202,7 +204,11 @@ input[type="text"], input[type="search"] { font: inherit; width: 100%; border: 1
   const map = L.map("map", { zoomControl: true, doubleClickZoom: false, minZoom: 12, maxZoom: 19, maxBounds: AREA.pad(0.05), maxBoundsViscosity: 1 })
     .setView([3.4372, -76.5225], 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, bounds: AREA.pad(0.1), attribution: "© OpenStreetMap · Barrios: IDESC" }).addTo(map);
-  const canvas = L.canvas({ padding: 0.3 });
+  // Los barrios van en su propia capa, debajo de las zonas: así un clic sobre
+  // una zona la abre a ella y no al barrio que tiene debajo.
+  map.createPane("barrios");
+  map.getPane("barrios").style.zIndex = 350;
+  const canvas = L.canvas({ padding: 0.3, pane: "barrios" });
   const svg = L.svg();
 
   const readout = $("readout");
