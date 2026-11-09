@@ -99,6 +99,13 @@
       "when": 1794014791418,
       "tag": "0013_simulador",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794238333937,
+      "tag": "0014_precio_por_zona",
+      "breakpoints": true
     }
   ]
 }
