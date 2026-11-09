@@ -1,11 +1,13 @@
 "use client";
 
 import { googleMapsLink, inServiceArea, parseCoordinates } from "@dispatch/shared/domain/coordinates";
-import { Check, ExternalLink, Info, MapPin, Pencil, Plus, Search, Store, Trash2, X } from "lucide-react";
+import { formatClock, type ServiceHours } from "@dispatch/shared/domain/service-hours";
+import { Check, Clock, ExternalLink, Info, MapPin, Pencil, Plus, Search, Store, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/Modal";
 import { PhotoButton } from "@/components/PhotoButton";
+import { ServiceHoursCard } from "@/components/ServiceHoursCard";
 
 type Restaurant = {
   id: number;
@@ -15,13 +17,15 @@ type Restaurant = {
   knownPickupAddress: string | null;
   knownPickupLocation: { lat: number; lng: number } | null;
   pickupDetail: string | null;
+  /** "HH:MM"; null: usa la hora límite por defecto. */
+  orderDeadline: string | null;
   active: boolean;
 };
 
 /** El formulario, como texto mientras se escribe. `coords` es lo que se pegó de Google Maps. */
-type Form = { name: string; phone: string; address: string; detail: string; coords: string; active: boolean };
+type Form = { name: string; phone: string; address: string; detail: string; coords: string; deadline: string; active: boolean };
 
-const EMPTY: Form = { name: "", phone: "", address: "", detail: "", coords: "", active: true };
+const EMPTY: Form = { name: "", phone: "", address: "", detail: "", coords: "", deadline: "", active: true };
 
 function toForm(r: Restaurant): Form {
   return {
@@ -30,6 +34,7 @@ function toForm(r: Restaurant): Form {
     address: r.knownPickupAddress ?? "",
     detail: r.pickupDetail ?? "",
     coords: r.knownPickupLocation ? `${r.knownPickupLocation.lat}, ${r.knownPickupLocation.lng}` : "",
+    deadline: r.orderDeadline ?? "",
     active: r.active,
   };
 }
@@ -83,6 +88,7 @@ export default function RestaurantesPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedName, setSavedName] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Restaurant | null>(null);
+  const [hours, setHours] = useState<ServiceHours | null>(null);
 
   async function setPhoto(id: number, photo: string | null) {
     const res = await fetch(`/api/restaurants/${id}`, {
@@ -110,6 +116,11 @@ export default function RestaurantesPage() {
   }
 
   useEffect(() => {
+    fetch("/api/service-hours", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: ServiceHours | null) => {
+        if (data) setHours(data);
+      });
     fetch("/api/restaurants", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: Restaurant[] | null) => {
@@ -158,6 +169,7 @@ export default function RestaurantesPage() {
       pickupAddress: form.address,
       pickupDetail: form.detail,
       pickupLocation: coords.point,
+      orderDeadline: form.deadline,
       active: form.active,
     };
     const res = await fetch(editing === "new" ? "/api/restaurants" : `/api/restaurants/${editing}`, {
@@ -219,6 +231,8 @@ export default function RestaurantesPage() {
           <Check size={16} /> {savedName} guardado
         </p>
       )}
+
+      {hours && <ServiceHoursCard hours={hours} onSaved={setHours} />}
 
       {editing !== null && (
         <form onSubmit={save} className="card grid gap-5 p-4 sm:p-5 lg:grid-cols-[1.3fr_1fr]">
@@ -290,6 +304,26 @@ export default function RestaurantesPage() {
               </a>
             )}
 
+            <Field label="Hora límite para pedir (opcional)">
+              <div className="flex items-center gap-2">
+                <input type="time" value={form.deadline} onChange={(e) => set({ deadline: e.target.value })} className={`${input} sm:max-w-44`} />
+                {form.deadline && (
+                  <button
+                    type="button"
+                    onClick={() => set({ deadline: "" })}
+                    className="ease-ui h-11 shrink-0 rounded-xl px-3 text-xs font-semibold text-ink-2 can-hover:hover:bg-sunken"
+                  >
+                    Usar la de por defecto
+                  </button>
+                )}
+              </div>
+            </Field>
+            <p className="-mt-1 text-xs text-ink-3">
+              {form.deadline
+                ? `Recibe servicios hasta las ${formatClock(form.deadline)}${form.deadline < (hours?.opensAt ?? "10:00") ? ", pasada la medianoche" : ""}.`
+                : `Vacía: usa la hora límite por defecto${hours ? ` (${formatClock(hours.defaultDeadline)})` : ""}.`}
+            </p>
+
             <label className="flex w-fit items-center gap-2 text-sm">
               <input type="checkbox" checked={form.active} onChange={(e) => set({ active: e.target.checked })} className="h-4 w-4 accent-clapi" />
               Activo (si no, el bot lo trata como un número desconocido)
@@ -355,6 +389,11 @@ export default function RestaurantesPage() {
                   <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                     {r.name}
                     {!r.active && <span className="rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-medium text-ink-3">Inactivo</span>}
+                    {r.orderDeadline && (
+                      <span className="flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-medium text-ink-2">
+                        <Clock size={11} /> Hasta {formatClock(r.orderDeadline)}
+                      </span>
+                    )}
                     {!r.knownPickupLocation && (
                       <span className="rounded-md bg-danger-soft px-1.5 py-0.5 text-[11px] font-medium text-danger">Sin ubicar</span>
                     )}

@@ -123,6 +123,9 @@ export type OrderDraft = {
   /** Un número registrado dijo ser otro restaurante y se le preguntó si es
    *  el suyo. Se pregunta una sola vez. */
   preguntaIdentidad?: boolean;
+  /** Ya se le recordó que debe confirmarlo antes de la hora límite: sale una
+   *  sola vez por pedido. */
+  recordatorioCierre?: boolean;
 };
 
 /** Lo que devuelve el modelo por mensaje. */
