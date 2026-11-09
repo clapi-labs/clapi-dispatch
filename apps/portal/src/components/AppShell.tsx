@@ -197,8 +197,8 @@ function PauseButton({ compact }: { compact?: boolean }) {
       onClick={() => (paused ? setBusinessPaused(false) : setConfirming(true))}
       aria-label={paused ? "Reanudar la operación" : "Pausar la operación"}
       title={paused ? "Reanudar la operación" : "Pausar la operación"}
-      className={`ease-ui flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl text-xs font-semibold text-white focus-visible:outline-gold ${
-        compact ? "w-10" : "px-3"
+      className={`ease-ui flex h-10 shrink-0 items-center gap-2 rounded-xl text-xs font-semibold text-white focus-visible:outline-gold ${
+        compact ? "w-10 justify-center" : "px-3"
       } ${paused ? "bg-ok" : "bg-white/10 hover:bg-white/15"}`}
     >
       {paused ? <CirclePlay size={16} /> : <CirclePause size={16} />}
