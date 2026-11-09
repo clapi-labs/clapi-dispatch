@@ -76,7 +76,7 @@ type Quote = { km: number; price: number | null };
 ```
 
 - `km` es la distancia en línea recta (Haversine) por el factor de ruta (1,3, el mismo `FACTOR_RUTA` del engine). Gratis, sin red.
-- `price` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`). Si la tabla está vacía, `null`: no hay tarifa por defecto ni cobro por zonas, y el bot pasa el pedido a la central.
+- `price` sale de la tabla de rangos por kilómetro que se edita en el portal (`settings.fare_ranges`), y nunca es menor que el mínimo de la zona de entrega (`price_zones`, ver [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Precio mínimo por zona»). La respuesta también trae `kmPrice` (solo la tabla) y `zone` (la zona que mandó, o `null`). Si la tabla está vacía, `price` es `null`: no hay tarifa por defecto, y el bot pasa el pedido a la central.
 - Si más adelante el engine ofrece una distancia mejor, cambia el interior de la función, no su forma.
 
 ## 3. Lo que el bot deja en la base para el engine

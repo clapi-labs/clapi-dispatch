@@ -29,6 +29,27 @@ export async function callBot(path: string, body: unknown): Promise<{ ok: boolea
   }
 }
 
+/** Como `callBot`, pero devuelve lo que responde el bot (para consultas). */
+export async function askBot<T>(path: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
+  const url = process.env.BOT_URL;
+  const secret = process.env.INTERNAL_SECRET;
+  if (!url || !secret) return { ok: false, reason: "no_bot" };
+
+  const base = (/^https?:\/\//.test(url) ? url : `https://${url}`).replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-secret": secret },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { ok: false, reason: res.status === 401 ? "bad_secret" : `http_${res.status}` };
+    return { ok: true, data: (await res.json()) as T };
+  } catch (error) {
+    return { ok: false, reason: String(error) };
+  }
+}
+
 /** Avisos por WhatsApp de viajes que cambiaron de estado desde el portal. */
 export function notifyBot(change: { assigned?: number[]; delivered?: number[]; unassigned?: { tripId: number; courierId: number }[] }) {
   if (!change.assigned?.length && !change.delivered?.length && !change.unassigned?.length) return Promise.resolve({ ok: true });

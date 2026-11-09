@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,6 +21,7 @@ const NAV = [
   { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },
   // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
   { href: "/zonas", label: "Zonas sin cobertura", short: "Zonas", icon: MapPinOff, desktopOnly: true },
+  { href: "/precios-zona", label: "Precio mínimo por zona", short: "Mínimos", icon: MapPinned, desktopOnly: true },
 ];
 
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */
@@ -197,8 +198,8 @@ function PauseButton({ compact }: { compact?: boolean }) {
       onClick={() => (paused ? setBusinessPaused(false) : setConfirming(true))}
       aria-label={paused ? "Reanudar la operación" : "Pausar la operación"}
       title={paused ? "Reanudar la operación" : "Pausar la operación"}
-      className={`ease-ui flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl text-xs font-semibold text-white focus-visible:outline-gold ${
-        compact ? "w-10" : "px-3"
+      className={`ease-ui flex h-10 shrink-0 items-center gap-2 rounded-xl text-xs font-semibold text-white focus-visible:outline-gold ${
+        compact ? "w-10 justify-center" : "px-3"
       } ${paused ? "bg-ok" : "bg-white/10 hover:bg-white/15"}`}
     >
       {paused ? <CirclePlay size={16} /> : <CirclePause size={16} />}

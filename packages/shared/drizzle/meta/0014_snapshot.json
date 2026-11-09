@@ -1,5 +1,5 @@
 {
-  "id": "3d1b5270-5d23-4ea1-a270-6bda63966bf3",
+  "id": "00608f5d-d04a-436b-8c88-157565355743",
   "prevId": "f5b16e22-b387-4146-8a9d-a48673ae0859",
   "version": "7",
   "dialect": "postgresql",
@@ -243,12 +243,6 @@
         },
         "last_inbound_at": {
           "name": "last_inbound_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_notice_at": {
-          "name": "closed_notice_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -1035,6 +1029,63 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.price_zones": {
+      "name": "price_zones",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_price": {
+          "name": "min_price",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ring": {
+          "name": "ring",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "barrio_code": {
+          "name": "barrio_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.processed_messages": {
       "name": "processed_messages",
       "schema": "",
@@ -1103,12 +1154,6 @@
         },
         "pickup_detail": {
           "name": "pickup_detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "order_deadline": {
-          "name": "order_deadline",
           "type": "text",
           "primaryKey": false,
           "notNull": false

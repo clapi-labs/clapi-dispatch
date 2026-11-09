@@ -514,3 +514,23 @@ export const restrictedZones = pgTable("restricted_zones", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Precio mínimo por zona de entrega (docs/DIRECCIONES-Y-ZONAS.md): áreas del
+ * mapa que la central marca en /precios-zona. El domicilio cobra el mayor
+ * entre la tabla por km y el mínimo de la zona donde se entrega; si cae en
+ * dos, manda la más pequeña (`domain/price-zones.ts`). Iguales para todos los
+ * restaurantes. No tienen nada que ver con `restricted_zones`.
+ */
+export const priceZones = pgTable("price_zones", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  /** Pesos. Null: sin mínimo (una parte de otra zona que cobra solo por km). */
+  minPrice: integer("min_price"),
+  /** El contorno, en orden y sin repetir el primero: al menos 3 puntos. */
+  ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
+  /** El barrio oficial (código de la IDESC) del que salió, si salió de uno. */
+  barrioCode: text("barrio_code"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -10,6 +10,7 @@ export * from "./service-hours";
 export * from "./engine-config";
 export * from "./changes";
 export * from "./restricted-zones";
+export * from "./price-zones";
 export * from "./trip-code";
 export * from "./simulator-flag";
 export * from "./simulator";
