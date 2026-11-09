@@ -393,6 +393,11 @@ export async function handleRestaurant(ctx: Context) {
   if (answersIdentity) {
     draft.preguntaIdentidad = false;
     if (buttons.includes(IDENTITY_NO_BUTTON_ID) || /^\s*no\b/i.test(text)) {
+      // Fuera de horario no pasa a la central: el pedido igual no se recibe.
+      if (!open) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
       await escalateIdentity(ctx, draft, `Escribe desde el número de ${restaurant?.name ?? "un restaurante registrado"}, pero dice que no es ese restaurante.`);
       return;
     }
@@ -443,6 +448,11 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     if (extraction.confused) {
+      // Fuera de horario no hay a quién pasarle el chat: va el aviso de cierre.
+      if (!open) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
       await escalate(ctx, "El restaurante dio datos confusos o pidió hablar con una persona.");
       return;
     }

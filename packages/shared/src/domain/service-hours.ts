@@ -101,7 +101,8 @@ export function closedMessage(now: Date, opensAt: string) {
   return `A esta hora ya no recibimos servicios para tu restaurante 🙏 Te esperamos ${morning ? "hoy" : "mañana"} desde las ${formatClock(opensAt)}`;
 }
 
-/** El recordatorio a quien tiene un pedido a medio armar cerca del cierre. */
+/** El recordatorio a quien tiene un pedido a medio armar cerca del cierre. La
+ *  hora ya termina en punto («p. m.»), así que no se le pone otro. */
 export function closingReminderMessage(deadline: string) {
-  return `⏰ Recibimos servicios hasta las ${formatClock(deadline)}. Confirma tu pedido antes de esa hora o ya no lo podremos recibir 🙏`;
+  return `⏰ Recibimos servicios hasta las ${formatClock(deadline)} Confirma tu pedido antes de esa hora o ya no lo podremos recibir 🙏`;
 }

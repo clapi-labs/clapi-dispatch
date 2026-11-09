@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   closedMessage,
   closedNoticeDue,
+  closingReminderMessage,
   formatClock,
   isOpen,
   lastOpening,
@@ -122,5 +123,15 @@ describe("closedMessage", () => {
     );
     assert.match(closedMessage(cali(1, 40), "10:00"), /mañana desde las 10:00 a\. m\./);
     assert.match(closedMessage(cali(9, 30), "10:00"), /hoy desde las 10:00 a\. m\./);
+  });
+});
+
+describe("closingReminderMessage", () => {
+  it("dice la hora una sola vez y sin punto doble", () => {
+    assert.equal(
+      closingReminderMessage("23:30"),
+      "⏰ Recibimos servicios hasta las 11:30 p. m. Confirma tu pedido antes de esa hora o ya no lo podremos recibir 🙏",
+    );
+    assert.doesNotMatch(closingReminderMessage("12:00"), /\.\./);
   });
 });
