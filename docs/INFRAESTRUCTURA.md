@@ -318,6 +318,7 @@ Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida
 | `BOT_ACTIVE` | `true` para que el bot responda |
 | `SIMULATOR_ENABLED` | `1` enciende el simulador (solo staging). Vacío en producción |
 | `AUTH_DISABLED` | `1` deja entrar al portal sin login. Nunca en un servidor con datos reales |
+| `DEPLOY_ENV` | `staging` o `production` (obligatoria). En `production`, `deploy.sh` no despliega si `AUTH_DISABLED` o `SIMULATOR_ENABLED` están encendidas, y el portal ignora `AUTH_DISABLED` |
 | `PORTAL_HOST`, `BOT_HOST`, `ACME_EMAIL`, `REGISTRY` | Dominios, correo de Let's Encrypt, registro de imágenes |
 
 ### Despliegue

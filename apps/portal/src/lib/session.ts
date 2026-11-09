@@ -10,9 +10,10 @@ export const SESSION_COOKIE = "session";
 
 /** `AUTH_DISABLED=1` entra al portal sin login. Solo para desarrollo o una
  *  prueba corta: sin login, cualquiera con la dirección ve los chats y puede
- *  escribirles a los restaurantes y motorizados. */
+ *  escribirles a los restaurantes y motorizados. En producción
+ *  (`DEPLOY_ENV=production`) no tiene efecto, aunque alguien la encienda. */
 export function authDisabled(): boolean {
-  return process.env.AUTH_DISABLED === "1";
+  return process.env.AUTH_DISABLED === "1" && process.env.DEPLOY_ENV !== "production";
 }
 /** El simulador de staging y su API: siempre con sesión, aunque el login esté apagado. */
 export function isSimulatorPath(pathname: string): boolean {
