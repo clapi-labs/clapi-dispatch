@@ -19,6 +19,9 @@ export const DEFAULT_SERVICE_HOURS: ServiceHours = { opensAt: "10:00", defaultDe
 /** Minutos antes de la hora límite en que sale el recordatorio. */
 export const CLOSING_REMINDER_MINUTES = 10;
 
+/** Desde qué hora (5:00 a. m.) fuera de horario ya es la mañana y no la noche anterior. */
+const MORNING_FROM_MINUTES = 5 * 60;
+
 /** Colombia no cambia de hora: Cali siempre es UTC−5. */
 const CALI_OFFSET_MINUTES = -5 * 60;
 const DAY = 24 * 60;
@@ -62,8 +65,12 @@ function caliMinutes(now: Date) {
 /** El último momento en que abrió (la hora de inicio de hoy o, si todavía no
  *  llega, la de ayer). Cada apertura empieza una jornada nueva. */
 export function lastOpening(now: Date, opensAt: string): Date {
-  const open = parseClock(opensAt) ?? 0;
-  const since = (caliMinutes(now) - open + DAY) % DAY;
+  return lastClock(now, parseClock(opensAt) ?? 0);
+}
+
+/** La última vez que el reloj de Cali marcó esa hora (minutos desde la medianoche). */
+function lastClock(now: Date, minutes: number): Date {
+  const since = (caliMinutes(now) - minutes + DAY) % DAY;
   const at = new Date(now.getTime() - since * MINUTE_MS);
   at.setUTCSeconds(0, 0);
   return at;
@@ -87,17 +94,21 @@ export function isOpen(now: Date, hours: { opensAt: string; deadline: string }) 
 }
 
 /**
- * El aviso de fuera de horario sale una vez por cierre: si ya se le dio
- * después de la última apertura, no se repite hasta la próxima jornada.
+ * El aviso de fuera de horario no se repite en la misma noche: si ya se le dio
+ * después de la última apertura, solo vuelve a salir desde la madrugada
+ * (`MORNING_FROM_MINUTES`). Quien escribe en la mañana, antes de abrir, lo
+ * recibe otra vez («te esperamos hoy») aunque lo haya recibido la noche anterior.
  */
 export function closedNoticeDue(now: Date, opensAt: string, lastNoticeAt: Date | null) {
-  return !lastNoticeAt || lastNoticeAt < lastOpening(now, opensAt);
+  if (!lastNoticeAt) return true;
+  const since = Math.max(lastOpening(now, opensAt).getTime(), lastClock(now, MORNING_FROM_MINUTES).getTime());
+  return lastNoticeAt.getTime() < since;
 }
 
 /** Lo que responde el bot fuera de horario. Antes de abrir, en la mañana, es
  *  «hoy»; de noche y de madrugada, «mañana». */
 export function closedMessage(now: Date, opensAt: string) {
-  const morning = caliMinutes(now) >= 5 * 60 && caliMinutes(now) < (parseClock(opensAt) ?? 0);
+  const morning = caliMinutes(now) >= MORNING_FROM_MINUTES && caliMinutes(now) < (parseClock(opensAt) ?? 0);
   return `A esta hora ya no recibimos servicios para tu restaurante 🙏 Te esperamos ${morning ? "hoy" : "mañana"} desde las ${formatClock(opensAt)}`;
 }
 

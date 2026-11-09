@@ -39,7 +39,7 @@ import { pinAddress } from "@/bot/turns";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
-import { createTrip, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
+import { createTrip, openTrips, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
 import { geocodeAddress, type GeocodeOutcome } from "@/services/google/geocode";
 import { interpretMessage } from "@/services/openai/extract";
 import { downloadImage, type DownloadedImage } from "@/services/whatsapp/client";
@@ -448,8 +448,9 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     if (extraction.confused) {
-      // Fuera de horario no hay a quién pasarle el chat: va el aviso de cierre.
-      if (!open) {
+      // Fuera de horario no pasa a la central, salvo que tenga un pedido en
+      // curso: lo ya confirmado se atiende igual («el domi no ha llegado»).
+      if (!open && !(await openTrips(conversation.id)).length) {
         await closedForOrders(ctx, hours.opensAt, now);
         return;
       }

@@ -109,6 +109,13 @@ describe("lastOpening y closedNoticeDue", () => {
     assert.equal(closedNoticeDue(cali(2, 0, 1), "10:00", first), false);
   });
 
+  it("en la mañana, antes de abrir, vuelve a salir una vez", () => {
+    const night = cali(23, 40);
+    assert.equal(closedNoticeDue(cali(9, 30, 1), "10:00", night), true);
+    const morning = cali(9, 30, 1);
+    assert.equal(closedNoticeDue(cali(9, 45, 1), "10:00", morning), false);
+  });
+
   it("después de la apertura siguiente, vuelve a salir", () => {
     const first = cali(23, 40);
     assert.equal(closedNoticeDue(cali(23, 40, 1), "10:00", first), true);
