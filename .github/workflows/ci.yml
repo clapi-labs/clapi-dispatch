@@ -1,10 +1,10 @@
 name: CI
 
-# Solo en PRs hacia main y en main: mientras se trabaja directo en dev no hay
-# espera. Las imágenes se construyen al hacer merge (images.yml).
+# En los PRs hacia dev o main, y en main. Un push directo a dev no espera al
+# CI. Las imágenes se construyen al hacer merge (images.yml).
 on:
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   push:
     branches: [main]
 
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   checks:
-    name: Lint, tipos y build
+    name: Lint, tipos, pruebas y build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -29,8 +29,30 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       # No necesita secretos: las variables se leen al usarlas, no al compilar.
       - run: npm run build
+
+  secrets:
+    name: Secretos (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Todo el historial: un secreto en un commit viejo sigue siendo público.
+          fetch-depth: 0
+      # Imagen oficial con versión fija. --redact: los registros de CI de un
+      # repositorio público también son públicos, así que nunca se imprime el
+      # valor encontrado. safe.directory: el repositorio montado es de otro
+      # usuario que el del contenedor. Reglas y excepciones: .gitleaks.toml.
+      - name: Buscar llaves y contraseñas en el historial
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            git /repo --config /repo/.gitleaks.toml --redact --no-banner --verbose \
+            --log-opts="--all"
 
   engine:
     name: Engine (casos y contrato)
