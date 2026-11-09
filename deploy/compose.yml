@@ -95,6 +95,8 @@ services:
       PORT: 3002
       INTERNAL_SECRET: ${INTERNAL_SECRET}
       SESSION_SECRET: ${SESSION_SECRET:?falta SESSION_SECRET en .env}
+      # En production el portal ignora AUTH_DISABLED (lib/session.ts).
+      DEPLOY_ENV: ${DEPLOY_ENV:?falta DEPLOY_ENV en .env (staging o production)}
       # Solo en staging: "1" deja entrar sin login. Sin definir, el login sigue activo.
       AUTH_DISABLED: ${AUTH_DISABLED:-}
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}

@@ -39,6 +39,26 @@ compose() { # compose <tag> <args...>
 }
 env_value() { grep -E "^$1=" .env | head -n1 | cut -d= -f2- || true; }
 
+# Lo que nunca se enciende en producción: sin login, cualquiera con la
+# dirección ve los chats; el simulador desvía los mensajes a números de prueba.
+DEPLOY_ENV="$(env_value DEPLOY_ENV)"
+case "$DEPLOY_ENV" in
+  staging) ;;
+  production)
+    for flag in AUTH_DISABLED SIMULATOR_ENABLED; do
+      value="$(env_value "$flag")"
+      if [ -n "$value" ] && [ "$value" != "0" ]; then
+        echo "!! $flag=$value en producción: no se despliega. Déjala vacía en .env." >&2
+        exit 1
+      fi
+    done
+    ;;
+  *)
+    echo "Falta DEPLOY_ENV en .env (staging o production)." >&2
+    exit 1
+    ;;
+esac
+
 PREVIOUS="$(cat .tag 2>/dev/null || true)"
 echo "==> Desplegando ${TAG:0:12} (antes: ${PREVIOUS:0:12})"
 
