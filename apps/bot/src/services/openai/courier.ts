@@ -31,6 +31,8 @@ export async function classifyCourierMessage(text: string): Promise<CourierInten
         model: env.openai.chatModel,
         response_format: { type: "json_object" },
         temperature: 0,
+        // Tope de la respuesta: solo el tipo y un resumen corto.
+        max_completion_tokens: 300,
         messages: [
           { role: "system", content: PROMPT },
           { role: "user", content: text },

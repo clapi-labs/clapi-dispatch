@@ -129,6 +129,9 @@ export async function interpretMessage(
     model: env.openai.chatModel,
     response_format: { type: "json_object" },
     temperature: 0,
+    // Tope de la respuesta: un pedido con muchas entregas cabe de sobra. Si se
+    // corta, el JSON no se puede leer y cuenta como falla de OpenAI.
+    max_completion_tokens: 4000,
     messages: [
       { role: "system", content: buildExtractionPrompt() },
       { role: "user", content: userContent },
