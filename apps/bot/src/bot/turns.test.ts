@@ -18,7 +18,7 @@ const FROM = { phone: "573000000001", profileName: null };
 const isPick = (buttonId: string) => buttonId.startsWith("pedido:");
 
 const text = (t: string, replyTo: string | null = null): Payload => ({ kind: "text", text: t, replyTo });
-const pin: Payload = { kind: "location", lat: 3.46, lng: -76.53, label: "Conjunto Residencial Canelo", replyTo: null };
+const pin: Payload = { kind: "location", lat: 3.46, lng: -76.53, label: "Conjunto Residencial Los Almendros", replyTo: null };
 const confirm: Payload = { kind: "button", buttonId: "confirmar", title: "Confirmar servicio", replyTo: null };
 const audio: Payload = { kind: "unsupported", type: "audio", replyTo: null };
 
@@ -31,7 +31,7 @@ describe("mergeTurns", () => {
     assert.equal(turn.kind, "text");
     if (turn.kind !== "text") return;
     assert.equal(turn.text, "Buenas me das un domi para esta direccion");
-    assert.deepEqual(turn.pins, [{ lat: 3.46, lng: -76.53, label: "Conjunto Residencial Canelo", beforeText: true }]);
+    assert.deepEqual(turn.pins, [{ lat: 3.46, lng: -76.53, label: "Conjunto Residencial Los Almendros", beforeText: true }]);
     assert.equal(turn.waMessageId, rows[0].waMessageId, "se cita el primer mensaje");
     assert.equal(turn.timestamp, rows[0].createdAt);
   });
@@ -42,7 +42,7 @@ describe("mergeTurns", () => {
     assert.equal(turns.length, 1);
     const [turn] = turns;
     if (turn.kind !== "text") return assert.fail("debía ser un texto");
-    assert.equal(turn.text, "Domi a la Cra 98 # 45-30\n(Ubicación de WhatsApp: Conjunto Residencial Canelo)\ncliente Ana 3001234567", "el pin queda marcado donde llegó");
+    assert.equal(turn.text, "Domi a la Cra 98 # 45-30\n(Ubicación de WhatsApp: Conjunto Residencial Los Almendros)\ncliente Ana 3001234567", "el pin queda marcado donde llegó");
     assert.equal(turn.pins?.[0].beforeText, false, "el pin llegó después del texto");
     assert.deepEqual(turn.buttons, [{ buttonId: "confirmar", title: "Confirmar servicio" }]);
     assert.equal(turn.unsupported, true);

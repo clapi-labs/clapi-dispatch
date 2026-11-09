@@ -75,7 +75,7 @@ Sale al marcar la entrega, con la hora real, aunque el domiciliario siga en cami
 | Caso | Mensaje |
 |---|---|
 | Al cliente | 📦 Pedido B-12 entregado a las 7:40 p. m. ✅ |
-| En portería | 📦 Pedido B-12 quedó en portería a las 7:40 p. m. ✅ Para Lorena Mora, torre 4 apto 302. Ya puedes avisarle al cliente. |
+| En portería | 📦 Pedido B-12 quedó en portería a las 7:40 p. m. ✅ Para Laura Méndez, torre 4 apto 302. Ya puedes avisarle al cliente. |
 
 El aviso de portería sale siempre, aunque la agencia haya apagado `notifyRestaurantOnDelivery`: es el que el restaurante necesita para actuar.
 

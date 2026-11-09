@@ -44,7 +44,7 @@ function knownForModel(known: OrderDraft) {
 
 /**
  * El teléfono del cliente en la forma que se guarda: los 10 dígitos de un
- * celular colombiano, sin el indicativo («+57 300 2637169» → «3002637169»).
+ * celular colombiano, sin el indicativo («+57 300 5550101» → «3005550101»).
  * `doubtful` si no da 10 dígitos (le falta o le sobra uno, o es un fijo
  * viejo): se guarda igual, pero el restaurante lo confirma.
  */
