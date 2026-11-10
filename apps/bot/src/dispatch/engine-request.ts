@@ -1,4 +1,4 @@
-import { orderStops, stopsForPhase, type RouteStop, type StopKind, type TripPhase } from "@dispatch/shared";
+import { hasSignal, orderStops, stopsForPhase, type RouteStop, type StopKind, type TripPhase } from "@dispatch/shared";
 
 /**
  * Arma la petición a `POST /evaluar` (contrato en docs/ALGORITMO.md) con lo
@@ -34,7 +34,7 @@ export type SnapshotCourier = {
   route: RouteStop[] | null;
 };
 
-export type EngineSettings = { radioKm: number; multipedido: boolean; sinSenalMin: number; asumirRegreso: boolean };
+export type EngineSettings = { radioKm: number; multipedido: boolean; asumirRegreso: boolean };
 
 type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
 
@@ -94,8 +94,8 @@ export function buildEvaluarRequest(
   ].filter((m): m is string => Boolean(m));
   if (missing.length || !trip.pickupLocation || !trip.deliveryLocation || !trip.readyAt) return { ok: false, missing };
 
-  const sinSenal = (c: SnapshotCourier) =>
-    c.lat == null || c.lng == null || !c.locationUpdatedAt || now.getTime() - c.locationUpdatedAt.getTime() > settings.sinSenalMin * 60_000;
+  // Sin reporte en los últimos 30 segundos (domain/gps.ts), el engine la excluye.
+  const sinSenal = (c: SnapshotCourier) => !hasSignal(c, now);
 
   const conSenal = couriers.filter((c) => !sinSenal(c));
   const grupo = conSenal.length ? conSenal : couriers;

@@ -1,12 +1,15 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { signalState } from "@dispatch/shared/domain/gps";
+import { List, Map as MapIcon, Search } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { AddCourierForm } from "@/components/AddCourierForm";
 import { CourierCard } from "@/components/CourierCard";
+import { FleetMap } from "@/components/FleetMap";
 import type { Courier } from "@/lib/types";
 import { useLive } from "@/lib/live";
+import { useNow } from "@/lib/use-now";
 
 type Filter = "available" | "busy" | "offline" | "paused";
 
@@ -22,6 +25,10 @@ export default function FlotaPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter | null>(null);
   const [searching, setSearching] = useState(false);
+  const [view, setView] = useState<"list" | "map">("list");
+  // Perder la señal no cambia nada en la base: el paso a «sin señal» lo marca
+  // este reloj, a los pocos segundos de cumplirse los 30 sin reporte.
+  const now = useNow(3000);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/couriers", { cache: "no-store" });
@@ -70,6 +77,11 @@ export default function FlotaPage() {
     if (!res.ok) throw new Error("No se guardó");
     setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, photo } : c)));
   }
+
+  // Señal de las conectadas: las desconectadas no reportan ni se esperan.
+  const connected = couriers.filter((c) => c.status !== "offline");
+  const live = connected.filter((c) => signalState(c, now) === "live").length;
+  const lost = connected.filter((c) => signalState(c, now) === "lost").length;
 
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, couriers.filter((c) => c.status === f.key).length])) as Record<Filter, number>;
   const needle = query.trim().toLowerCase();
@@ -125,12 +137,50 @@ export default function FlotaPage() {
         </div>
       </div>
 
+      {/* Señal de GPS de las conectadas, y lista o mapa. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-ok" /> <strong className="tabular-nums">{live}</strong> en vivo
+          </span>
+          <span className={`flex items-center gap-1.5 ${lost ? "text-warn" : ""}`}>
+            <span className={`h-2 w-2 rounded-full ${lost ? "bg-warn" : "bg-ink-3"}`} /> <strong className="tabular-nums">{lost}</strong> sin señal
+          </span>
+          {connected.length - live - lost > 0 && (
+            <span className="text-ink-3">
+              <strong className="tabular-nums">{connected.length - live - lost}</strong> conectadas sin ubicación
+            </span>
+          )}
+        </p>
+        <div className="flex rounded-xl bg-sunken p-1 text-sm font-semibold" role="group" aria-label="Vista">
+          {(
+            [
+              { key: "list", label: "Lista", Icon: List },
+              { key: "map", label: "Mapa", Icon: MapIcon },
+            ] as const
+          ).map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={view === key}
+              onClick={() => setView(key)}
+              className={`ease-ui flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${view === key ? "bg-surface text-clapi-ink shadow-sm" : "text-ink-3 can-hover:hover:text-ink-2"}`}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === "map" && <FleetMap couriers={shown} now={now} />}
+
       {/* `items-start`: abrir "Ver más" en una tarjeta no estira a sus vecinas de fila. */}
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className={`grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${view === "map" ? "hidden" : ""}`}>
         {shown.map((courier) => (
           <CourierCard
             key={courier.id}
             courier={courier}
+            now={now}
             onChange={(status) => setStatus(courier.id, status)}
             onEmergency={(on) => setEmergency(courier.id, on)}
             onRemove={() => remove(courier.id)}

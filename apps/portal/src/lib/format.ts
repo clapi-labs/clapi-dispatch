@@ -48,6 +48,11 @@ export function durationLabel(totalSeconds: number): string {
   return `${hours} h ${minutes % 60} min`;
 }
 
+/** «3:42 p. m.», en hora de Cali: la hora de la última ubicación de una moto. */
+export function timeOfDay(at: Date | string): string {
+  return new Date(at).toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit", timeZone: "America/Bogota" });
+}
+
 /** "hace 2 min", "hace 1 h" — para el indicador de espera de la comanda. */
 export function elapsedLabel(since: Date, now: Date = new Date()): string {
   return durationLabel((now.getTime() - since.getTime()) / 1000);

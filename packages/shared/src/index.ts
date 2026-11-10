@@ -1,5 +1,6 @@
 export * from "./domain/dispatch";
 export * from "./domain/extraction";
+export * from "./domain/gps";
 export * from "./domain/coordinates";
 export * from "./domain/price-zones";
 export * from "./domain/zone-map";

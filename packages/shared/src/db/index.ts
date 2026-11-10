@@ -14,3 +14,4 @@ export * from "./price-zones";
 export * from "./trip-code";
 export * from "./simulator-flag";
 export * from "./simulator";
+export * from "./gps-retention";

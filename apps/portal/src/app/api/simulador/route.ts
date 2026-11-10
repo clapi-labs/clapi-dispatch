@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
 
 import {
   createSimulatedCourier,
@@ -37,7 +37,7 @@ type Point = { lat: number; lng: number };
 
 export async function GET() {
   if (!simulatorEnabled()) return notFound();
-  const [config, engine, bot, home, controls, couriers, restaurants] = await Promise.all([
+  const [config, engine, bot, home, controls, couriers, restaurants, withGps] = await Promise.all([
     getSimulatorConfig(),
     getEngineConfig(),
     getBotConfig(),
@@ -49,7 +49,11 @@ export async function GET() {
       .from(schema.restaurants)
       .where(eq(schema.restaurants.active, true))
       .orderBy(schema.restaurants.name),
+    db.select({ id: schema.courierProfiles.courierId }).from(schema.courierProfiles).where(isNotNull(schema.courierProfiles.gpsDeviceId)),
   ]);
+  // Una moto con número real e identificador de GPS es una moto real (simulator-flag.ts).
+  const gps = new Set(withGps.map((r) => r.id));
+  const isReal = (c: { id: number; simulated: boolean }) => !c.simulated && gps.has(c.id);
 
   const since = new Date(Date.now() - RECENT_MS);
   const rows = await db
@@ -139,7 +143,6 @@ export async function GET() {
       speed: config.speed,
       radiusKm: engine.radioKm,
       mode: engine.mode,
-      sinSenalMin: engine.sinSenalMin,
       gatePercent: config.gatePercent,
       returnPercent: config.returnPercent,
       noAnswerPercent: config.noAnswerPercent,
@@ -147,7 +150,12 @@ export async function GET() {
     },
     home,
     couriers: courierView.filter((c) => c.simulated),
-    testNumbers: courierView.filter((c) => !c.simulated).map((c) => ({ id: c.id, name: c.name, status: c.status, controls: c.controls })),
+    // Las reales con GPS se dibujan aparte: no reciben pedidos del simulador,
+    // solo el viaje de prueba que se les asigne al crear un pedido.
+    realCouriers: courierView.filter(isReal),
+    testNumbers: courierView
+      .filter((c) => !c.simulated && !isReal(c))
+      .map((c) => ({ id: c.id, name: c.name, status: c.status, controls: c.controls })),
     restaurants: restaurants.filter((r) => r.location).map((r) => ({ id: r.id, name: r.name, location: r.location })),
     trips,
   });
@@ -220,8 +228,13 @@ export async function POST(request: Request) {
         lat: num(body.lat),
         lng: num(body.lng),
         readyInMinutes: num(body.readyInMinutes) ?? 0,
+        // Viaje de prueba para una moto real con GPS; sin ella, lo despacha el algoritmo.
+        courierId,
       });
-      return result.ok ? ok() : Response.json({ error: `El bot no creó el pedido (${result.reason ?? "error"})` }, { status: 502 });
+      if (result.ok) return ok();
+      // Un motivo del bot (moto no conectada, no es real) se muestra tal cual.
+      const technical = !result.reason || /^(http_|no_bot|bad_secret)/.test(result.reason) || result.reason.includes("Error");
+      return Response.json({ error: technical ? `El bot no creó el pedido (${result.reason ?? "error"})` : result.reason }, { status: 502 });
     }
     case "reset": {
       const created = await resetSimulation();
