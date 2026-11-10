@@ -33,20 +33,26 @@ La tabla por km coincide con lo que cobra Express en casi todos los barrios, per
 - El restaurante solo ve el **precio final**, como siempre.
 - Las zonas se leen en **cada cotización** (`quoteByDistance`, `packages/shared/src/db/quote.ts`): un cambio de zona o de mínimo aplica desde la siguiente, sin redesplegar. Un pedido ya confirmado conserva su precio. El simulador cotiza con la misma función.
 - Si la tabla por km está vacía no hay precio, haya zona o no: el pedido pasa a la central como siempre.
-- No tiene nada que ver con las zonas sin cobertura (tabla aparte, mapa aparte).
+- Las zonas sin cobertura son otra tabla, pero van en el **mismo mapa**: donde una roja y una azul se cruzan, gana la roja (ver «El mapa de zonas»).
 
 **Dónde se guardan:** tabla `price_zones` (nombre, `min_price` en pesos o vacío para «sin mínimo», el contorno en `ring` y, si salió de un barrio oficial, su código en `barrio_code`).
 
-### El mapa de precios
+### El mapa de zonas
 
-En el portal: menú **Precio mínimo por zona** (`/precios-zona`, que abre `/zonas/precios.html` a pantalla completa, con el mismo login). Herramienta de computador, como el de cobertura.
+En el portal: menú **Zonas** (`/zonas`, que abre `apps/portal/public/zonas/mapa.html` a pantalla completa, con el mismo login). Es una herramienta de computador: no sale en la barra del celular. Un solo mapa para los dos tipos, sobre los barrios oficiales de Cali (punteados):
 
-- **Buscar un barrio** por su nombre («Ciudad Jardín», «El Ingenio»): el mapa lo muestra con su límite oficial. **Volverlo zona** lo convierte en una zona con ese contorno, sin dibujar; solo falta el mínimo. También se puede tocar un barrio directamente en el mapa.
-- **Dibujar zona:** clic en cada esquina y **Terminar**, para lo que no es un barrio (Cañasgordas, que la capa oficial no trae como barrio; Jamundí; una parte de un barrio).
-- **Editar:** tocar una zona (en el mapa o en la lista). Se arrastran las esquinas para mover el borde, se toca un punto pequeño entre dos esquinas para agregar una, y clic derecho sobre una esquina la quita. Se cambia el nombre o el mínimo, o se marca **Sin mínimo**. **Eliminar zona** pide confirmación.
-- **Probar una dirección:** se escribe como la mandaría el restaurante y el portal la ubica igual que el bot (le pide la ubicación al bot, `POST /api/internal/geocode`, con el mismo Google). Muestra el punto, la zona que manda con su mínimo y las otras zonas donde también cae. **Probar un punto** hace lo mismo con un clic en el mapa. Como la llave de Google solo funciona desde el servidor, en local la dirección cae en el punto simulado (`GEOCODE_SIMULADO=true`).
-- Cada cambio se guarda al momento (`/api/zonas-precio`) y la lista se vuelve a leer cada 20 s.
-- Los barrios cargados **no cobran nada** por sí solos: solo ayudan a crear zonas.
+| Tipo | Color | Qué hace | Se guarda en |
+|---|---|---|---|
+| **Sin cobertura** | Rojo | Adonde no se va. Nombre y una nota opcional. | `restricted_zones` (`/api/zonas`) |
+| **Precio mínimo** | Azul | Cobra al menos un valor (la regla de arriba). Nombre y mínimo, o **Sin mínimo** (azul punteado, solo por km). | `price_zones` (`/api/zonas-precio`) |
+
+- **Donde se cruzan, gana la roja:** un sector pequeño sin cobertura dentro de un barrio con mínimo se marca dibujando la roja encima. Las rojas van siempre por encima de las azules en el mapa, y las pequeñas por encima de las grandes, para que se puedan tocar.
+- **Crear:** «Nueva zona sin cobertura» o «Nueva zona de precio mínimo». Después, buscar el barrio por nombre (o tocarlo en el mapa) lo vuelve zona con su límite oficial, sin dibujar; o **Dibujar a mano**: clic en cada esquina y **Terminar** (o doble clic), para lo que no es un barrio (Cañasgordas, Jamundí, una parte de un barrio).
+- **Editar:** tocar una zona, en el mapa o en la lista. Se arrastran las esquinas para mover el borde, un punto pequeño entre dos esquinas agrega una, y clic derecho sobre una esquina la quita (máximo 500). Se cambia el nombre y, según el tipo, la nota o el mínimo. **Eliminar zona** pide confirmación.
+- **Probar:** una dirección escrita como la mandaría el restaurante (el portal le pide la ubicación al bot, `POST /api/internal/geocode`, con el mismo Google) o **Probar un punto** con un clic. Responde **Sin cobertura**, **Mínimo $ X** o **Solo por km** (`POST /api/zonas/probar`, con la regla de `packages/shared/src/domain/zone-map.ts` y sus pruebas). Como la llave de Google solo funciona desde el servidor, en local la dirección cae en el punto simulado (`GEOCODE_SIMULADO=true`).
+- Cada cambio se guarda al momento; la lista se vuelve a leer cada 20 s y al volver a la pestaña. Un cambio de precio aplica desde la siguiente cotización.
+- Los barrios **no cobran ni bloquean nada** por sí solos: solo sirven para crear zonas.
+- Antes había dos mapas (`/zonas` para cobertura y `/precios-zona` para precios). Se unieron sin tocar las tablas: las zonas que ya existían salen en el mapa nuevo tal cual.
 
 ### Los barrios oficiales
 
@@ -73,18 +79,15 @@ Lugares adonde la agencia no entra (ni a recoger ni a entregar). Decisiones del 
 
 ### El mapa para marcarlas
 
-En el portal: menú **Zonas sin cobertura** (`/zonas`, que abre `/zonas/mapa.html` a pantalla completa). Pide el mismo login del portal; es una herramienta de computador (no sale en la barra del celular).
+Se marcan en el mapa de zonas, en rojo (ver «El mapa de zonas», arriba). Lo que el mapa anterior tenía y el nuevo no: el nombre de la calle bajo el cursor, la franja gris en la prueba (llega con el bot, abajo) y «Copiar zonas (GeoJSON)».
 
-- Se dibujan, editan y borran zonas con el mouse; buscador de barrios; nombre de la calle y el barrio bajo el cursor; «Probar una dirección» (dentro / franja gris / fuera); «Copiar zonas (GeoJSON)» como respaldo.
-- **Cada cambio se guarda al momento** en la tabla `restricted_zones` (`/api/zonas`). Se puede cerrar y seguir otro día, desde cualquier computador; la lista se vuelve a leer cada 20 s y al volver a la pestaña.
-- Archivos: `apps/portal/public/zonas/mapa.html` y `cali.json` (calles y barrios de OpenStreetMap, 15 de julio de 2026; los de Jamundí dicen «· Jamundí»).
-- Primera versión: una página aparte que guardaba en su propia base. Ya no se usa.
+`apps/portal/public/zonas/cali.json` (calles y barrios de OpenStreetMap, 15 de julio de 2026) era el fondo del mapa anterior; el nuevo usa los barrios oficiales y ya no lo carga.
 
 **Herramientas para regenerar las calles:** `tools/mapa-zonas/`
 
 | Archivo | Qué es |
 |---|---|
-| `index.html` | La primera versión, que guardaba en su propia base; la del portal es `apps/portal/public/zonas/mapa.html` |
+| `index.html` | La primera versión, que guardaba en su propia base; hoy el mapa es `apps/portal/public/zonas/mapa.html` |
 | `cali.json` | Vías y barrios empaquetados (~1 MB) |
 | `descargar.sh` | Baja de OpenStreetMap (Overpass) las vías y barrios de Cali y Jamundí |
 | `empaquetar.py` | Los convierte en `cali.json`: `python3 empaquetar.py osm-raw cali.json` |
