@@ -135,11 +135,14 @@ function DeliverDialog({ code, onChoose, onClose }: { code: string; onChoose: (o
  */
 export const TripCard = memo(function TripCard({
   trip,
+  focused = false,
   onDeliver,
   onFinish,
   onAssign,
 }: {
   trip: Trip;
+  /** Se llegó a él desde una alerta del celular: se marca un momento. */
+  focused?: boolean;
   onDeliver: (id: number, outcome: DeliveryOutcome) => void;
   onFinish: (id: number) => void;
   onAssign: (id: number, courierId: number | null) => Promise<boolean>;
@@ -169,8 +172,11 @@ export const TripCard = memo(function TripCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
+      id={`pedido-${trip.id}`}
       onClick={toggle}
-      className={`card flex cursor-pointer flex-col gap-2.5 p-3.5 ${urgent || phaseAlert ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""}`}
+      className={`card flex cursor-pointer flex-col gap-2.5 p-3.5 ${urgent || phaseAlert ? "animate-urgent" : ""} ${justAssigned ? "animate-assigned" : ""} ${
+        focused ? "ring-2 ring-clapi ring-offset-2 ring-offset-canvas" : ""
+      }`}
     >
       <header className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold tracking-tight">{trip.code}</span>

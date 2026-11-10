@@ -236,15 +236,18 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 ### C-1 · Alertas al celular de la central · Portal · L
 
-**Objetivo:** que a William le suene el celular con cada novedad aunque no tenga el portal abierto.
+**Objetivo:** que a William le suene el celular con cada alerta del portal aunque no lo tenga abierto.
+
+**Estado:** construido; falta comprobarlo en staging con celulares reales.
 
 **Éxito:**
-- El portal se instala como app y recibe notificaciones push (Android con Chrome; iPhone con iOS 16.4 o más).
-- Suenan: novedad de un motorizado, chat que pide asesor, consulta de dirección, pedido que espera moto sin ganadora. Al tocar la notificación abre ese chat o ese pedido.
-- El portal muestra si las notificaciones están activas en ese celular.
-- Probado en un Android real con el navegador cerrado.
+- El portal se instala como app (ícono de Clapi, pantalla completa) y recibe notificaciones push (Android con Chrome; iPhone con iOS 16.4 o más, instalado en la pantalla de inicio).
+- Suenan las alertas que ya tiene el portal: chat que pide ayuda (incluye novedad de un motorizado y consulta de dirección) y moto asignada. Al tocar la notificación abre ese chat o ese pedido.
+- El portal muestra si las notificaciones están activas o bloqueadas en ese celular.
+- En el celular instalado la sesión dura 30 días y se puede cerrar a distancia.
+- Probado en un Android real con el celular bloqueado y el portal cerrado; en un iPhone, cuando haya uno.
 
-**Dónde mirar:** [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md) («Alertas al celular»), `apps/portal/src/app/api/events`.
+**Dónde mirar:** [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md) («Alertas al celular»), `packages/shared/src/db/push.ts`, `apps/portal/public/sw.js`, `apps/portal/src/app/(dashboard)/alertas`.
 
 ### C-2 · Cancelar con cobro y registro de acciones · Portal · L
 

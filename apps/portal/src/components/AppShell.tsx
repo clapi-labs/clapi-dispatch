@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/Modal";
 import { useTrips } from "@/components/TripsProvider";
 import { BRAND } from "@/lib/brand";
 import { setBusinessPaused, useBusiness } from "@/lib/business";
+import { getPushStatus, type PushStatus } from "@/lib/push";
 
 const NAV = [
   { href: "/viajes", label: "Viajes", short: "Viajes", icon: LayoutGrid },
@@ -100,6 +101,18 @@ function ClientMenu({ variant }: { variant: "rail" | "header" }) {
   const box = useRef<HTMLDivElement>(null);
   const rail = variant === "rail";
   const router = useRouter();
+  // Si las alertas al celular están activas en este equipo: se mira al abrir el menú.
+  const [push, setPush] = useState<PushStatus | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    getPushStatus()
+      .then((s) => alive && setPush(s))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
@@ -157,9 +170,23 @@ function ClientMenu({ variant }: { variant: "rail" | "header" }) {
 
       {open && (
         // Relleno y no margen entre el botón y el menú: el cursor cruza sin que el menú se cierre.
-        <div className={`absolute z-50 ${rail ? "bottom-full left-0 right-0 pb-2" : "right-0 top-full w-56 pt-2"}`}>
+        <div className={`absolute z-50 ${rail ? "bottom-full left-0 right-0 pb-2" : "right-0 top-full w-64 pt-2"}`}>
           <div role="menu" className="rounded-2xl bg-surface p-1.5 text-ink shadow-xl ring-1 ring-line">
             {!rail && <p className="truncate px-3 pb-1.5 pt-1 text-xs font-semibold text-ink-3">{BRAND.client.name}</p>}
+            <Link
+              href="/alertas"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="ease-ui flex h-10 w-full items-center gap-2.5 rounded-xl px-3 text-sm font-medium text-ink can-hover:hover:bg-sunken"
+            >
+              <BellRing size={16} className="shrink-0" />
+              <span className="whitespace-nowrap">Alertas al celular</span>
+              {push && (
+                <span className={`ml-auto text-[11px] font-semibold ${push === "on" ? "text-ok" : push === "denied" ? "text-danger" : "text-ink-3"}`}>
+                  {push === "on" ? "Activas" : push === "denied" ? "Bloqueadas" : "Apagadas"}
+                </span>
+              )}
+            </Link>
             <button
               type="button"
               role="menuitem"

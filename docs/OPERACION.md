@@ -173,6 +173,8 @@ Pide la contraseña oculta (mínimo 10 caracteres). Repetirlo con el mismo corre
 
 > El usuario de pruebas `express@cali.test` tiene contraseña débil. Cambiarla o borrarlo antes de usar datos reales.
 
+Cada inicio de sesión queda en `portal_sessions`: 12 horas en el navegador y 30 días en el portal instalado en un celular. Para cerrar una sola (por ejemplo, la de un celular perdido), en el portal: insignia › **Alertas al celular** › **Sesiones abiertas** › **Cerrar**. Desactivar un usuario (`users.active = false`) cierra todas las suyas; cambiar `SESSION_SECRET` las cierra todas. Las alertas al celular y sus instrucciones: [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md), «Alertas al celular».
+
 ## 6. Diagnóstico
 
 ```bash
@@ -191,6 +193,7 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 | En los registros del bot: `envío rechazado 400 ... (#133010) Account not registered` | Los mensajes llegan, pero Meta rechaza el envío. Con el ID y el token correctos, mandar un mensaje de prueba desde *API Setup* en Meta reactiva el número de pruebas |
 | El bot no responde | `BOT_ACTIVE` en `false`, token de WhatsApp vencido (el temporal dura ~24 h) o falla de OpenAI |
 | Certificado no emitido | DNS aún sin propagar o puertos 80/443 cerrados |
+| No llegan las alertas al celular | En ese celular, **Alertas al celular** dice si están activas o bloqueadas, y **Enviar una de prueba** las prueba. En los registros del bot y del portal, `[alertas]` dice qué rechazó el servicio de notificaciones |
 | Un chat de prueba quedó con un pedido a medio armar que se mezcla con los nuevos | El borrador no vence ni se cancela todavía ([PLAN](PLAN.md) B-1). Se limpia a mano, abajo |
 
 **Limpiar un chat de prueba** (solo staging): borra el pedido a medio armar y devuelve el chat al bot; los mensajes quedan.

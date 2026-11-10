@@ -207,14 +207,6 @@ export default function ConversacionesPage() {
   // Al llegar desde un teléfono de otra pantalla (#tel=57300…) se abre ese chat
   // en cuanto carga la lista. El número no se queda en la barra de direcciones.
   const wanted = useRef<string | null>(null);
-  useEffect(() => {
-    // Solo se anota si viene uno: en desarrollo React corre el efecto dos veces,
-    // y la segunda ya no encuentra el número en la dirección.
-    const phone = phoneFromHash(window.location.hash);
-    if (!phone) return;
-    wanted.current = phone;
-    window.history.replaceState(null, "", window.location.pathname);
-  }, []);
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
@@ -247,6 +239,24 @@ export default function ConversacionesPage() {
     const res = await fetch(`/api/conversations/${id}`, { cache: "no-store" });
     if (res.ok) setThread(await res.json());
   }, []);
+
+  // El número también puede llegar con la pantalla ya abierta: al tocar una
+  // alerta del celular (components/AppBridge.tsx) cambia solo el fragmento.
+  useEffect(() => {
+    const take = (reload: boolean) => {
+      // Solo se anota si viene uno: en desarrollo React corre el efecto dos veces,
+      // y la segunda ya no encuentra el número en la dirección.
+      const phone = phoneFromHash(window.location.hash);
+      if (!phone) return;
+      wanted.current = phone;
+      window.history.replaceState(null, "", window.location.pathname);
+      if (reload) void loadList();
+    };
+    take(false);
+    const onHash = () => take(true);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [loadList]);
 
   // La bandeja marca quién es motorizado: también cambia con la flota.
   useLive(loadList, ["conversations", "messages", "couriers"]);

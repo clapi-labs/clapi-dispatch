@@ -3,7 +3,7 @@
 import { isTripOpen } from "@dispatch/shared/domain/phase";
 import { Inbox } from "lucide-react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { TripCard } from "@/components/TripCard";
 import { useTrips } from "@/components/TripsProvider";
@@ -32,6 +32,18 @@ function bucket(trips: Trip[], key: ColumnKey) {
     .sort((a, b) => (b.deliveredAt ?? b.updatedAt).localeCompare(a.deliveredAt ?? a.updatedAt));
 }
 
+/** La columna donde está un viaje: la misma regla de `bucket`. */
+function columnOf(trip: Trip): ColumnKey {
+  if (trip.status === "pending") return "pending";
+  return isTripOpen(trip) ? "route" : "done";
+}
+
+/** El viaje que pide la dirección (#pedido=123): así abre el portal una alerta del celular. */
+function tripFromHash(hash: string) {
+  const id = hash.match(/^#pedido=(\d+)$/)?.[1];
+  return id ? Number(id) : null;
+}
+
 function SkeletonCard() {
   return <div className="card h-48 animate-pulse bg-surface" />;
 }
@@ -42,6 +54,46 @@ export default function ViajesPage() {
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
   const panes = useSwipePanes(KEYS, tab, setTab);
+
+  // Al llegar desde una alerta: se pasa a su columna, se lleva a la vista y
+  // se marca un momento. Con la pantalla ya abierta cambia solo el fragmento.
+  const [wanted, setWanted] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
+  useEffect(() => {
+    const take = () => {
+      const id = tripFromHash(window.location.hash);
+      if (id === null) return;
+      window.history.replaceState(null, "", window.location.pathname);
+      setWanted(id);
+    };
+    // En un setTimeout: el setState no ocurre dentro del efecto.
+    const first = setTimeout(take, 0);
+    window.addEventListener("hashchange", take);
+    return () => {
+      clearTimeout(first);
+      window.removeEventListener("hashchange", take);
+    };
+  }, []);
+  useEffect(() => {
+    if (wanted === null || !loaded) return;
+    const trip = trips.find((t) => t.id === wanted);
+    const id = setTimeout(() => {
+      setWanted(null);
+      if (!trip) return;
+      setTab(columnOf(trip));
+      setFocused(trip.id);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [wanted, loaded, trips]);
+  useEffect(() => {
+    if (focused === null) return;
+    const timers = [
+      // Después de que el carrusel llegue a la columna.
+      setTimeout(() => document.getElementById(`pedido-${focused}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 400),
+      setTimeout(() => setFocused(null), 4000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [focused]);
 
   const groups = Object.fromEntries(COLUMNS.map((c) => [c.key, bucket(trips, c.key)])) as Record<ColumnKey, Trip[]>;
 
@@ -102,7 +154,7 @@ export default function ViajesPage() {
                   ) : (
                     <AnimatePresence mode="popLayout" initial={false}>
                       {groups[c.key].map((trip) => (
-                        <TripCard key={trip.id} trip={trip} onDeliver={deliver} onFinish={finish} onAssign={assign} />
+                        <TripCard key={trip.id} trip={trip} focused={trip.id === focused} onDeliver={deliver} onFinish={finish} onAssign={assign} />
                       ))}
                     </AnimatePresence>
                   )}

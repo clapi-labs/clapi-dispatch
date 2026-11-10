@@ -534,3 +534,74 @@ export const priceZones = pgTable("price_zones", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Sesiones del portal y alertas al celular (docs/INTERVENCION-MANUAL.md,
+// «Alertas al celular»)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cada inicio de sesión en el portal. La cookie va firmada y lleva este id: si
+ * la fila ya no existe, la sesión se cerró (desde ese mismo equipo o a
+ * distancia, por ejemplo si se pierde el celular). En un computador dura 12
+ * horas; en el portal instalado en un celular, 30 días.
+ */
+export const portalSessions = pgTable(
+  "portal_sessions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Abierta desde el portal instalado como app (pantalla de inicio). */
+    installed: boolean("installed").notNull().default(false),
+    /** Para reconocerla en la lista: «Android · Chrome», «iPhone»… */
+    device: text("device").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("portal_sessions_user_idx").on(t.userId)],
+);
+
+/**
+ * Dónde mandar las alertas: una fila por navegador o celular que las activó.
+ * Cuelga de la sesión: al cerrarla (o al vencer) el celular deja de recibirlas.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => portalSessions.id, { onDelete: "cascade" }),
+    /** La dirección del servicio de notificaciones (Google, Apple, Mozilla). */
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** El portal desde el que se activó (https://…): Apple lo exige como remitente. */
+    origin: text("origin").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_session_idx").on(t.sessionId)],
+);
+
+/**
+ * Qué alertas ya se avisaron al celular. Una alerta suena cuando algo entra en
+ * su condición (un chat empieza a pedir ayuda, un viaje queda con moto), igual
+ * que en el portal abierto: `active` dice si hoy está dentro. Pasar de
+ * inactiva a activa con un UPDATE condicional es lo que manda el aviso, así
+ * dos ticks en paralelo nunca avisan dos veces (`push/alerts.ts`).
+ */
+export const pushAlertState = pgTable(
+  "push_alert_state",
+  {
+    /** El tipo de alerta: "chat_help", "trip_assigned"… */
+    kind: text("kind").notNull(),
+    /** El id de lo que avisa (la conversación, el viaje). */
+    ref: integer("ref").notNull(),
+    active: boolean("active").notNull(),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("push_alert_state_pk").on(t.kind, t.ref)],
+);
