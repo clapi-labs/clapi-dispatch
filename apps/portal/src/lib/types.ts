@@ -72,10 +72,14 @@ export type Courier = {
   seenStats?: { confirmed: number; avgMinutes: number | null; reminders: number } | null;
   /** Moto simulada del simulador de staging. */
   simulated?: boolean;
-  /** Si la central puede asignarle pedidos (con el simulador, solo a las simuladas). */
+  /** Si la central puede asignarle pedidos (con el simulador: las simuladas y,
+   *  para un viaje de prueba, las reales con GPS). */
   assignable?: boolean;
-  /** Con el simulador: moto simulada o número de prueba, y con quién va ahora. */
-  simulator?: { role: "simulated" | "test"; partner: string | null } | null;
+  /** Tiene identificador de GPS: su celular reporta la ubicación. */
+  hasGps?: boolean;
+  /** Con el simulador: moto simulada, número de prueba o moto real con GPS, y
+   *  con quién va ahora. */
+  simulator?: { role: "simulated" | "test" | "real"; partner: string | null } | null;
 };
 
 export type CourierProfile = {

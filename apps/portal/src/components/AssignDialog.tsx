@@ -1,5 +1,6 @@
 "use client";
 
+import { signalState } from "@dispatch/shared/domain/gps";
 import { isTripOpen } from "@dispatch/shared/domain/phase";
 import { useEffect, useState } from "react";
 
@@ -7,9 +8,6 @@ import { Modal } from "@/components/Modal";
 import { useTrips } from "@/components/TripsProvider";
 import type { Courier, Trip } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
-
-/** Una posición más vieja que esto no sirve para decir a qué distancia está. */
-const FRESH_MS = 2 * 60_000;
 
 function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const rad = (g: number) => (g * Math.PI) / 180;
@@ -46,11 +44,13 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
   const options = (couriers ?? [])
     .filter((c) => (c.status === "available" || c.status === "busy") && c.assignable !== false && c.id !== trip.courierId)
     .map((c) => {
-      const located = c.lat != null && c.lng != null && c.locationUpdatedAt && now - Date.parse(c.locationUpdatedAt) < FRESH_MS;
+      // Solo con la moto en vivo se dice a qué distancia está (domain/gps.ts).
+      const signal = signalState(c, now);
       return {
         courier: c,
+        signal,
         carrying: trips.filter((t) => t.courierId === c.id && isTripOpen(t)).length,
-        distance: located && trip.pickupLocation ? km({ lat: c.lat!, lng: c.lng! }, trip.pickupLocation) : null,
+        distance: signal === "live" && trip.pickupLocation ? km({ lat: c.lat!, lng: c.lng! }, trip.pickupLocation) : null,
       };
     })
     .sort((a, b) => a.carrying - b.carrying || (a.distance ?? Infinity) - (b.distance ?? Infinity));
@@ -67,7 +67,7 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
       <div className="no-scrollbar flex max-h-72 flex-col gap-2 overflow-y-auto">
         {!couriers && !failed && <p className="animate-pulse text-sm text-ink-3">Cargando motos…</p>}
         {couriers && options.length === 0 && <p className="text-sm text-ink-3">No hay motos conectadas.</p>}
-        {options.map(({ courier, carrying, distance }) => (
+        {options.map(({ courier, carrying, distance, signal }) => (
           <button
             key={courier.id}
             type="button"
@@ -77,7 +77,7 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
             <span className="min-w-0 truncate">{courier.name}</span>
             <span className="shrink-0 text-xs font-medium opacity-80">
               {carrying ? `${carrying} ${carrying === 1 ? "pedido" : "pedidos"}` : "Libre"}
-              {distance !== null ? ` · ${distance.toFixed(1)} km` : ""}
+              {distance !== null ? ` · ${distance.toFixed(1)} km` : signal === "lost" ? " · sin señal" : ""}
             </span>
           </button>
         ))}
