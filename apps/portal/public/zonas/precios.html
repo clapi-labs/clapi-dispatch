@@ -190,9 +190,12 @@ input[type="text"], input[type="search"] { font: inherit; width: 100%; border: 1
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <script>
 (() => {
+  // Leaflet pone el texto de los tooltips como HTML: lo que escribe la central
+  // (el nombre de una zona) se escapa para que no se interprete como código.
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const $ = (id) => document.getElementById(id);
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -241,7 +244,7 @@ input[type="text"], input[type="search"] { font: inherit; width: 100%; border: 1
     barrios = data.barrios.map((b) => ({ ...b, key: norm(b.nombre) }));
     for (const b of barrios) {
       L.polygon(b.borde, { renderer: canvas, color: css("--barrio"), weight: 1.4, opacity: 0.85, dashArray: "5 4", fillOpacity: 0, bubblingMouseEvents: true })
-        .bindTooltip(b.nombre, { sticky: true })
+        .bindTooltip(esc(b.nombre), { sticky: true })
         .on("click", () => { if (idle()) showBarrio(b, false); })
         .addTo(barrioLayer);
     }
@@ -323,7 +326,7 @@ input[type="text"], input[type="search"] { font: inherit; width: 100%; border: 1
       if (editing && editId === z.id) continue;
       const free = z.minPrice === null, color = css(free ? "--free" : "--zone");
       L.polygon(z.ring.map((p) => [p.lat, p.lng]), { renderer: svg, color, weight: 2, dashArray: free ? "6 5" : null, fillColor: color, fillOpacity: free ? 0.08 : 0.16 })
-        .bindTooltip(`${z.name} · ${priceText(z)}`, { sticky: true })
+        .bindTooltip(`${esc(z.name)} · ${priceText(z)}`, { sticky: true })
         .on("click", () => { if (idle()) editZone(z.id); })
         .addTo(zoneLayer);
     }

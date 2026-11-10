@@ -180,9 +180,12 @@ textarea { resize: vertical; min-height: 54px; }
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <script>
 (() => {
+  // Leaflet pone el texto de los tooltips como HTML: lo que escribe la central
+  // (el nombre de una zona) se escapa para que no se interprete como código.
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const GREY_M = 100;
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const $ = (id) => document.getElementById(id);
@@ -398,7 +401,7 @@ textarea { resize: vertical; min-height: 54px; }
       const ring = z.ring.map((v) => [v.lat, v.lng]);
       const isSel = selected && selected.id === z.id;
       L.polygon(ring, { color: css("--zone"), weight: isSel ? 3 : 2, fillColor: css("--zone"), fillOpacity: isSel ? 0.28 : 0.18, renderer: L.svg() })
-        .bindTooltip(z.name, { sticky: true }).on("click", () => { if (!drawing && !testing) select(z.id); }).addTo(zoneLayer);
+        .bindTooltip(esc(z.name), { sticky: true }).on("click", () => { if (!drawing && !testing) select(z.id); }).addTo(zoneLayer);
       // Franja gris aproximada: el mismo contorno, punteado, como referencia visual.
       L.polygon(ring, { color: css("--grey"), weight: 1.5, dashArray: "4 6", fill: false, interactive: false, renderer: L.svg() }).addTo(greyLayer);
     }

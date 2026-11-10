@@ -115,6 +115,10 @@ const STATUS_COLOR: Record<SimCourier["status"], string> = {
 const ROUTE_COLORS = ["#532ce1", "#0b6bcb", "#c2710c", "#059669", "#dc2626", "#7c3aed", "#0891b2", "#be185d"];
 
 const LEAFLET_SRC = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";
+// Huella del archivo (la misma que publica leafletjs.com para la 1.9.4): si el
+// CDN sirve otra cosa, el navegador no lo ejecuta. Al cambiar de versión, se
+// cambian las dos líneas.
+const LEAFLET_INTEGRITY = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
 
 // Leaflet llega por CDN, sin tipos: lo mínimo que se usa.
 type Leaflet = any;
@@ -128,7 +132,8 @@ function loadLeaflet(): Promise<Leaflet> {
   if (window.L) return Promise.resolve(window.L);
   return new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${LEAFLET_SRC}"]`);
-    const script = existing ?? Object.assign(document.createElement("script"), { src: LEAFLET_SRC, async: true });
+    const script =
+      existing ?? Object.assign(document.createElement("script"), { src: LEAFLET_SRC, integrity: LEAFLET_INTEGRITY, crossOrigin: "anonymous", async: true });
     script.addEventListener("load", () => resolve(window.L));
     script.addEventListener("error", () => reject(new Error("No cargó Leaflet")));
     if (!existing) document.head.appendChild(script);
