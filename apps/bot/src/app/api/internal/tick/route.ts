@@ -1,4 +1,4 @@
-import { assignPendingTrips, purgeOldPositions, releaseIdleControls, simulatorEnabled } from "@dispatch/shared/db";
+import { assignPendingTrips, purgeOldPositions, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
@@ -17,6 +17,9 @@ let lastPurge = 0;
  * worker (scripts/worker.mjs) cada pocos segundos: le da moto a los viajes
  * que quedaron esperando, avisa por WhatsApp, le recuerda al motorizado lo que
  * le falta marcar y corre el engine, que asigna o solo calcula según el modo.
+ * Al final manda al celular de la central las alertas del portal que acaban
+ * de pasar (chat que pide ayuda, moto asignada), aunque nadie tenga el portal
+ * abierto.
  *
  * Es seguro llamarlo seguido y en paralelo: cada viaje se reclama con un
  * UPDATE condicional, así que dos ticks nunca asignan el mismo.
@@ -77,7 +80,15 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({ assigned, reminded });
+  // Al final: así la moto que se acaba de asignar en este mismo tick ya avisa.
+  let alerted = 0;
+  try {
+    alerted = (await runPushAlerts()).length;
+  } catch (error) {
+    console.error("[tick] no se pudieron mandar las alertas al celular:", error);
+  }
+
+  return Response.json({ assigned, reminded, alerted });
 }
 
 /** Un engine caído no puede tumbar el tick: los pedidos siguen esperando. */

@@ -297,7 +297,7 @@ Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida
 - SSH solo con llave, un usuario por persona (`infra/access/admins.json`), sin `root` ni contraseña, grupo `dispatch-admins`.
 - **Llave de despliegue restringida**: la cuenta `deploy` solo puede ejecutar `/opt/dispatch/deploy.sh` (`command="..."` en `authorized_keys`), que a su vez solo acepta `deploy <sha>`. `deploy.sh` pertenece a root: esa cuenta no puede modificarlo.
 - En Caddy, el bot expone solo `/api/webhook/whatsapp` y `/api/health`. `/api/internal/*` queda dentro de la red de Docker.
-- Webhook de WhatsApp con verificación de firma. Portal con login (scrypt, cookie firmada de 12 h, 5 intentos por correo e IP).
+- Webhook de WhatsApp con verificación de firma. Portal con login (scrypt, 5 intentos por correo e IP) y sesiones en la base (`portal_sessions`): cookie firmada de 12 h en el navegador y de 30 días en el portal instalado en un celular, cada una se puede cerrar a distancia.
 - Cabeceras de seguridad en Caddy (HSTS, nosniff, referrer, sin `Server`).
 
 ### Secretos
@@ -311,7 +311,7 @@ Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida
 |---|---|
 | `POSTGRES_PASSWORD` | Contraseña de la base |
 | `INTERNAL_SECRET` | Autentica las llamadas internas (`x-internal-secret`) |
-| `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas) |
+| `SESSION_SECRET` | Firma las sesiones del portal (cambiarlo las cierra todas). Las llaves de las alertas al celular no son una variable: se crean solas en `settings` |
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | WhatsApp Cloud API |
 | `OPENAI_API_KEY` | Extracción de pedidos |
 | `GOOGLE_MAPS_API_KEY` | Ubicar la dirección de entrega (Geocoding API). Sin ella no hay precio: el bot le pregunta a la central. La llave está restringida a la IP del servidor |

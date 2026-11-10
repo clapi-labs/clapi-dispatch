@@ -28,7 +28,8 @@ export function sendErrorText(reason?: string) {
 }
 
 /** La razón que queda cuando alguien de la central toma el chat por su cuenta
- *  (botón "Intervenir"). El bot usa la misma en apps/bot/src/app/api/internal/send/route.ts. */
+ *  (botón "Intervenir"). El bot usa la misma en apps/bot/src/app/api/internal/send/route.ts,
+ *  y también `TAKEOVER_REASON` en @dispatch/shared (las alertas al celular). */
 export const TAKEOVER_REASON = "Un operador tomó la conversación.";
 
 /**
@@ -37,7 +38,8 @@ export const TAKEOVER_REASON = "Un operador tomó la conversación.";
  * en la burbuja de la navegación. Cuando el asesor responde deja de pedir
  * ayuda; con "Devolver al bot" se desfija. Un chat que la central tomó por su
  * cuenta ("Intervenir") no pide ayuda: ya hay alguien en él.
- * La misma regla está en SQL en `countNeedingHelp`.
+ * La misma regla está en SQL en `needsHelpCondition` (@dispatch/shared): con ella
+ * se cuenta la burbuja y se avisa al celular.
  */
 export function needsHelp(c: Pick<ConversationSummary, "botPaused" | "escalationReason" | "lastRole">) {
   return c.botPaused && c.escalationReason !== TAKEOVER_REASON && c.lastRole !== "agent";

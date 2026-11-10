@@ -11,6 +11,10 @@ const sora = Sora({ subsets: ["latin"], display: "swap", variable: "--font-sora"
 export const metadata: Metadata = {
   title: `${BRAND.client.name} · Central de despachos`,
   description: `Viajes en vivo — tecnología ${BRAND.platform.name}`,
+  // Instalado en el iPhone desde «Agregar a inicio»: a pantalla completa, con
+  // el ícono y el nombre de Clapi. Android los toma de app/manifest.ts.
+  appleWebApp: { capable: true, title: "Clapi", statusBarStyle: "black-translucent" },
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {

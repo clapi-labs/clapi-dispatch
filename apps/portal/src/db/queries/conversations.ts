@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 
-import { db, schema } from "@dispatch/shared/db";
+import { db, needsHelpCondition, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
 
 import type { AdvisorQueryItem, ChatMessage, DraftFields } from "@/lib/types";
@@ -62,22 +62,13 @@ function pinRank(c: Parameters<typeof needsHelp>[0]) {
 }
 
 /** Cuántos chats piden ayuda: la burbuja amarilla de la navegación. Es
- *  `needsHelp` (lib/chat.ts) en SQL: escalado por el bot, y lo último no lo
- *  escribió la central. */
+ *  `needsHelp` (lib/chat.ts) en SQL, la misma condición con que el servidor
+ *  avisa al celular (`needsHelpCondition` en @dispatch/shared). */
 export async function countNeedingHelp(): Promise<number> {
-  const lastRole = sql`(select ${schema.messages.role} from ${schema.messages}
-    where ${schema.messages.conversationId} = ${schema.conversations.id}
-    order by ${schema.messages.id} desc limit 1)`;
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.conversations)
-    .where(
-      and(
-        eq(schema.conversations.botPaused, true),
-        sql`${schema.conversations.escalationReason} is distinct from ${TAKEOVER_REASON}`,
-        sql`coalesce(${lastRole}, '') <> 'agent'`,
-      ),
-    );
+    .where(needsHelpCondition());
   return row?.n ?? 0;
 }
 

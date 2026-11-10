@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 
 import logotipo from "@/assets/logotipo-clapi.svg";
 import { BRAND } from "@/lib/brand";
+import { isStandalone } from "@/lib/push";
 
 function LoginForm() {
   const router = useRouter();
@@ -21,12 +22,21 @@ function LoginForm() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+      // Desde el portal instalado en el celular la sesión dura 30 días.
+      body: JSON.stringify({ email: form.get("email"), password: form.get("password"), installed: isStandalone() }),
     }).catch(() => null);
     if (res?.ok) {
       // Solo rutas internas: `next` no puede mandar a otro sitio.
       const next = params.get("next");
-      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/viajes");
+      const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/viajes";
+      // El fragmento (#tel=…, #pedido=… de una alerta) sobrevive la redirección
+      // al login pero no va en `next`: se le vuelve a poner, con una carga
+      // completa para que la pantalla lo lea al abrir.
+      if (window.location.hash) {
+        window.location.replace(target + window.location.hash);
+        return;
+      }
+      router.replace(target);
       router.refresh();
       return;
     }

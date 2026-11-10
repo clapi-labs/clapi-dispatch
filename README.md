@@ -54,4 +54,4 @@ DATABASE_URL=postgres://dispatch:dispatch@localhost:5432/dispatch \
 USER_PASSWORD='una-clave-larga' npm run user:create -- ana@agencia.com "Ana"
 ```
 
-Repetir el comando con el mismo correo cambia su contraseña. `SESSION_SECRET` (mínimo 32 caracteres) firma las sesiones; cambiarlo las cierra todas.
+Repetir el comando con el mismo correo cambia su contraseña. `SESSION_SECRET` (mínimo 32 caracteres) firma las sesiones; cambiarlo las cierra todas. Cada sesión queda en la base y se puede cerrar sola desde el portal (**Alertas al celular** › **Sesiones abiertas**).

@@ -1,10 +1,9 @@
-import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { simulatorEnabled } from "@dispatch/shared/db";
 
 import { SimulatorMap } from "@/components/SimulatorMap";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
+import { currentSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Simulador" };
@@ -16,7 +15,6 @@ export const metadata = { title: "Simulador" };
  */
 export default async function SimuladorPage() {
   if (!simulatorEnabled()) notFound();
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (verifySessionToken(token) === null) redirect("/login?next=/simulador");
+  if ((await currentSession()) === null) redirect("/login?next=/simulador");
   return <SimulatorMap />;
 }
