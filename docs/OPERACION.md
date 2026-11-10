@@ -129,7 +129,7 @@ Orden recomendado para rotar: generar el nuevo en el proveedor → `set-secret.s
 
 ## 4b. Simulador (solo staging)
 
-Prueba el sistema completo con pedidos reales por WhatsApp sin un número por moto. Las motos simuladas son filas de `couriers` (marca «🧪 Simulada» en Flota, número `SIM<id>`, que no existe): el algoritmo y el portal las tratan como a cualquier moto. Un proceso aparte (`scripts/simulador.mjs`, servicio `simulator`, misma imagen que el worker) las mueve por sus paradas y reporta por `/api/gps`; no asigna, no envía y no marca estados. Si se cae o se detiene (`docker stop dispatch-simulator-1`), el bot y el portal siguen y las motos quedan sin señal: a los 2 min el algoritmo las excluye por «sin GPS».
+Prueba el sistema completo con pedidos reales por WhatsApp sin un número por moto. Las motos simuladas son filas de `couriers` (marca «🧪 Simulada» en Flota, número `SIM<id>`, que no existe): el algoritmo y el portal las tratan como a cualquier moto. Un proceso aparte (`scripts/simulador.mjs`, servicio `simulator`, misma imagen que el worker) las mueve por sus paradas y reporta por `/api/gps`; no asigna, no envía y no marca estados. Si se cae o se detiene (`docker stop dispatch-simulator-1`), el bot y el portal siguen y las motos quedan sin señal: a los 30 s el algoritmo las excluye por «sin GPS».
 
 **Encenderlo:**
 ```bash
@@ -141,7 +141,12 @@ Y el engine en modo `auto` ([ALGORITMO.md](ALGORITMO.md), «Modo auto»). Al arr
 
 **Apagarlo:** `SIMULATOR_ENABLED` vacío y redesplegar. Sin ella no hay página `/simulador` (404), ni servicio `simulator` (0 réplicas), ni desvío de mensajes: cada moto recibe en su propio número, y el despacho deja de lado las simuladas. Nunca en producción.
 
-**Números de prueba.** Con el simulador encendido, toda moto con número real de Flota (agregada con el formulario normal) es un número de prueba: no recibe pedidos propios y toma la próxima moto simulada que reciba un pedido.
+**Números de prueba y motos reales.** Con el simulador encendido, una moto con número real de Flota (agregada con el formulario normal) es una de dos cosas:
+
+- **Número de prueba**, si no tiene identificador de GPS: no recibe pedidos propios y toma la próxima moto simulada que reciba un pedido (abajo).
+- **Moto real con GPS** («📡» en Flota y en el mapa), si tiene identificador de GPS: reporta su ubicación de verdad desde el celular, nunca toma una moto simulada y no recibe pedidos del simulador ni del algoritmo. Solo recibe el **viaje de prueba** que se le dé (abajo). Generar el identificador («Ver más» → GPS → «Generar») convierte un número de prueba en moto real y suelta la moto simulada que controlaba.
+
+Los números de prueba:
 
 1. Un número libre toma la próxima moto simulada sin número que reciba un pedido; con varios libres, el que lleva más tiempo libre.
 2. Recibe el mensaje de ese pedido con el nombre de la moto («🧪 Moto simulada: Fabio») y, si la moto ya llevaba otros, el de cada uno en la fase en que va.
@@ -154,6 +159,8 @@ Cada número debe escribirle «hola» al bot antes de probar: así queda conecta
 
 **El mapa** (`/simulador`, en el menú; siempre pide sesión, aunque `AUTH_DISABLED=1`): motos con su estado, pedidos y ruta, restaurantes y clientes, el ranking de cada pedido tal como quedó en `engine_evaluations.response`, cuánto falta para despachar cada pedido que espera y qué moto controla cada número. Controles: velocidad, radio del engine, porcentajes de portería, regreso y cliente que no contesta, agregar moto, mover a mano (queda detenida ahí hasta «Soltar»), desconectar, crear un pedido sin WhatsApp y reiniciar.
 
+**Viaje de prueba para una moto real.** La moto le escribe «hola» al bot (queda conectada) y tiene la app de GPS prendida. En el mapa, «Crear pedido sin WhatsApp» → «Para: 📡 Viaje de prueba para …» → elegir el restaurante y el cliente. El pedido se le asigna a ella como si lo hiciera la central: recibe los mensajes en su WhatsApp, y el GPS marca solo «en punto de recogida», «recogió» y «en punto de entrega». También se le puede asignar a mano un pedido desde Viajes. El número de la moto tiene que estar entre los destinatarios de prueba del número de staging en Meta.
+
 **Reiniciar** borra solo lo simulado: las motos simuladas, sus chats, los pedidos que tuvieron y los creados desde el mapa. Restaurantes, usuarios y motos reales quedan igual.
 
 **Límite:** la velocidad acelera el movimiento, no la cocina: el sistema usa la hora real. Para probar rápido, «listo en 5».
@@ -161,6 +168,19 @@ Cada número debe escribirle «hola» al bot antes de probar: así queda conecta
 **Diagnóstico:** `docker logs --tail 50 dispatch-simulator-1`.
 
 **Estado actual (8 de noviembre de 2026):** encendido, con el engine en `auto`. Apagarlo al terminar las pruebas ([PLAN](PLAN.md), «Decisiones y pendientes del dueño»).
+
+## 4c. Conectar a un domiciliario al GPS
+
+La ubicación en vivo llega de la app gratuita [Traccar Client](https://www.traccar.org/client/) en el celular del domiciliario, no de WhatsApp. Pasos y por qué: [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Fase 5».
+
+1. En Flota, en su tarjeta, «Ver más» → GPS → **Generar**. Ese identificador es lo que autoriza a su celular: se le pasa solo a él.
+2. En la app: el identificador y, como servidor, `https://<host del bot>/api/gps` (staging: `https://bot.staging.dispatch.clapi.solutions/api/gps`).
+3. Al empezar el turno prende la app (además del «hola» por WhatsApp); al terminar la apaga.
+4. En Flota → **Mapa**, o en su tarjeta: «En vivo» en menos de un minuto. Sin reporte en 30 s pasa a «Sin señal», con la hora de su última ubicación, y el algoritmo no la elige hasta que vuelva a reportar.
+
+**Comprobar desde el servidor que llegan reportes:** `docker compose --env-file .env -f compose.yml exec -T postgres psql -U dispatch -d dispatch -c "select name, location_updated_at from couriers where simulated = false and location_updated_at is not null order by 2 desc"`.
+
+**Las posiciones se borran a las 24 horas.** Solo se guarda la última de cada moto; la de una moto que lleva más de un día sin reportar se borra, y a las evaluaciones del algoritmo de más de un día se les quitan las posiciones de las motos. Lo hace el tick cada 10 minutos (`purgeOldPositions`, `packages/shared/src/db/gps-retention.ts`). Las horas de cada servicio (llegó, recogió, entregó) se conservan con el pedido.
 
 ## 5. Usuarios del portal
 

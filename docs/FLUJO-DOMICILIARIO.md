@@ -190,7 +190,7 @@ Suman uno más cada uno de estos casos:
 
 ### Fase 5: GPS con Traccar
 
-El receptor (`/api/gps`) y la detección de llegadas (`apps/bot/src/bot/gps.ts`) ya están; falta instalar la app en los celulares. WhatsApp no sirve para esto, porque su API no admite ubicación en vivo.
+El receptor (`/api/gps`), la detección de llegadas (`apps/bot/src/bot/gps.ts`) y lo que ve la central (issue #42) ya están; falta probarlo con celulares reales. WhatsApp no sirve para esto, porque su API no admite ubicación en vivo.
 
 | Con GPS | Qué cambia |
 |---|---|
@@ -213,7 +213,24 @@ Cómo se configura cada celular, con [Traccar Client](https://www.traccar.org/cl
 
 1. En Flota, «Ver más», generar el identificador GPS del domiciliario.
 2. En la app: ese identificador y, como URL del servidor, `https://<host del bot>/api/gps`.
-3. Precisión alta y reportar cada 10 a 15 segundos, también con la moto quieta: pasados 2 minutos sin reporte, la moto cuenta como sin señal y el algoritmo no la elige.
+3. Precisión alta y reportar cada 10 segundos, también con la moto quieta, con la pantalla apagada y la app en segundo plano.
+
+Paso a paso para conectar a un domiciliario: [OPERACION.md](OPERACION.md), «Conectar a un domiciliario al GPS». La guía corta y el video para que cada domiciliario instale la app solo, en Android y en iPhone, salen de la prueba con los celulares reales (issue #42, segunda parte).
+
+**En vivo y sin señal.** Una sola regla para todo el sistema (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`):
+
+| Estado | Cuándo | Qué pasa |
+|---|---|---|
+| En vivo | Reportó hace menos de 30 s | Se ve con el color de su estado en Flota y en el mapa; el algoritmo la puede elegir |
+| Sin señal | Tiene posición, pero sin reporte hace 30 s o más | Flota y el mapa la muestran gris con la hora de su última ubicación; el algoritmo la excluye («sin GPS»). Vuelve sola a «en vivo» con el siguiente reporte |
+| Sin ubicación | Nunca reportó, o su posición ya se borró | «GPS sin configurar» si no tiene identificador; si lo tiene, «su celular no ha reportado» |
+
+- Perder la señal no cambia nada en la base: el portal lo calcula con su propio reloj, y lo ve en unos segundos.
+- Si el reloj del celular está a menos de un minuto del del servidor, la posición se guarda con la hora del servidor: un celular unos segundos atrasado no parpadea entre «en vivo» y «sin señal». Un reporte que el celular guardó sin conexión y envía tarde conserva su hora: esa posición ya es vieja.
+- En Flota, **Mapa** muestra las motos conectadas con ubicación, en producción y en staging; las desconectadas no se ven. Arriba, cuántas están en vivo y cuántas sin señal.
+- **No se guarda el recorrido.** Solo la última posición de cada moto, y se borra a las 24 horas sin reportar; a las evaluaciones del algoritmo de más de un día se les quitan las posiciones de las motos. Las horas de cada servicio (llegó, recogió, entregó) se guardan con el pedido, como siempre.
+
+**En staging, motos reales y simuladas a la vez.** Una moto con número real e identificador de GPS es una moto real («📡»): no controla motos simuladas y no recibe pedidos del simulador ni del algoritmo, que en staging solo asigna a las simuladas. Se le da un viaje de prueba desde el mapa del simulador, o a mano desde Viajes ([OPERACION.md](OPERACION.md), «Simulador»). En producción no hay simulador: todas son reales.
 
 Para probar en local, `npm run bot:gps` mueve motos de ejemplo y reporta por la misma ruta.
 
