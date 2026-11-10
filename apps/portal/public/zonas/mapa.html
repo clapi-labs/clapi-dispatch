@@ -2,18 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zonas · Cali y Jamundí</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Zonas de servicio · Cali y Jamundí</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Un solo mapa para los dos tipos de zona: rojo (sin cobertura) y azul (precio
-   mínimo), sobre los barrios oficiales. Panel a la izquierda, mapa a la derecha.
-   Herramienta de computador. */
+/* Las zonas de servicio: donde sí hay domicilio. Lo que queda por fuera no
+   tiene servicio. Panel a la izquierda (abajo en el celular), mapa al lado. */
 :root {
   /* La paleta del portal (globals.css). */
   --bg: #f7f7f7; --panel: #ffffff; --fg: #0d0b14; --muted: #57526b; --line: #e9e6f1; --map: #f1eff7;
-  --red: #dc2626; --red-soft: #fdecec; --blue: #1d5fd1; --blue-soft: #e7effc; --barrio: #57526b; --km: #059669;
+  --zone: #0f8a5f; --zone-soft: #e3f4ec; --near: #b45309; --near-soft: #fdf1e2; --red: #dc2626; --red-soft: #fdecec; --barrio: #57526b;
   --accent: #532ce1; --accent-fg: #ffffff; --accent-soft: #ede6ff;
   --font-body: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -28,72 +27,63 @@ aside { background: var(--panel); border-right: 1px solid var(--line); display: 
 .back { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--accent-fg); background: var(--accent); text-decoration: none; }
 .back:hover { filter: brightness(1.1); }
 h1 { font-size: 18px; font-weight: 600; margin: 0; }
+.lead { margin: 0; color: var(--muted); font-size: 13px; }
 .scroll { overflow-y: auto; padding: 14px 16px 16px; display: grid; gap: 16px; align-content: start; }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 0 0 6px; display: block; }
-button { font: inherit; font-weight: 500; border-radius: 8px; padding: 7px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+button { font: inherit; font-weight: 500; border-radius: 8px; padding: 7px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; touch-action: manipulation; }
 button:hover { border-color: var(--muted); }
-button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 button.danger { color: var(--red); }
 button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-.new { display: grid; gap: 8px; }
-.new button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; text-align: left; font-weight: 600; border-width: 1.5px; }
-.new .red { border-color: var(--red); color: var(--red); background: var(--red-soft); }
-.new .blue { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
-.new .red:hover, .new .red[aria-pressed="true"] { background: var(--red); color: #fff; }
-.new .blue:hover, .new .blue[aria-pressed="true"] { background: var(--blue); color: #fff; }
+button.new { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; text-align: left; font-weight: 600; border: 1.5px solid var(--zone); color: var(--zone); background: var(--zone-soft); }
+button.new:hover, button.new[aria-pressed="true"] { background: var(--zone); color: #fff; }
 .dot { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 2px solid currentColor; }
-.dot.red { color: var(--red); background: var(--red-soft); }
-.dot.blue { color: var(--blue); background: var(--blue-soft); }
-input, textarea { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--fg); }
-textarea { resize: vertical; min-height: 54px; }
+.dot.zone { color: var(--zone); background: var(--zone-soft); }
+input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--fg); }
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; min-width: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
-.check input { width: 16px; height: 16px; accent-color: var(--blue); }
-.card { display: grid; gap: 8px; border: 1.5px solid var(--line); border-radius: 10px; padding: 12px; }
-.card.red { border-color: var(--red); }
-.card.blue { border-color: var(--blue); }
+.card { display: grid; gap: 8px; border: 1.5px solid var(--zone); border-radius: 10px; padding: 12px; }
 .card p { margin: 0; }
-.card .kind { font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.card.red .kind { color: var(--red); }
-.card.blue .kind { color: var(--blue); }
+.card .kind { font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--zone); }
 .status { font-size: 12.5px; color: var(--muted); margin: 0; }
 .status.err { color: var(--red); }
-.results { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 220px; overflow-y: auto; }
-.results li button { width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 7px 10px; display: flex; justify-content: space-between; gap: 8px; }
+.howto { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); display: grid; gap: 2px; }
+.results { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 240px; overflow-y: auto; }
+.results li button { width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 8px 10px; display: flex; justify-content: space-between; gap: 8px; }
 .results li button:hover { background: var(--bg); }
-.results small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.results small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 .verdict { display: grid; gap: 4px; border-radius: 10px; padding: 10px 12px; }
 .verdict b { font-size: 15px; }
-.verdict.sin_cobertura { background: var(--red-soft); color: var(--red); }
-.verdict.minimo { background: var(--blue-soft); color: var(--blue); }
-.verdict.km { background: #e6f5ef; color: var(--km); }
+.verdict.dentro { background: var(--zone-soft); color: var(--zone); }
+.verdict.cerca { background: var(--near-soft); color: var(--near); }
+.verdict.fuera { background: var(--red-soft); color: var(--red); }
+.verdict.sin_zonas { background: var(--bg); color: var(--muted); }
 .verdict small { color: var(--muted); }
 .mono { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
 .zones { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.zone { display: flex; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 8px; padding: 7px 8px; cursor: pointer; }
+.zone { display: flex; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 8px; padding: 8px; cursor: pointer; }
 .zone:hover { background: var(--bg); }
 .zone[aria-current="true"] { border-color: var(--fg); background: var(--bg); }
 .zone .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zone .tag { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; color: var(--muted); }
-.zone.red .tag { color: var(--red); }
-.zone.blue .tag { color: var(--blue); }
+.zone .tag { font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; color: var(--muted); }
 .empty { color: var(--muted); font-size: 13px; margin: 0; }
 .mapwrap { position: relative; min-width: 0; min-height: 0; }
 #map { position: absolute; inset: 0; background: var(--map); }
-.modebar { position: absolute; top: 12px; left: 56px; right: 12px; z-index: 500; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: none; }
+.modebar { position: absolute; top: 12px; left: 56px; right: 12px; z-index: 850; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: none; }
 .modebar > * { pointer-events: auto; box-shadow: 0 1px 3px rgba(13, 11, 20, .12); }
-.modebar .hint { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
-.modebar .hint.red { border-color: var(--red); }
-.modebar .hint.blue { border-color: var(--blue); }
-.legend { position: absolute; right: 12px; bottom: 24px; z-index: 500; display: grid; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+.modebar .hint { background: var(--panel); border: 1px solid var(--zone); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.legend { position: absolute; right: 12px; bottom: 24px; z-index: 850; display: grid; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
 .legend span { display: flex; align-items: center; gap: 8px; }
 .legend .barrio { display: inline-block; flex: none; width: 16px; height: 0; border-top: 2px dashed var(--barrio); }
 .legend label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .legend input { margin: 0; width: 14px; height: 14px; }
+/* El menú del clic derecho (o de mantener presionado en el celular). */
+.ctx { position: absolute; z-index: 900; display: grid; min-width: 190px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 6px 20px rgba(13, 11, 20, .18); }
+.ctx button { border: 0; text-align: left; padding: 10px 12px; border-radius: 6px; }
+.ctx button:hover { background: var(--bg); }
 
 /* Lo mínimo de Leaflet: su hoja de estilos no se puede cargar desde el CDN. */
 .leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-marker-shadow, .leaflet-tile-container, .leaflet-pane > svg, .leaflet-pane > canvas, .leaflet-zoom-box, .leaflet-image-layer, .leaflet-layer { position: absolute; left: 0; top: 0; }
@@ -110,6 +100,7 @@ textarea { resize: vertical; min-height: 54px; }
 .leaflet-grab { cursor: grab; } .leaflet-dragging .leaflet-grab { cursor: grabbing; }
 .leaflet-crosshair, .leaflet-crosshair .leaflet-interactive { cursor: crosshair; }
 .leaflet-marker-icon { display: block; }
+.leaflet-marker-draggable { cursor: move; }
 .leaflet-tile { visibility: hidden; } .leaflet-tile-loaded { visibility: inherit; }
 .leaflet-container img.leaflet-tile { max-width: none !important; max-height: none !important; user-select: none; }
 .leaflet-control-attribution { margin: 0; padding: 0 5px; font-size: 11px; background: rgba(255,255,255,.8); color: #333; }
@@ -117,20 +108,33 @@ textarea { resize: vertical; min-height: 54px; }
 .leaflet-control-container .leaflet-top, .leaflet-control-container .leaflet-bottom { position: absolute; z-index: 800; pointer-events: none; }
 .leaflet-top { top: 0; } .leaflet-left { left: 0; } .leaflet-right { right: 0; } .leaflet-bottom { bottom: 0; }
 .leaflet-control { position: relative; z-index: 800; pointer-events: auto; float: left; clear: both; margin: 12px 0 0 12px; }
+.leaflet-bottom .leaflet-control { margin: 0 0 8px 12px; }
+.leaflet-right .leaflet-control { float: right; margin-left: 0; margin-right: 0; }
 .leaflet-bar { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
-.leaflet-bar a { display: block; width: 32px; height: 32px; line-height: 32px; text-align: center; text-decoration: none; color: var(--fg); font-size: 18px; font-weight: 600; }
+.leaflet-bar a { display: block; width: 36px; height: 36px; line-height: 36px; text-align: center; text-decoration: none; color: var(--fg); font-size: 18px; font-weight: 600; }
 .leaflet-bar a + a { border-top: 1px solid var(--line); }
+.leaflet-bar a.leaflet-disabled { color: #bbb; cursor: default; }
+.leaflet-control-scale-line { border: 2px solid var(--muted); border-top: 0; padding: 0 5px; font-size: 11px; background: rgba(255,255,255,.8); line-height: 1.4; }
 .leaflet-tooltip { position: absolute; padding: 2px 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; font-size: 12px; pointer-events: none; }
-.vertex { width: 12px !important; height: 12px !important; margin: -6px 0 0 -6px !important; border-radius: 50%; background: var(--panel); border: 2px solid var(--edit); }
-.mid { width: 9px !important; height: 9px !important; margin: -4.5px 0 0 -4.5px !important; border-radius: 50%; background: var(--edit); opacity: .45; cursor: copy; }
+/* Las esquinas y los puntos para meter una nueva entre dos. */
+.vertex { width: 14px !important; height: 14px !important; margin: -7px 0 0 -7px !important; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--zone); }
+.vertex.first { background: var(--zone); }
+.vertex.sel { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(83, 44, 225, .25); }
+.mid { width: 11px !important; height: 11px !important; margin: -5.5px 0 0 -5.5px !important; border-radius: 50%; background: var(--zone); border: 2px solid var(--panel); opacity: .6; cursor: copy; }
 .mid:hover { opacity: 1; }
-#map { --edit: var(--blue); }
-#map.red { --edit: var(--red); }
+@media (pointer: coarse) {
+  /* Al dedo: esquinas y puntos más grandes para tocarlos y arrastrarlos. */
+  .vertex { width: 24px !important; height: 24px !important; margin: -12px 0 0 -12px !important; border-width: 3px; }
+  .mid { width: 20px !important; height: 20px !important; margin: -10px 0 0 -10px !important; opacity: .75; }
+  .modebar button { padding: 10px 14px; }
+}
 
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  .app { grid-template-columns: 1fr; grid-template-rows: 68dvh auto; height: auto; min-height: 100%; }
   aside { order: 2; border-right: 0; border-top: 1px solid var(--line); }
-  .mapwrap { order: 1; min-height: 62vh; }
+  .mapwrap { order: 1; min-height: 68dvh; }
+  .modebar { left: 56px; right: 8px; top: 8px; }
+  .legend { bottom: 18px; right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; } }
 </style>
@@ -141,20 +145,23 @@ textarea { resize: vertical; min-height: 54px; }
   <aside>
     <div class="head">
       <a class="back" href="/viajes">← Volver al portal</a>
-      <h1>Zonas</h1>
+      <div>
+        <h1>Zonas de servicio</h1>
+        <p class="lead">Donde sí hay domicilio. Lo que queda por fuera no tiene servicio.</p>
+      </div>
     </div>
     <div class="scroll">
       <!-- Sin nada abierto: crear, probar y la lista. -->
-      <section id="home" class="new">
-        <button type="button" class="red" id="newRed" aria-pressed="false"><span class="dot red"></span>Nueva zona sin cobertura</button>
-        <button type="button" class="blue" id="newBlue" aria-pressed="false"><span class="dot blue"></span>Nueva zona de precio mínimo</button>
+      <section id="home">
+        <button type="button" class="new" id="newBtn" aria-pressed="false"><span class="dot zone"></span>Nueva zona</button>
       </section>
 
-      <!-- Creando: un barrio por nombre, o a mano. -->
+      <!-- Creando: desde un barrio o a mano. -->
       <section id="pickBox" hidden>
-        <div class="card" id="pickCard">
-          <p class="kind" id="pickKind"></p>
-          <input id="q" type="search" placeholder="Buscar un barrio" autocomplete="off" aria-label="Buscar un barrio">
+        <div class="card">
+          <p class="kind"><span class="dot zone"></span>Nueva zona</p>
+          <label class="label" for="q">Desde un barrio</label>
+          <input id="q" type="search" placeholder="Buscar un barrio (o tócalo en el mapa)" autocomplete="off">
           <ul class="results" id="results" hidden></ul>
           <div class="actions">
             <button type="button" id="drawBtn">Dibujar a mano</button>
@@ -165,33 +172,31 @@ textarea { resize: vertical; min-height: 54px; }
 
       <!-- Creando o editando una zona. -->
       <section id="formBox" hidden>
-        <div class="card" id="formCard">
+        <div class="card">
           <p class="kind" id="formKind"></p>
           <label class="label" for="zName">Nombre</label>
-          <input id="zName" type="text" maxlength="120">
-          <div id="noteBox">
-            <label class="label" for="zNote">Nota</label>
-            <textarea id="zNote" maxlength="500" placeholder="Opcional"></textarea>
-          </div>
-          <div id="minBox">
-            <label class="label" for="zMin">Mínimo</label>
-            <input id="zMin" type="text" inputmode="numeric" placeholder="$ 10.000">
-            <label class="check" style="margin-top:6px"><input type="checkbox" id="zNoMin"> Sin mínimo (solo por km)</label>
-          </div>
-          <p class="status" id="editHint">Arrastra las esquinas para mover el borde.</p>
+          <input id="zName" type="text" maxlength="120" placeholder="Ej.: Ciudad Jardín">
+          <p class="status" id="vertexInfo"></p>
+          <ul class="howto">
+            <li>Arrastra una esquina para moverla.</li>
+            <li>Toca el punto entre dos esquinas para meter una nueva (o arrástralo).</li>
+            <li>Clic derecho en el mapa (en el celular, mantén presionado) → <b>Agregar punto aquí</b>: va al tramo del borde más cercano.</li>
+            <li>Toca una esquina y <b>Quitar esquina</b>; con el mouse, clic derecho sobre ella.</li>
+            <li><b>Deshacer</b> (o Ctrl+Z) vuelve un paso atrás.</li>
+          </ul>
           <div class="actions">
             <button class="primary" id="saveBtn" type="button">Guardar</button>
             <button id="cancelBtn" type="button">Cancelar</button>
           </div>
           <div class="actions" id="delBox"></div>
-          <p class="status" id="formStatus"></p>
+          <p class="status" id="formStatus" role="status"></p>
         </div>
       </section>
 
       <section id="testBox">
-        <label class="label" for="addr">Probar</label>
+        <label class="label" for="addr">Probar una dirección</label>
         <form class="row" id="testForm">
-          <input id="addr" type="text" placeholder="Una dirección" autocomplete="off">
+          <input id="addr" type="text" placeholder="Como la mandaría el restaurante" autocomplete="off">
           <button type="submit" id="testAddrBtn">Probar</button>
         </form>
         <div id="resultBox" style="margin-top:8px" hidden></div>
@@ -201,22 +206,26 @@ textarea { resize: vertical; min-height: 54px; }
         <p class="label">Zonas (<span id="count">0</span>)</p>
         <ul class="zones" id="zones"></ul>
         <p class="status err" id="dbStatus" hidden></p>
+        <div class="actions" style="margin-top:10px">
+          <button type="button" id="exportBtn">Descargar copia</button>
+        </div>
       </section>
     </div>
   </aside>
 
   <div class="mapwrap">
-    <div id="map" role="application" aria-label="Mapa de zonas de Cali y Jamundí"></div>
+    <div id="map" role="application" aria-label="Mapa de zonas de servicio de Cali y Jamundí"></div>
     <div class="modebar">
       <button id="testBtn" type="button" aria-pressed="false">Probar un punto</button>
-      <button id="finishBtn" class="primary" type="button" hidden>Terminar</button>
-      <button id="undoBtn" type="button" hidden>Deshacer punto</button>
-      <button id="stopDrawBtn" type="button" hidden>Cancelar</button>
+      <button id="finishBtn" class="primary" type="button" hidden>Terminar borde</button>
+      <button id="undoBtn" type="button" hidden>Deshacer</button>
+      <button id="removeBtn" type="button" hidden>Quitar esquina</button>
+      <button id="mapSaveBtn" class="primary" type="button" hidden>Guardar</button>
       <span class="hint" id="hint" hidden></span>
     </div>
+    <div class="ctx" id="ctx" role="menu" hidden></div>
     <div class="legend">
-      <span><span class="dot red"></span>Sin cobertura</span>
-      <span><span class="dot blue"></span>Precio mínimo</span>
+      <span><span class="dot zone"></span>Con servicio</span>
       <label><input type="checkbox" id="showBarrios" checked><span class="barrio"></span>Barrios</label>
     </div>
   </div>
@@ -228,28 +237,22 @@ textarea { resize: vertical; min-height: 54px; }
   const $ = (id) => document.getElementById(id);
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const money = (n) => "$ " + Number(n).toLocaleString("es-CO");
   const el = (tag, props = {}, ...children) => { const e = Object.assign(document.createElement(tag), props); e.append(...children); return e; };
-
-  // Los dos tipos de zona: dónde se guardan y cómo se ven.
-  const TYPES = {
-    red: { api: "/api/zonas", label: "Sin cobertura", newLabel: "Nueva zona sin cobertura", color: () => css("--red") },
-    blue: { api: "/api/zonas-precio", label: "Precio mínimo", newLabel: "Nueva zona de precio mínimo", color: () => css("--blue") },
-  };
+  const meters = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString("es-CO", { maximumFractionDigits: 1 })} km`);
+  const MAX_VERTICES = 500;
 
   // ---------- Mapa ----------
-  const AREA = L.latLngBounds([3.2, -76.63], [3.53, -76.42]);
-  const map = L.map("map", { zoomControl: true, doubleClickZoom: false, minZoom: 12, maxZoom: 19, maxBounds: AREA.pad(0.05), maxBoundsViscosity: 1 })
-    .setView([3.4372, -76.5225], 13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, bounds: AREA.pad(0.1), attribution: "© OpenStreetMap · Barrios: IDESC" }).addTo(map);
-  // Capas de abajo hacia arriba: barrios, azules, rojas. Así la roja dentro de
-  // una azul se ve y se puede tocar.
-  for (const [name, z] of [["barrios", 350], ["blue", 410], ["red", 420]]) { map.createPane(name); map.getPane(name).style.zIndex = z; }
+  // Sin límite para moverse (zonas en las afueras) y zoom hasta la casa: las
+  // teselas de OpenStreetMap llegan a 19 y de ahí se amplían.
+  const map = L.map("map", { zoomControl: true, doubleClickZoom: true, minZoom: 9, maxZoom: 21, zoomSnap: 0.5, wheelPxPerZoomLevel: 90 })
+    .setView([3.42, -76.525], 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 21, maxNativeZoom: 19, attribution: "© OpenStreetMap · Barrios: IDESC y OpenStreetMap" }).addTo(map);
+  L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
+  map.createPane("barrios"); map.getPane("barrios").style.zIndex = 350;
   const barrioCanvas = L.canvas({ padding: 0.3, pane: "barrios" });
   const svg = L.svg();
-  const renderers = { red: L.svg({ pane: "red" }), blue: L.svg({ pane: "blue" }) };
 
-  // La misma área que usa el bot para ordenar zonas (domain/price-zones.ts).
+  // La misma área que usa el bot para ordenar zonas (domain/service-zones.ts).
   function ringArea(ring) {
     const rad = Math.PI / 180, R = 6371000, k = Math.cos(ring[0][0] * rad);
     let twice = 0;
@@ -259,38 +262,63 @@ textarea { resize: vertical; min-height: 54px; }
     }
     return Math.abs(twice) / 2;
   }
-
-  // ---------- Estado ----------
-  // idle · pick (eligiendo barrio o dibujo) · drawing · editing · testing
-  let mode = "idle", newType = null;
-  const hint = $("hint");
-  function setHint(text, type) { hint.hidden = !text; hint.textContent = text || ""; hint.className = "hint" + (type ? " " + type : ""); }
-
-  function resetAll() {
-    if (mode === "drawing") stopDrawing();
-    if (mode === "editing") closeForm();
-    if (mode === "testing") stopTesting();
-    closePick();
-    mode = "idle"; setHint("");
+  function inside(p, ring) {
+    let c = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [yi, xi] = ring[i], [yj, xj] = ring[j];
+      if ((yi > p[0]) !== (yj > p[0]) && p[1] < ((xj - xi) * (p[0] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
   }
 
-  // ---------- Barrios oficiales (IDESC) ----------
+  // ---------- Estado ----------
+  // idle · pick (eligiendo barrio o dibujo) · edit (dibujando o editando) · test
+  let mode = "idle";
+  // La zona abierta en el editor (ver «El editor», abajo).
+  let ed = null, edShape = null, edMarkers = [];
+  // Con mouse se escribe el nombre de una; en el celular no se abre el teclado solo.
+  const finePointer = matchMedia("(pointer: fine)").matches;
+  const hint = $("hint");
+  function setHint(text) { hint.hidden = !text; hint.textContent = text || ""; }
+  function setMode(next) {
+    mode = next;
+    map.getContainer().classList.toggle("leaflet-crosshair", mode === "test" || (mode === "edit" && ed && ed.drawing));
+    // Doble clic acerca, salvo mientras se dibuja (serían dos esquinas).
+    if (mode === "edit" && ed && ed.drawing) map.doubleClickZoom.disable(); else map.doubleClickZoom.enable();
+    $("testBtn").hidden = mode === "edit";
+    $("testBtn").setAttribute("aria-pressed", String(mode === "test"));
+    $("newBtn").setAttribute("aria-pressed", String(mode === "pick"));
+    renderZones();
+  }
+  function resetAll() {
+    closeMenu();
+    if (mode === "edit") closeEditor();
+    $("pickBox").hidden = true;
+    setHint(""); setMode("idle");
+  }
+
+  // ---------- Barrios (IDESC y OpenStreetMap) ----------
   let barrios = [];
   const barrioLayer = L.layerGroup();
   fetch("barrios.json").then((r) => r.json()).then((data) => {
-    barrios = data.barrios.map((b) => ({ ...b, key: norm(b.nombre) }));
+    barrios = data.barrios.map((b) => ({ ...b, key: norm([b.nombre, ...(b.alias || [])].join(" · ")), area: ringArea(b.borde) }));
     for (const b of barrios) {
       L.polygon(b.borde, { renderer: barrioCanvas, color: css("--barrio"), weight: 1.2, opacity: 0.7, dashArray: "5 4", fillOpacity: 0 })
-        .bindTooltip(b.nombre, { sticky: true })
+        .bindTooltip(b.nombre + (b.alias ? ` (${b.alias.join(", ")})` : ""), { sticky: true })
         .addTo(barrioLayer);
     }
     syncBarrios();
   }).catch(() => showDbError("No se pudieron cargar los barrios. Recarga la página."));
   function syncBarrios() { $("showBarrios").checked ? barrioLayer.addTo(map) : barrioLayer.remove(); }
   $("showBarrios").onchange = syncBarrios;
+  const barrioWhere = (b) => (b.comuna ? `comuna ${Number(b.comuna)}` : b.fuente === "osm" ? "OpenStreetMap" : "expansión");
+  /** El barrio bajo un punto (el más pequeño, si hay varios). */
+  function barrioAt(p) {
+    return barrios.filter((b) => inside(p, b.borde)).sort((a, b) => a.area - b.area)[0] || null;
+  }
 
   // ---------- Zonas guardadas ----------
-  let zones = []; // { key, type, id, name, note?, minPrice?, barrioCode?, ring: [[lat,lng]], area }
+  let zones = []; // { id, name, barrioCode, ring: [[lat,lng]], area }
   const zoneLayer = L.layerGroup().addTo(map);
   async function api(path, options = {}) {
     const res = await fetch(path, { ...options, headers: { "Content-Type": "application/json" }, cache: "no-store" });
@@ -302,40 +330,33 @@ textarea { resize: vertical; min-height: 54px; }
   function showDbError(text) { $("dbStatus").hidden = !text; $("dbStatus").textContent = text || ""; }
   async function loadZones() {
     try {
-      const [red, blue] = await Promise.all([api(TYPES.red.api), api(TYPES.blue.api)]);
-      const pack = (type) => (z) => {
-        const ring = z.ring.map((p) => [p.lat, p.lng]);
-        return { ...z, type, key: type + ":" + z.id, ring, area: ringArea(ring) };
-      };
-      zones = [...red.map(pack("red")), ...blue.map(pack("blue"))].filter((z) => z.ring.length >= 3);
+      const rows = await api("/api/zonas");
+      zones = rows.map((z) => { const ring = z.ring.map((p) => [p.lat, p.lng]); return { ...z, ring, area: ringArea(ring) }; }).filter((z) => z.ring.length >= 3);
       renderZones(); showDbError("");
     } catch (e) {
       if (e.message !== "sesion") showDbError("No se pudieron leer las zonas. Se reintenta solo.");
     }
   }
-  const tagOf = (z) => (z.type === "red" ? "Sin cobertura" : z.minPrice === null ? "Sin mínimo" : money(z.minPrice));
-
   function renderZones() {
     zoneLayer.clearLayers();
-    // Dentro de cada tipo, las grandes primero: las pequeñas quedan encima.
+    const color = css("--zone");
+    // Las grandes primero: las pequeñas quedan encima y se pueden tocar.
     for (const z of [...zones].sort((a, b) => b.area - a.area)) {
-      if (editKey === z.key) continue;
-      const color = TYPES[z.type].color(), free = z.type === "blue" && z.minPrice === null;
-      L.polygon(z.ring, { renderer: renderers[z.type], color, weight: 2, dashArray: free ? "6 5" : null, fillColor: color, fillOpacity: z.type === "red" ? 0.3 : free ? 0.06 : 0.16 })
-        .bindTooltip(`${z.name} · ${tagOf(z)}`, { sticky: true })
-        .on("click", (e) => { if (mode === "idle" || mode === "editing") { L.DomEvent.stop(e); editZone(z.key); } })
+      if (ed && ed.zoneId === z.id) continue;
+      L.polygon(z.ring, { renderer: svg, color, weight: 2, fillColor: color, fillOpacity: 0.18, interactive: mode === "idle" })
+        .bindTooltip(z.name, { sticky: true })
+        .on("click", (e) => { if (mode === "idle") { L.DomEvent.stop(e); editZone(z.id); } })
         .addTo(zoneLayer);
     }
     const list = $("zones"); list.textContent = "";
     $("count").textContent = zones.length;
-    if (!zones.length) list.append(el("li", { className: "empty", textContent: "Todavía no hay zonas." }));
-    const order = (a, b) => (a.type === b.type ? a.name.localeCompare(b.name, "es") : a.type === "red" ? -1 : 1);
-    for (const z of [...zones].sort(order)) {
-      const li = el("li", { className: "zone " + z.type, tabIndex: 0 },
-        el("span", { className: "dot " + z.type }), el("span", { className: "name", textContent: z.name }), el("span", { className: "tag", textContent: tagOf(z) }));
-      li.setAttribute("aria-current", editKey === z.key ? "true" : "false");
-      li.onclick = () => editZone(z.key);
-      li.onkeydown = (e) => { if (e.key === "Enter") editZone(z.key); };
+    if (!zones.length) list.append(el("li", { className: "empty", textContent: "Todavía no hay zonas. Mientras no haya ninguna, el bot no restringe nada." }));
+    for (const z of [...zones].sort((a, b) => a.name.localeCompare(b.name, "es"))) {
+      const li = el("li", { className: "zone", tabIndex: 0 },
+        el("span", { className: "dot zone" }), el("span", { className: "name", textContent: z.name }), el("span", { className: "tag", textContent: `${z.ring.length} esq.` }));
+      li.setAttribute("aria-current", ed && ed.zoneId === z.id ? "true" : "false");
+      li.onclick = () => editZone(z.id);
+      li.onkeydown = (e) => { if (e.key === "Enter") editZone(z.id); };
       list.append(li);
     }
   }
@@ -343,238 +364,281 @@ textarea { resize: vertical; min-height: 54px; }
   setInterval(() => { if (!document.hidden && mode === "idle") loadZones(); }, 20000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && mode === "idle") loadZones(); });
 
-  // ---------- Nueva zona: un barrio o a mano ----------
-  const results = $("results"), qIn = $("q");
-  function startNew(type) {
-    if (mode === "pick" && newType === type) { resetAll(); return; }
-    resetAll();
-    mode = "pick"; newType = type;
-    $("newRed").setAttribute("aria-pressed", String(type === "red"));
-    $("newBlue").setAttribute("aria-pressed", String(type === "blue"));
-    $("pickBox").hidden = false;
-    $("pickCard").className = "card " + type;
-    $("pickKind").textContent = "";
-    $("pickKind").append(el("span", { className: "dot " + type }), TYPES[type].newLabel);
-    qIn.value = ""; results.hidden = true; qIn.focus();
-    setHint("Busca un barrio o tócalo en el mapa", type);
-  }
-  function closePick() {
-    $("pickBox").hidden = true;
-    $("newRed").setAttribute("aria-pressed", "false"); $("newBlue").setAttribute("aria-pressed", "false");
-  }
-  $("newRed").onclick = () => startNew("red");
-  $("newBlue").onclick = () => startNew("blue");
-  $("pickCancel").onclick = resetAll;
+  // Una copia de todas las zonas (GeoJSON): respaldo, y para pasarlas a otro servidor.
+  $("exportBtn").onclick = () => {
+    const fc = {
+      type: "FeatureCollection",
+      features: zones.map((z) => ({
+        type: "Feature",
+        properties: { id: z.id, name: z.name, barrioCode: z.barrioCode ?? null },
+        geometry: { type: "Polygon", coordinates: [[...z.ring, z.ring[0]].map(([lat, lng]) => [lng, lat])] },
+      })),
+    };
+    const a = el("a", { href: URL.createObjectURL(new Blob([JSON.stringify(fc)], { type: "application/geo+json" })), download: `zonas-de-servicio-${new Date().toISOString().slice(0, 10)}.geojson` });
+    document.body.append(a); a.click(); a.remove();
+  };
 
+  // ---------- Nueva zona: desde un barrio o a mano ----------
+  const results = $("results"), qIn = $("q");
+  $("newBtn").onclick = () => {
+    if (mode === "pick") { resetAll(); return; }
+    resetAll();
+    $("pickBox").hidden = false;
+    qIn.value = ""; results.hidden = true; if (finePointer) qIn.focus();
+    setHint("Busca un barrio o tócalo en el mapa");
+    setMode("pick");
+  };
+  $("pickCancel").onclick = resetAll;
   qIn.addEventListener("input", () => {
     const q = norm(qIn.value.trim()); results.textContent = "";
     if (!q) { results.hidden = true; return; }
-    const hits = barrios.filter((b) => b.key.includes(q)).slice(0, 15);
+    const hits = barrios.filter((b) => b.key.includes(q)).sort((a, b) => a.key.indexOf(q) - b.key.indexOf(q) || a.nombre.localeCompare(b.nombre, "es")).slice(0, 20);
     for (const b of hits) {
-      const btn = el("button", { type: "button" }, el("span", { textContent: b.nombre }), el("small", { textContent: `comuna ${Number(b.comuna)}` }));
+      const name = b.nombre + (b.alias ? ` (${b.alias.join(", ")})` : "");
+      const btn = el("button", { type: "button" }, el("span", { textContent: name }), el("small", { textContent: barrioWhere(b) }));
       btn.onclick = () => fromBarrio(b);
       results.append(el("li", {}, btn));
     }
-    if (!hits.length) results.append(el("li", { className: "status", textContent: "Ningún barrio con ese nombre", style: "padding:7px 10px" }));
+    if (!hits.length) results.append(el("li", { className: "status", textContent: "Ningún barrio con ese nombre. Puedes dibujarla a mano.", style: "padding:8px 10px" }));
     results.hidden = false;
   });
   qIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); results.querySelector("button")?.click(); } });
-
   function fromBarrio(b) {
-    const type = newType;
-    closePick();
-    openForm(type, null, b.borde.map((p) => [...p]), { name: b.nombre, barrioCode: b.codigo });
-  }
-
-  // ---------- Dibujar a mano ----------
-  let draft = [], draftLine = null, draftMarkers = [];
-  const finishBtn = $("finishBtn"), undoBtn = $("undoBtn"), stopDrawBtn = $("stopDrawBtn");
-  function redrawDraft() {
-    if (draftLine) draftLine.remove();
-    draftMarkers.forEach((m) => m.remove()); draftMarkers = [];
-    const color = TYPES[newType].color(), style = { renderer: svg, color, weight: 2, dashArray: "6 4", interactive: false };
-    draftLine = draft.length >= 3 ? L.polygon(draft, { ...style, fillColor: color, fillOpacity: 0.15 }).addTo(map) : L.polyline(draft, style).addTo(map);
-    draft.forEach((p, i) => {
-      const m = L.marker(p, { draggable: true, icon: L.divIcon({ className: "vertex", iconSize: null }) }).addTo(map);
-      m.on("drag", (e) => { draft[i] = [e.latlng.lat, e.latlng.lng]; draftLine.setLatLngs(draft); });
-      draftMarkers.push(m);
-    });
-    finishBtn.disabled = draft.length < 3; undoBtn.disabled = !draft.length;
-    setHint(draft.length < 3 ? "Toca cada esquina en el mapa" : "Terminar o doble clic", newType);
+    $("pickBox").hidden = true;
+    openEditor({ zoneId: null, name: b.nombre, barrioCode: b.codigo, ring: b.borde.map((p) => [...p]), drawing: false });
   }
   $("drawBtn").onclick = () => {
-    closePick(); mode = "drawing"; draft = [];
-    map.getContainer().classList.add("leaflet-crosshair", newType);
-    finishBtn.hidden = false; undoBtn.hidden = false; stopDrawBtn.hidden = false; $("testBtn").hidden = true;
-    redrawDraft();
+    $("pickBox").hidden = true;
+    openEditor({ zoneId: null, name: "", barrioCode: null, ring: [], drawing: true });
   };
-  function stopDrawing() {
-    mode = "idle"; map.getContainer().classList.remove("leaflet-crosshair", "red", "blue");
-    finishBtn.hidden = true; undoBtn.hidden = true; stopDrawBtn.hidden = true; $("testBtn").hidden = false; setHint("");
-    if (draftLine) { draftLine.remove(); draftLine = null; }
-    draftMarkers.forEach((m) => m.remove()); draftMarkers = [];
-  }
-  function finishDrawing() {
-    if (draft.length < 3) return;
-    const ring = draft.map((p) => [...p]), type = newType;
-    stopDrawing();
-    openForm(type, null, ring, { name: "", barrioCode: null });
-  }
-  undoBtn.onclick = () => { draft.pop(); redrawDraft(); };
-  finishBtn.onclick = finishDrawing;
-  stopDrawBtn.onclick = resetAll;
-  map.on("dblclick", () => { if (mode === "drawing") finishDrawing(); });
 
-  // ---------- Editar el borde: arrastrar, agregar y quitar esquinas ----------
-  let editType = null, editKey = null, editId = null, editRing = null, editBarrio = null, editShape = null, handles = [];
-  function clearHandles() { handles.forEach((m) => m.remove()); handles = []; }
-  function drawEditable() {
-    const color = TYPES[editType].color();
-    if (editShape) editShape.setLatLngs(editRing);
-    else editShape = L.polygon(editRing, { renderer: svg, color, weight: 2.5, dashArray: "6 4", fillColor: color, fillOpacity: 0.15, interactive: false }).addTo(map);
-    clearHandles();
-    editRing.forEach((p, i) => {
-      const m = L.marker(p, { draggable: true, icon: L.divIcon({ className: "vertex", iconSize: null }), title: "Arrastra para mover · clic derecho para quitar" }).addTo(map);
-      m.on("drag", (e) => { editRing[i] = [e.latlng.lat, e.latlng.lng]; editShape.setLatLngs(editRing); });
-      m.on("dragend", drawEditable);
-      m.on("contextmenu", (e) => {
-        L.DomEvent.preventDefault(e.originalEvent);
-        if (editRing.length > 3) { editRing.splice(i, 1); drawEditable(); }
-      });
-      handles.push(m);
-    });
-    editRing.forEach((a, i) => {
-      const b = editRing[(i + 1) % editRing.length];
-      const m = L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], { icon: L.divIcon({ className: "mid", iconSize: null }), title: "Toca para agregar una esquina" }).addTo(map);
-      m.on("click", () => { editRing.splice(i + 1, 0, [m.getLatLng().lat, m.getLatLng().lng]); drawEditable(); });
-      handles.push(m);
-    });
-    const many = editRing.length > 500;
-    $("editHint").textContent = many ? `${editRing.length} esquinas: el máximo es 500, quita algunas (clic derecho).` : "Arrastra las esquinas para mover el borde.";
-    $("editHint").className = "status" + (many ? " err" : "");
-  }
+  // ---------- El editor: dibujar y editar el borde ----------
+  // ed = { zoneId, barrioCode, ring: [[lat,lng]], drawing, history: [ring…], selected, dirty, original }
+  const finishBtn = $("finishBtn"), undoBtn = $("undoBtn"), removeBtn = $("removeBtn"), mapSaveBtn = $("mapSaveBtn");
+  const icon = (cls) => L.divIcon({ className: cls, iconSize: null });
 
-  // ---------- Formulario ----------
-  function openForm(type, zone, ring, preset) {
-    if (mode === "testing") stopTesting();
-    mode = "editing"; setHint("");
-    editType = type; editKey = zone ? zone.key : null; editId = zone ? zone.id : null;
-    editRing = ring; editBarrio = zone ? zone.barrioCode ?? null : preset.barrioCode;
-    map.getContainer().classList.toggle("red", type === "red");
-    $("home").hidden = true; $("listBox").hidden = true; $("testBox").hidden = true;
-    $("formBox").hidden = false;
-    $("formCard").className = "card " + type;
+  function openEditor(opts) {
+    if (mode === "test") setMode("idle");
+    closeMenu();
+    ed = { ...opts, history: [], selected: -1, dirty: false, original: opts.zoneId ? JSON.stringify({ name: opts.name, ring: opts.ring }) : null };
+    $("home").hidden = true; $("listBox").hidden = true; $("testBox").hidden = true; $("formBox").hidden = false;
     $("formKind").textContent = "";
-    $("formKind").append(el("span", { className: "dot " + type }), TYPES[type].label);
-    $("zName").value = zone ? zone.name : preset.name;
-    $("noteBox").hidden = type !== "red"; $("minBox").hidden = type !== "blue";
-    $("zNote").value = zone && zone.note ? zone.note : "";
-    const noMin = !!zone && zone.minPrice === null;
-    $("zNoMin").checked = noMin; $("zMin").disabled = noMin;
-    $("zMin").value = zone && zone.minPrice != null ? zone.minPrice.toLocaleString("es-CO") : "";
+    $("formKind").append(el("span", { className: "dot zone" }), ed.zoneId ? "Editar zona" : ed.drawing ? "Nueva zona, a mano" : "Nueva zona, desde un barrio");
+    $("zName").value = opts.name;
     $("formStatus").textContent = ""; $("formStatus").className = "status";
     resetDelete();
-    if (editShape) { editShape.remove(); editShape = null; }
-    drawEditable(); renderZones();
-    map.fitBounds(L.latLngBounds(editRing).pad(0.3));
-    (type === "blue" && (zone || preset.name) ? $("zMin") : $("zName")).focus();
+    undoBtn.hidden = false; removeBtn.hidden = false; mapSaveBtn.hidden = false;
+    setMode("edit");
+    renderEditor();
+    if (ed.ring.length >= 3) map.fitBounds(L.latLngBounds(ed.ring).pad(0.3));
+    if (!ed.drawing && finePointer) $("zName").focus({ preventScroll: true });
   }
-  function closeForm() {
+  function closeEditor() {
+    ed = null;
+    if (edShape) { edShape.remove(); edShape = null; }
+    edMarkers.forEach((m) => m.remove()); edMarkers = [];
     $("formBox").hidden = true; $("home").hidden = false; $("listBox").hidden = false; $("testBox").hidden = false;
-    mode = "idle"; editType = null; editKey = null; editId = null; editRing = null; editBarrio = null;
-    map.getContainer().classList.remove("red");
-    if (editShape) { editShape.remove(); editShape = null; }
-    clearHandles(); renderZones();
+    finishBtn.hidden = true; undoBtn.hidden = true; removeBtn.hidden = true; mapSaveBtn.hidden = true;
   }
-  function editZone(key) {
-    const z = zones.find((x) => x.key === key); if (!z) return;
+  function editZone(id) {
+    const z = zones.find((x) => x.id === id); if (!z) return;
     resetAll();
-    openForm(z.type, z, z.ring.map((p) => [...p]));
+    openEditor({ zoneId: z.id, name: z.name, barrioCode: z.barrioCode ?? null, ring: z.ring.map((p) => [...p]), drawing: false });
   }
-  $("cancelBtn").onclick = resetAll;
-  $("zNoMin").onchange = () => { $("zMin").disabled = $("zNoMin").checked; if ($("zNoMin").checked) $("zMin").value = ""; };
-  $("zMin").addEventListener("input", () => {
-    const digits = $("zMin").value.replace(/\D/g, "");
-    $("zMin").value = digits ? Number(digits).toLocaleString("es-CO") : "";
-  });
 
-  $("saveBtn").onclick = async () => {
-    const st = $("formStatus"), name = $("zName").value.trim();
-    const fail = (text, focus) => { st.textContent = text; st.className = "status err"; if (focus) focus.focus(); };
-    if (!name) return fail("Falta el nombre.", $("zName"));
-    if (editRing.length > 500) return fail("Máximo 500 esquinas.");
-    const ring = editRing.map(([lat, lng]) => ({ lat: +lat.toFixed(6), lng: +lng.toFixed(6) }));
-    let body;
-    if (editType === "red") body = { name, note: $("zNote").value.trim(), ring };
-    else {
-      let minPrice = null;
-      if (!$("zNoMin").checked) {
-        const digits = $("zMin").value.replace(/\D/g, "");
-        if (!digits || Number(digits) <= 0) return fail("Falta el mínimo.", $("zMin"));
-        minPrice = Number(digits);
-      }
-      body = { name, minPrice, barrioCode: editBarrio, ring };
+  /** Guarda el borde de ahora para poder deshacer el próximo cambio. */
+  function remember() {
+    ed.history.push(ed.ring.map((p) => [...p]));
+    if (ed.history.length > 200) ed.history.shift();
+    ed.dirty = true;
+  }
+  function undo() {
+    if (!ed || !ed.history.length) return;
+    ed.ring = ed.history.pop();
+    ed.selected = -1;
+    renderEditor();
+  }
+  /** Los tramos del borde: [i, j] entre esquinas seguidas, y el que cierra si
+   *  ya es un polígono (también mientras se dibuja, que se ve cerrado). */
+  function segments() {
+    const n = ed.ring.length, out = [];
+    for (let i = 0; i + 1 < n; i++) out.push([i, i + 1]);
+    if (n >= 3) out.push([n - 1, 0]);
+    return out;
+  }
+  /** Mete una esquina en el tramo del borde más cercano al punto (en pantalla). */
+  function insertNearest(latlng) {
+    const n = ed.ring.length;
+    remember();
+    if (n < 2) { ed.ring.push([latlng.lat, latlng.lng]); ed.selected = ed.ring.length - 1; renderEditor(); return; }
+    const p = map.latLngToLayerPoint(latlng);
+    let best = null, bestD = Infinity;
+    for (const [i, j] of segments()) {
+      const a = map.latLngToLayerPoint(ed.ring[i]), b = map.latLngToLayerPoint(ed.ring[j]);
+      const d = L.LineUtil.pointToSegmentDistance(p, a, b);
+      if (d < bestD) { bestD = d; best = i; }
     }
-    const base = TYPES[editType].api;
-    $("saveBtn").disabled = true; st.className = "status"; st.textContent = "Guardando…";
+    ed.ring.splice(best + 1, 0, [latlng.lat, latlng.lng]);
+    ed.selected = best + 1;
+    renderEditor();
+  }
+  function removeVertex(i) {
+    if (i < 0 || i >= ed.ring.length) return;
+    if (!ed.drawing && ed.ring.length <= 3) { status("Una zona necesita al menos 3 esquinas.", true); return; }
+    remember();
+    ed.ring.splice(i, 1);
+    ed.selected = -1;
+    renderEditor();
+  }
+  function select(i) { ed.selected = i; renderEditor(); }
+
+  function renderEditor() {
+    if (!ed) return;
+    const color = css("--zone"), ring = ed.ring;
+    if (edShape) { edShape.remove(); edShape = null; }
+    edMarkers.forEach((m) => m.remove()); edMarkers = [];
+    if (ring.length >= 3) edShape = L.polygon(ring, { renderer: svg, color, weight: 2.5, dashArray: ed.drawing ? "6 4" : null, fillColor: color, fillOpacity: 0.15, interactive: false }).addTo(map);
+    else if (ring.length) edShape = L.polyline(ring, { renderer: svg, color, weight: 2.5, dashArray: "6 4", interactive: false }).addTo(map);
+
+    // Los puntos entre esquinas: tocar o arrastrar mete una esquina ahí.
+    for (const [i, j] of segments()) {
+      const a = ring[i], b = ring[j];
+      const m = L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], { icon: icon("mid"), draggable: true, title: "Toca o arrastra para meter una esquina aquí", keyboard: false }).addTo(map);
+      let at = -1;
+      m.on("click", (e) => { L.DomEvent.stop(e); remember(); ed.ring.splice(i + 1, 0, [m.getLatLng().lat, m.getLatLng().lng]); ed.selected = i + 1; renderEditor(); });
+      m.on("dragstart", () => { remember(); at = i + 1; ed.ring.splice(at, 0, [m.getLatLng().lat, m.getLatLng().lng]); });
+      m.on("drag", (e) => { ed.ring[at] = [e.latlng.lat, e.latlng.lng]; if (edShape) edShape.setLatLngs(ed.ring); });
+      m.on("dragend", () => { ed.selected = at; renderEditor(); });
+      edMarkers.push(m);
+    }
+    // Las esquinas: arrastrar para mover, tocar para elegirla, clic derecho para quitarla.
+    ring.forEach((p, i) => {
+      const cls = "vertex" + (i === ed.selected ? " sel" : "") + (ed.drawing && i === 0 ? " first" : "");
+      const m = L.marker(p, { icon: icon(cls), draggable: true, title: "Arrastra para mover · toca para elegirla", zIndexOffset: 1000, keyboard: false }).addTo(map);
+      m.on("click", (e) => { L.DomEvent.stop(e); closeMenu(); select(i === ed.selected ? -1 : i); });
+      m.on("contextmenu", (e) => { L.DomEvent.stop(e); select(i); openMenu(e.containerPoint, [["Quitar esta esquina", () => removeVertex(i)]]); });
+      m.on("dragstart", () => { remember(); closeMenu(); });
+      m.on("drag", (e) => { ed.ring[i] = [e.latlng.lat, e.latlng.lng]; if (edShape) edShape.setLatLngs(ed.ring); });
+      m.on("dragend", () => { ed.selected = i; renderEditor(); });
+      edMarkers.push(m);
+    });
+
+    const n = ring.length, many = n > MAX_VERTICES;
+    undoBtn.disabled = !ed.history.length;
+    removeBtn.disabled = ed.selected < 0;
+    finishBtn.hidden = !ed.drawing; finishBtn.disabled = n < 3;
+    mapSaveBtn.disabled = n < 3 || many;
+    $("vertexInfo").textContent = many ? `${n} esquinas: el máximo es ${MAX_VERTICES}, quita algunas.` : `${n} ${n === 1 ? "esquina" : "esquinas"}${n < 3 ? " · faltan " + (3 - n) + " para cerrar la zona" : ""}`;
+    $("vertexInfo").className = "status" + (many ? " err" : "");
+    setHint(ed.drawing ? (n < 3 ? "Toca cada esquina en el mapa" : "Sigue tocando esquinas, o «Terminar borde»") : "");
+    map.getContainer().classList.toggle("leaflet-crosshair", ed.drawing);
+    renderZones();
+  }
+
+  function finishDrawing() {
+    if (!ed || !ed.drawing || ed.ring.length < 3) return;
+    ed.drawing = false; ed.selected = -1;
+    setMode("edit"); renderEditor();
+    if (!$("zName").value.trim() && finePointer) $("zName").focus({ preventScroll: true });
+  }
+  finishBtn.onclick = finishDrawing;
+  undoBtn.onclick = undo;
+  removeBtn.onclick = () => { if (ed) removeVertex(ed.selected); };
+
+  // ---------- Clics en el mapa ----------
+  map.on("click", (e) => {
+    if (closeMenu()) return;
+    if (mode === "edit" && ed) {
+      if (ed.drawing) { remember(); ed.ring.push([e.latlng.lat, e.latlng.lng]); ed.selected = -1; renderEditor(); }
+      else if (ed.selected >= 0) select(-1);
+    } else if (mode === "test") probe({ lat: e.latlng.lat, lng: e.latlng.lng }, null);
+    else if (mode === "pick") { const b = barrioAt([e.latlng.lat, e.latlng.lng]); if (b) fromBarrio(b); }
+  });
+  // Clic derecho, o mantener presionado en el celular.
+  map.on("contextmenu", (e) => {
+    if (mode !== "edit" || !ed) return;
+    L.DomEvent.preventDefault(e.originalEvent);
+    openMenu(e.containerPoint, [["Agregar punto aquí", () => insertNearest(e.latlng)]]);
+  });
+  map.on("movestart zoomstart", closeMenu);
+
+  const ctx = $("ctx");
+  function openMenu(point, items) {
+    ctx.textContent = "";
+    for (const [label, action] of items) ctx.append(el("button", { type: "button", role: "menuitem", textContent: label, onclick: () => { closeMenu(); action(); } }));
+    ctx.hidden = false;
+    const box = map.getContainer().getBoundingClientRect();
+    ctx.style.left = Math.min(point.x, box.width - ctx.offsetWidth - 8) + "px";
+    ctx.style.top = Math.min(point.y, box.height - ctx.offsetHeight - 8) + "px";
+    ctx.querySelector("button")?.focus({ preventScroll: true });
+  }
+  function closeMenu() { if (ctx.hidden) return false; ctx.hidden = true; return true; }
+
+  // ---------- Guardar, cancelar y borrar ----------
+  function status(text, err) { $("formStatus").textContent = text; $("formStatus").className = "status" + (err ? " err" : ""); }
+  async function save() {
+    if (!ed) return;
+    const name = $("zName").value.trim();
+    if (!name) { status("Falta el nombre.", true); $("zName").focus(); $("zName").scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+    if (ed.ring.length < 3) { status("Faltan esquinas: una zona necesita al menos 3.", true); return; }
+    if (ed.ring.length > MAX_VERTICES) { status(`Máximo ${MAX_VERTICES} esquinas.`, true); return; }
+    const body = { name, barrioCode: ed.barrioCode, ring: ed.ring.map(([lat, lng]) => ({ lat: +lat.toFixed(6), lng: +lng.toFixed(6) })) };
+    $("saveBtn").disabled = true; mapSaveBtn.disabled = true; status("Guardando…");
     try {
-      if (editId) await api(base + "/" + editId, { method: "PUT", body: JSON.stringify(body) });
-      else await api(base, { method: "POST", body: JSON.stringify(body) });
-      closeForm(); await loadZones();
+      if (ed.zoneId) await api("/api/zonas/" + ed.zoneId, { method: "PUT", body: JSON.stringify(body) });
+      else await api("/api/zonas", { method: "POST", body: JSON.stringify(body) });
+      resetAll(); await loadZones();
     } catch (e) {
-      if (e.message !== "sesion") fail(e.shown ? e.message : "No se pudo guardar. Intenta de nuevo.");
-    } finally { $("saveBtn").disabled = false; }
+      if (e.message !== "sesion") status(e.shown ? e.message : "No se pudo guardar. Revisa la conexión e intenta de nuevo.", true);
+    } finally { $("saveBtn").disabled = false; if (ed) mapSaveBtn.disabled = ed.ring.length < 3; }
+  }
+  $("saveBtn").onclick = save;
+  mapSaveBtn.onclick = save;
+  $("zName").addEventListener("input", () => { if (ed) ed.dirty = true; });
+  $("zName").addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
+  $("cancelBtn").onclick = () => {
+    if (ed && ed.dirty && !confirmInline()) return;
+    resetAll();
   };
+  // Cancelar con cambios pide un segundo toque, sin ventanas del navegador.
+  let cancelArmed = 0;
+  function confirmInline() {
+    if (Date.now() - cancelArmed < 4000) return true;
+    cancelArmed = Date.now();
+    status("Hay cambios sin guardar. Toca Cancelar otra vez para descartarlos.", true);
+    return false;
+  }
 
   function resetDelete() {
     const box = $("delBox"); box.textContent = "";
-    if (editId) box.append(el("button", { type: "button", className: "danger", textContent: "Eliminar zona", onclick: askDelete }));
+    if (ed && ed.zoneId) box.append(el("button", { type: "button", className: "danger", textContent: "Borrar zona", onclick: askDelete }));
   }
   function askDelete() {
     const box = $("delBox"); box.textContent = "";
-    const yes = el("button", { type: "button", className: "danger", textContent: "Sí, eliminar" });
+    const yes = el("button", { type: "button", className: "danger", textContent: "Sí, borrar" });
     const no = el("button", { type: "button", textContent: "No", onclick: resetDelete });
     yes.onclick = async () => {
-      try { await api(TYPES[editType].api + "/" + editId, { method: "DELETE" }); closeForm(); await loadZones(); }
-      catch (e) { if (e.message !== "sesion") { $("formStatus").textContent = "No se pudo eliminar."; $("formStatus").className = "status err"; } }
+      try { await api("/api/zonas/" + ed.zoneId, { method: "DELETE" }); resetAll(); await loadZones(); }
+      catch (e) { if (e.message !== "sesion") status(e.shown ? e.message : "No se pudo borrar.", true); }
     };
-    box.append(el("span", { textContent: "¿Eliminar?" }), yes, no);
+    box.append(el("span", { textContent: `¿Borrar «${$("zName").value.trim() || "esta zona"}»?` }), yes, no);
   }
+  window.addEventListener("beforeunload", (e) => { if (ed && ed.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
   // ---------- Probar una dirección o un punto ----------
   const testBtn = $("testBtn");
   let testMarker = null;
-  function stopTesting() { mode = "idle"; testBtn.setAttribute("aria-pressed", "false"); map.getContainer().classList.remove("leaflet-crosshair"); setHint(""); }
   testBtn.onclick = () => {
-    if (mode === "testing") { stopTesting(); return; }
+    if (mode === "test") { resetAll(); return; }
     resetAll();
-    mode = "testing"; testBtn.setAttribute("aria-pressed", "true"); map.getContainer().classList.add("leaflet-crosshair");
-    setHint("Toca donde sería la entrega");
+    setMode("test"); setHint("Toca donde sería la entrega");
   };
-  map.on("click", (e) => {
-    if (mode === "drawing") { draft.push([e.latlng.lat, e.latlng.lng]); redrawDraft(); }
-    else if (mode === "testing") probe({ lat: e.latlng.lat, lng: e.latlng.lng }, null);
-    else if (mode === "pick") { const b = barrioAt([e.latlng.lat, e.latlng.lng]); if (b) fromBarrio(b); }
-  });
-  // El barrio bajo un clic, aunque haya una zona encima (la zona tapa el clic).
-  function inside(p, ring) {
-    let c = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [yi, xi] = ring[i], [yj, xj] = ring[j];
-      if ((yi > p[0]) !== (yj > p[0]) && p[1] < ((xj - xi) * (p[0] - yi)) / (yj - yi) + xi) c = !c;
-    }
-    return c;
-  }
-  function barrioAt(p) {
-    return barrios.filter((b) => inside(p, b.borde)).sort((a, b) => ringArea(a.borde) - ringArea(b.borde))[0] || null;
-  }
   $("testForm").onsubmit = (e) => {
     e.preventDefault();
     const address = $("addr").value.trim();
     if (!address) { $("addr").focus(); return; }
     probe({ address }, address);
   };
-
   async function probe(body, address) {
     const box = $("resultBox"); box.hidden = false; box.textContent = "";
     box.append(el("p", { className: "status", textContent: address ? "Ubicando la dirección…" : "Revisando…" }));
@@ -586,33 +650,36 @@ textarea { resize: vertical; min-height: 54px; }
       box.append(el("p", { className: "status err", textContent: e.shown ? e.message : "No se pudo probar." }));
     } finally { $("testAddrBtn").disabled = false; }
   }
-
   function showResult(r, address) {
     const box = $("resultBox"); box.textContent = "";
     if (testMarker) testMarker.remove();
     testMarker = L.circleMarker([r.point.lat, r.point.lng], { renderer: svg, radius: 8, color: css("--panel"), weight: 3, fillColor: css("--fg"), fillOpacity: 1, interactive: false }).addTo(map);
     if (address) map.setView([r.point.lat, r.point.lng], Math.max(map.getZoom(), 16));
-    const price = r.priceZones[0];
-    let title, detail = "";
-    if (r.kind === "sin_cobertura") {
-      title = "Sin cobertura";
-      detail = r.zone.name + (price && price.minPrice !== null ? ` · gana sobre «${price.name}»` : "");
-    } else if (r.kind === "minimo") {
-      title = "Mínimo " + money(price.minPrice);
-      detail = price.name + " · si por km da más, se cobra por km";
-    } else {
-      title = "Solo por km";
-      detail = price ? `${price.name} · sin mínimo` : "Fuera de toda zona";
-    }
+    let title, detail;
+    if (r.kind === "dentro") { title = "Hay servicio"; detail = r.zones.map((z) => z.name).join(" · "); }
+    else if (r.kind === "cerca") { title = "Cerca del borde: decide la central"; detail = `A ${meters(r.nearest.distanceM)} de «${r.nearest.name}» (menos de ${r.nearM} m)`; }
+    else if (r.kind === "fuera") { title = "Sin servicio"; detail = `A ${meters(r.nearest.distanceM)} de «${r.nearest.name}», la zona más cercana`; }
+    else { title = "Todavía no hay zonas"; detail = "Mientras no haya ninguna, el bot no restringe nada."; }
     const v = el("div", { className: "verdict " + r.kind }, el("b", { textContent: title }), el("span", { textContent: detail }));
     if (address) v.append(el("small", { textContent: address + (r.neighborhood ? " · " + r.neighborhood : "") }));
     v.append(el("span", { className: "mono", textContent: `${r.point.lat.toFixed(5)}, ${r.point.lng.toFixed(5)}` }));
     box.append(v);
   }
 
+  // ---------- Teclado ----------
   document.addEventListener("keydown", (e) => {
-    // Una edición abierta solo se cierra con Cancelar: así no se pierde sin querer.
-    if (e.key === "Escape" && mode !== "idle" && mode !== "editing") resetAll();
+    const typing = e.target instanceof HTMLInputElement;
+    if (e.key === "Escape") {
+      if (closeMenu()) return;
+      // Una edición abierta solo se cierra con Cancelar: así no se pierde sin querer.
+      if (mode === "edit") { if (ed && ed.selected >= 0) select(-1); return; }
+      if (mode !== "idle") resetAll();
+      return;
+    }
+    if (mode !== "edit" || !ed || typing) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+    else if ((e.key === "Delete" || e.key === "Backspace") && ed.selected >= 0) { e.preventDefault(); removeVertex(ed.selected); }
+    else if (e.key === "Enter" && ed.drawing) finishDrawing();
   });
 })();
 </script>

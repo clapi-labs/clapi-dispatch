@@ -11,7 +11,7 @@ Staging (`dev`, commit `1734609`) tiene el sistema completo funcionando con What
 - **Bot:** reconoce al restaurante, cotiza por distancia, pide los datos con un formato, confirma con botón, crea un viaje por entrega, responde consultas y cambios. Un turno de mensajes seguidos recibe una sola respuesta ([BOT.md](BOT.md)).
 - **Despacho:** el engine asigna en modo `auto` ([ALGORITMO.md](ALGORITMO.md)). Las motos son simuladas: en staging no hay flota real con GPS (ver «Simulador» en [OPERACION.md](OPERACION.md)).
 - **Domiciliario:** mensajes guiados, botones, recordatorios, portería, cliente que no contesta ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)).
-- **Portal:** viajes con estados, flota, conversaciones, tarifas por km, finanzas del día, restaurantes, zonas sin cobertura, pausa general, mapa del simulador.
+- **Portal:** viajes con estados, flota, conversaciones, tarifas por km, finanzas del día, restaurantes, zonas de servicio, pausa general, mapa del simulador.
 
 Lo que falta, en grande: un servidor de producción con backups y alertas, que el bot resuelva los casos que hoy terminan en la central, GPS real en las motos y que la central se entere de lo urgente sin estar mirando la pantalla.
 
@@ -97,6 +97,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - Se despliega con un botón (`workflow_dispatch`) **el mismo hash** que ya se probó en staging, sin reconstruir imágenes.
 - Backups (I-1) y avisos (I-2) funcionando ahí desde el primer día.
 - `SIMULATOR_ENABLED` y `AUTH_DISABLED` vacíos, y así lo comprueba el despliegue.
+- Las zonas de servicio de staging pasadas a producción: **Descargar copia** en el mapa y `npm run zonas:importar` contra la base nueva ([DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Las zonas de la central no se pierden»).
 
 **Dónde mirar:** `infra/staging`, `infra/modules/server`, `docs/INFRAESTRUCTURA.md` («Entornos»), `docs/OPERACION.md` («Infraestructura»).
 
@@ -162,16 +163,19 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** `apps/bot/src/bot/order.ts` (recogida), `packages/shared/src/domain/restaurant-identity.ts`, `apps/bot/src/services/google/geocode.ts`, la página Restaurantes del portal.
 
-### B-4 · Zonas sin cobertura en el bot · Bot · M
+### B-4 · Zonas de servicio en el bot · Bot · M
 
-**Objetivo:** que el bot respete las zonas que el cliente marca en el mapa. Hoy se guardan (`restricted_zones`), pero el bot no las consulta.
+**Objetivo:** que el bot respete las zonas de servicio que la central marca en el mapa (solo donde sí hay domicilio). Reemplaza a las zonas sin cobertura y al precio mínimo por zona, que se quitaron (#30 y #31 quedan sin efecto).
 
-**Éxito:**
-- Recogida o entrega dentro de una zona: «Qué pena, pero hasta esa dirección no manejamos domicilio».
-- A menos de 100 m del borde: el pedido queda en espera y la central decide en el portal con «Sí» o «No».
-- Pruebas unitarias con polígonos de ejemplo (dentro, franja, fuera).
+**Parte 1, el portal (hecha):** un solo apartado **Zonas** con las zonas de servicio; se crean desde un barrio o a mano, se editan, se renombran y se borran; meter una esquina en cualquier tramo del borde, quitarla y deshacer, con mouse y en el celular; zoom hasta la cuadra y sin límite para moverse; 21 barrios urbanos más (Cachipay, Bochalema, Pacífico y el resto del suelo de expansión del sur). El precio queda solo por km. Detalle en [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Zonas de servicio».
 
-**Dónde mirar:** [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md) («Por construir»), `packages/shared/src/db/restricted-zones.ts`, el panel de consulta de dirección del portal (sirve de base para el «Sí / No»).
+**Éxito de la Parte 2:**
+- Con zonas cargadas, por el chat de prueba: una entrega adentro → pedido normal; a 300 m o menos del borde → pasa a la central, que dice si se hace; más lejos → el bot dice que no hay servicio y no se crea el pedido.
+- Sin zonas cargadas → todo funciona como hoy.
+- Después de desplegarla, las zonas que marcó la central siguen iguales.
+- Pruebas del dentro, cerca y lejos.
+
+**Dónde mirar:** [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md) («Zonas de servicio en el bot»), `packages/shared/src/domain/service-zones.ts` (`serviceVerdictAt`), `apps/bot/src/bot/order.ts`, el panel de consulta de dirección del portal.
 
 ### B-5 · Pedir torre y apartamento cuando hace falta · Bot · M
 

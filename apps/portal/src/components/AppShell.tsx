@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Users, Wallet, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -13,15 +13,18 @@ import { BRAND } from "@/lib/brand";
 import { setBusinessPaused, useBusiness } from "@/lib/business";
 import { getPushStatus, type PushStatus } from "@/lib/push";
 
-const NAV = [
+/** `desktopOnly`: no va en la barra del celular. */
+type NavItem = { href: string; label: string; short: string; icon: LucideIcon; desktopOnly?: boolean };
+
+const NAV: NavItem[] = [
   { href: "/viajes", label: "Viajes", short: "Viajes", icon: LayoutGrid },
   { href: "/conversaciones", label: "Conversaciones", short: "Chats", icon: MessagesSquare },
   { href: "/flota", label: "Flota", short: "Flota", icon: Users },
   { href: "/arqueo", label: "Finanzas", short: "Finanzas", icon: Wallet },
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
   { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },
-  // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
-  { href: "/zonas", label: "Zonas", short: "Zonas", icon: MapPinned, desktopOnly: true },
+  // El mapa de zonas de servicio: se dibuja con el mouse o con el dedo.
+  { href: "/zonas", label: "Zonas", short: "Zonas", icon: MapPinned },
 ];
 
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */
@@ -265,7 +268,7 @@ function PausedBanner() {
 export function AppShell({ children, simulator = false }: { children: React.ReactNode; simulator?: boolean }) {
   const pathname = usePathname();
   // El simulador de staging solo aparece con SIMULATOR_ENABLED.
-  const nav = simulator ? [...NAV, { href: "/simulador", label: "Simulador", short: "Simulador", icon: FlaskConical, desktopOnly: true }] : NAV;
+  const nav: NavItem[] = simulator ? [...NAV, { href: "/simulador", label: "Simulador", short: "Simulador", icon: FlaskConical, desktopOnly: true }] : NAV;
   const { trips, needsHelp } = useTrips();
   const pending = trips.filter((t) => t.status === "pending").length;
 

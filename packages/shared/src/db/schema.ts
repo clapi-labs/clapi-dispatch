@@ -501,40 +501,48 @@ export const users = pgTable("users", {
 });
 
 /**
- * Zonas sin cobertura (docs/DIRECCIONES-Y-ZONAS.md): polígonos que el cliente
- * marca en el mapa del portal (/zonas). Permanentes, las mismas para todos
- * los restaurantes, para recogida y entrega.
+ * Zonas de servicio (docs/DIRECCIONES-Y-ZONAS.md, «Zonas de servicio»): donde
+ * sí hay domicilio. La central las marca en el mapa del portal (/zonas); lo
+ * que queda por fuera no tiene servicio. Iguales para todos los restaurantes,
+ * cuenta dónde se entrega y pueden cruzarse (`domain/service-zones.ts`). No
+ * cambian el precio.
+ *
+ * Son datos de la central: ninguna migración ni despliegue las borra o las
+ * cambia (lo revisa `db/service-zones-guard.test.ts`). Cada cambio queda en
+ * `service_zone_versions`.
  */
-export const restrictedZones = pgTable("restricted_zones", {
+export const serviceZones = pgTable("service_zones", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  note: text("note"),
-  /** El contorno, en orden: al menos 3 puntos. */
+  /** El contorno, en orden y sin repetir el primero: de 3 a 500 puntos. */
   ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
+  /** El barrio del que salió, si salió de uno (código de `barrios.json`). */
+  barrioCode: text("barrio_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
- * Precio mínimo por zona de entrega (docs/DIRECCIONES-Y-ZONAS.md): áreas del
- * mapa que la central marca en /zonas. El domicilio cobra el mayor
- * entre la tabla por km y el mínimo de la zona donde se entrega; si cae en
- * dos, manda la más pequeña (`domain/price-zones.ts`). Iguales para todos los
- * restaurantes. Comparten el mapa con `restricted_zones`: donde se cruzan,
- * gana la sin cobertura (`domain/zone-map.ts`).
+ * Cada versión de cada zona de servicio, también la última antes de borrarla:
+ * con esto una zona borrada o cambiada sin querer se puede recuperar. Sin
+ * llave foránea, para que sobreviva a la zona.
  */
-export const priceZones = pgTable("price_zones", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  /** Pesos. Null: sin mínimo (una parte de otra zona que cobra solo por km). */
-  minPrice: integer("min_price"),
-  /** El contorno, en orden y sin repetir el primero: al menos 3 puntos. */
-  ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
-  /** El barrio oficial (código de la IDESC) del que salió, si salió de uno. */
-  barrioCode: text("barrio_code"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const serviceZoneVersions = pgTable(
+  "service_zone_versions",
+  {
+    id: serial("id").primaryKey(),
+    zoneId: integer("zone_id").notNull(),
+    /** "creada", "editada" o "borrada". */
+    action: text("action").notNull(),
+    name: text("name").notNull(),
+    ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
+    barrioCode: text("barrio_code"),
+    /** Quién lo hizo en el portal, si se sabe. */
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("service_zone_versions_zone_idx").on(t.zoneId)],
+);
 
 // ---------------------------------------------------------------------------
 // Sesiones del portal y alertas al celular (docs/INTERVENCION-MANUAL.md,

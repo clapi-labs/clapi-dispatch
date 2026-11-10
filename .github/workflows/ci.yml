@@ -29,6 +29,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Incluye la que impide que una migración borre o cambie las zonas de
+      # servicio de la central (service-zones-guard.test.ts).
+      - run: npm test
       # No necesita secretos: las variables se leen al usarlas, no al compilar.
       - run: npm run build
 
