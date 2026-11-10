@@ -80,7 +80,7 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
   "motos": [{
     "id": "17",
     "lat": 3.45, "lon": -76.53,
-    "sin_senal": false,            // último reporte de Traccar hace más de 2 min
+    "sin_senal": false,            // último reporte de Traccar hace 30 s o más
     "entregas": 4,                 // del turno
     "cuota": 3.6,                  // cuota justa acumulada (sección 4.A)
     "disponible_desde_ts": 1789998000,
@@ -156,7 +156,7 @@ Hoy no existe y el engine lo necesita:
 3. ~~Botón «Recogí» para el motorizado.~~ Hecho (ver [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)).
 4. ~~Guardar el `plan` de cada asignación, para armar las `paradas`.~~ Hecho: `courier_routes` guarda el orden y lo pendiente sale de la fase de cada viaje.
 5. Llevar la `cuota` por moto y la hora de la última entrega o conexión. Pendiente ([PLAN](PLAN.md) D-2): hoy se manda el promedio de entregas del grupo.
-6. ~~Recibir las posiciones y marcar `sin_senal` tras 2 min sin reporte.~~ Hecho. La app debe reportar aunque la moto esté quieta, o la moto cuenta como sin señal.
+6. ~~Recibir las posiciones y marcar `sin_senal` tras 30 s sin reporte.~~ Hecho (issue #42). La app debe reportar aunque la moto esté quieta, o la moto cuenta como sin señal.
 7. ~~El modo, `radio_km` y `multipedido` en `settings`.~~ Hecho: `settings.engine_config` (ver «Modo sombra»).
 
 ## Modo sombra
@@ -165,7 +165,7 @@ Implementado en `apps/bot/src/dispatch/engine.ts` y corriendo en cada tick del w
 
 - **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
 - **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
-- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true), `sinSenalMin` (2) y `asumirRegreso` (true).
+- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true) y `asumirRegreso` (true). Una moto sin reporte de GPS en los últimos 30 segundos va con `sin_senal` y no participa; ese límite es fijo (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`), el mismo con el que el portal la muestra «sin señal».
 - **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
 
 Comparar con lo que pasó de verdad:
