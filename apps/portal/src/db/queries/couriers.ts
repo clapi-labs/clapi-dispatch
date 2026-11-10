@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { and, desc, eq, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
-import { db, listControls, openTripCondition, returnUnpickedTrips, schema, simulatorEnabled } from "@dispatch/shared/db";
+import { db, listControls, openTripCondition, releaseControlOf, returnUnpickedTrips, schema, simulatorEnabled } from "@dispatch/shared/db";
 
 /** "300 123 4567" → "573001234567": el formato en que WhatsApp identifica el
  *  número, para que el bot reconozca al motorizado cuando escriba. */
@@ -19,14 +19,17 @@ export type SeenStats = { confirmed: number; avgMinutes: number | null; reminder
 
 const STATS_DAYS = 7;
 
-/** Con el simulador: si es una moto simulada o un número de prueba, y con quién
- *  está emparejada ahora (el número que la controla, o la moto que controla). */
-export type SimulatorRole = { role: "simulated" | "test"; partner: string | null };
+/** Con el simulador: si es una moto simulada, un número de prueba o una moto
+ *  real con GPS, y con quién está emparejada ahora (el número que la controla, o
+ *  la moto que controla). */
+export type SimulatorRole = { role: "simulated" | "test" | "real"; partner: string | null };
 
-export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenStats | null; assignable: boolean; simulator: SimulatorRole | null })[]> {
+export async function listCouriers(): Promise<
+  (CourierRow & { seenStats: SeenStats | null; assignable: boolean; hasGps: boolean; simulator: SimulatorRole | null })[]
+> {
   const a = schema.assignments;
   const simulator = simulatorEnabled();
-  const [couriers, stats, controls] = await Promise.all([
+  const [couriers, stats, controls, withGps] = await Promise.all([
     db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt)),
     db
       .select({
@@ -39,7 +42,9 @@ export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenSta
       .where(and(isNotNull(a.courierId), gte(a.assignedAt, new Date(Date.now() - STATS_DAYS * 24 * 60 * 60_000))))
       .groupBy(a.courierId),
     simulator ? listControls() : Promise.resolve([]),
+    db.select({ id: schema.courierProfiles.courierId }).from(schema.courierProfiles).where(isNotNull(schema.courierProfiles.gpsDeviceId)),
   ]);
+  const gps = new Set(withGps.map((r) => r.id));
   const byCourier = new Map(stats.map((r) => [r.courierId, r]));
   const names = new Map(couriers.map((c) => [c.id, c.name]));
   const partnerOf = (c: CourierRow) => {
@@ -47,6 +52,7 @@ export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenSta
     const other = c.simulated ? control?.phoneCourierId : control?.simCourierId;
     return other ? (names.get(other) ?? null) : null;
   };
+  const role = (c: CourierRow): SimulatorRole["role"] => (c.simulated ? "simulated" : gps.has(c.id) ? "real" : "test");
   return couriers.map((c) => {
     const r = byCourier.get(c.id);
     const seenStats =
@@ -56,9 +62,11 @@ export async function listCouriers(): Promise<(CourierRow & { seenStats: SeenSta
     return {
       ...c,
       seenStats,
-      // A quién puede asignarle la central: con el simulador, solo a las simuladas.
-      assignable: c.simulated === simulator,
-      simulator: simulator ? { role: c.simulated ? ("simulated" as const) : ("test" as const), partner: partnerOf(c) } : null,
+      hasGps: gps.has(c.id),
+      // A quién puede asignarle la central: con el simulador, a las simuladas y,
+      // para un viaje de prueba, a las reales con GPS (simulator-flag.ts).
+      assignable: c.simulated === simulator || (simulator && gps.has(c.id)),
+      simulator: simulator ? { role: role(c), partner: partnerOf(c) } : null,
     };
   });
 }
@@ -112,6 +120,8 @@ export async function ensureGpsDeviceId(courierId: number): Promise<string> {
     .set({ gpsDeviceId: generated })
     .where(and(eq(schema.courierProfiles.courierId, courierId), isNull(schema.courierProfiles.gpsDeviceId)));
   const [row] = await db.select({ id: schema.courierProfiles.gpsDeviceId }).from(schema.courierProfiles).where(eq(schema.courierProfiles.courierId, courierId)).limit(1);
+  // En staging, con GPS deja de ser un número de prueba: suelta la moto simulada.
+  if (simulatorEnabled()) await releaseControlOf(courierId);
   return row?.id ?? generated;
 }
 

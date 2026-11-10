@@ -9,6 +9,7 @@
     "./db/schema": "./src/db/schema.ts",
     "./domain/extraction": "./src/domain/extraction.ts",
     "./domain/coordinates": "./src/domain/coordinates.ts",
+    "./domain/gps": "./src/domain/gps.ts",
     "./domain/phase": "./src/domain/phase.ts",
     "./domain/service-hours": "./src/domain/service-hours.ts",
     "./auth/password": "./src/auth/password.ts"

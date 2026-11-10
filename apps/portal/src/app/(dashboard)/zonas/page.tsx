@@ -3,9 +3,10 @@
 import { useEffect } from "react";
 
 /**
- * El mapa de zonas sin cobertura es una página aparte, a pantalla completa
+ * El mapa de zonas es una página aparte, a pantalla completa
  * (`public/zonas/mapa.html`, protegida por la sesión como todo el portal):
- * Leaflet con las calles de Cali y Jamundí, y guarda en `/api/zonas`.
+ * las zonas sin cobertura (`/api/zonas`) y las de precio mínimo
+ * (`/api/zonas-precio`) sobre los barrios oficiales de Cali.
  */
 export default function ZonasPage() {
   useEffect(() => {

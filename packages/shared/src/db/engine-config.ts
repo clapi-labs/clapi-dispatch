@@ -15,12 +15,11 @@ export type EngineConfig = {
    *  no se usa; si no hay GPS o el engine falla, los pedidos esperan y la central
    *  los asigna a mano. */
   mode: "queue" | "shadow" | "auto";
-  /** Las motos más lejos que esto del restaurante no participan. */
+  /** Las motos más lejos que esto del restaurante no participan. Una moto sin
+   *  señal tampoco (`NO_SIGNAL_MS`, domain/gps.ts: fijo en 30 segundos). */
   radioKm: number;
   /** Si una moto ocupada puede recibir otro pedido. */
   multipedido: boolean;
-  /** Sin reporte de GPS en estos minutos, la moto cuenta como sin señal. */
-  sinSenalMin: number;
   /** Contar que toda moto puede tener que volver a recogida después de
    *  entregar: solo se sabe al entregar, y es el peor caso para su ruta. */
   asumirRegreso: boolean;
@@ -30,7 +29,6 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   mode: "shadow",
   radioKm: 4,
   multipedido: true,
-  sinSenalMin: 2,
   asumirRegreso: true,
 };
 
@@ -43,7 +41,6 @@ export async function getEngineConfig(): Promise<EngineConfig> {
     mode: saved.mode === "queue" || saved.mode === "shadow" || saved.mode === "auto" ? saved.mode : DEFAULT_ENGINE_CONFIG.mode,
     radioKm: positive(saved.radioKm, DEFAULT_ENGINE_CONFIG.radioKm),
     multipedido: typeof saved.multipedido === "boolean" ? saved.multipedido : DEFAULT_ENGINE_CONFIG.multipedido,
-    sinSenalMin: positive(saved.sinSenalMin, DEFAULT_ENGINE_CONFIG.sinSenalMin),
     asumirRegreso: typeof saved.asumirRegreso === "boolean" ? saved.asumirRegreso : DEFAULT_ENGINE_CONFIG.asumirRegreso,
   };
 }

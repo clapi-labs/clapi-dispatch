@@ -517,10 +517,11 @@ export const restrictedZones = pgTable("restricted_zones", {
 
 /**
  * Precio mínimo por zona de entrega (docs/DIRECCIONES-Y-ZONAS.md): áreas del
- * mapa que la central marca en /precios-zona. El domicilio cobra el mayor
+ * mapa que la central marca en /zonas. El domicilio cobra el mayor
  * entre la tabla por km y el mínimo de la zona donde se entrega; si cae en
  * dos, manda la más pequeña (`domain/price-zones.ts`). Iguales para todos los
- * restaurantes. No tienen nada que ver con `restricted_zones`.
+ * restaurantes. Comparten el mapa con `restricted_zones`: donde se cruzan,
+ * gana la sin cobertura (`domain/zone-map.ts`).
  */
 export const priceZones = pgTable("price_zones", {
   id: serial("id").primaryKey(),

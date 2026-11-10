@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (returned.courierId) unassigned.push({ tripId, courierId: returned.courierId });
   }
 
-  const assigned = typeof courierId === "number" ? await assignTripTo(tripId, courierId) : null;
+  const assigned = typeof courierId === "number" ? await assignTripTo(tripId, courierId, { byHand: true }) : null;
   await notifyBot({ unassigned, assigned: assigned ? [tripId] : [] });
   if (typeof courierId === "number" && !assigned) return Response.json({ error: "Esa moto ya no está disponible" }, { status: 409 });
   return Response.json({ ok: true });

@@ -1,4 +1,4 @@
-import { assignPendingTrips, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
+import { assignPendingTrips, purgeOldPositions, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
@@ -7,6 +7,10 @@ import { runEngine } from "@/dispatch/engine";
 import { isInternal } from "../auth";
 
 export const dynamic = "force-dynamic";
+
+/** Cada cuánto se borran las posiciones de más de 24 horas: no hace falta en cada tick. */
+const PURGE_EVERY_MS = 10 * 60_000;
+let lastPurge = 0;
 
 /**
  * Lo que tiene que pasar "cada tanto" aunque nadie esté mirando. Lo llama el
@@ -62,6 +66,17 @@ export async function POST(request: Request) {
       await releaseIdleControls();
     } catch (error) {
       console.error("[tick] no se pudieron soltar las motos simuladas:", error);
+    }
+  }
+
+  // No se guarda el recorrido: las posiciones de más de 24 horas se borran.
+  if (Date.now() - lastPurge >= PURGE_EVERY_MS) {
+    lastPurge = Date.now();
+    try {
+      const purged = await purgeOldPositions();
+      if (purged.couriers || purged.evaluations) console.log(`[tick] posiciones de más de 24 h borradas: ${purged.couriers} motos, ${purged.evaluations} evaluaciones`);
+    } catch (error) {
+      console.error("[tick] no se pudieron borrar las posiciones viejas:", error);
     }
   }
 

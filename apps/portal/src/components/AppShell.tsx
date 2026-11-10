@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MapPinOff, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
+import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Users, Wallet } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,8 +21,7 @@ const NAV = [
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
   { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },
   // Herramienta de computador (dibujar con el mouse): no va en la barra del celular.
-  { href: "/zonas", label: "Zonas sin cobertura", short: "Zonas", icon: MapPinOff, desktopOnly: true },
-  { href: "/precios-zona", label: "Precio mínimo por zona", short: "Mínimos", icon: MapPinned, desktopOnly: true },
+  { href: "/zonas", label: "Zonas", short: "Zonas", icon: MapPinned, desktopOnly: true },
 ];
 
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */

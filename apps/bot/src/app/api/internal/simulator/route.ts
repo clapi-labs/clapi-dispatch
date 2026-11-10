@@ -15,8 +15,9 @@ export const dynamic = "force-dynamic";
  * - `POST { action: "setup" }`: crea las motos si no hay ninguna.
  * - `POST { action: "act", courierId, tripId }`: toca el botón por una moto que
  *   se maneja sola, por el mismo camino que un toque de WhatsApp.
- * - `POST { action: "order", restaurantId, lat, lng, readyInMinutes }`: un
- *   pedido desde el mapa, sin WhatsApp.
+ * - `POST { action: "order", restaurantId, lat, lng, readyInMinutes, courierId? }`:
+ *   un pedido desde el mapa, sin WhatsApp. Con `courierId`, es el viaje de prueba
+ *   de esa moto real con GPS.
  */
 export async function GET(request: Request) {
   if (!simulatorEnabled()) return new Response("Not found", { status: 404 });
@@ -46,8 +47,15 @@ export async function POST(request: Request) {
     const lng = num(body.lng);
     const ready = num(body.readyInMinutes) ?? 0;
     if (restaurantId === null || lat === null || lng === null) return Response.json({ error: "Faltan el restaurante y el punto" }, { status: 400 });
-    const result = await createSimulatedOrder({ restaurantId, lat, lng, readyInMinutes: Math.max(0, Math.min(180, Math.round(ready))) });
-    return Response.json(result, { status: "error" in result ? 400 : 200 });
+    const result = await createSimulatedOrder({
+      restaurantId,
+      lat,
+      lng,
+      readyInMinutes: Math.max(0, Math.min(180, Math.round(ready))),
+      courierId: num(body.courierId),
+    });
+    // `reason`: el portal muestra ese texto tal cual (lib/bot.ts, callBot).
+    return "error" in result ? Response.json({ ...result, reason: result.error }, { status: 400 }) : Response.json(result);
   }
 
   return Response.json({ error: "Acción desconocida" }, { status: 400 });

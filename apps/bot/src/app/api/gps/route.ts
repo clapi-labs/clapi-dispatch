@@ -1,3 +1,5 @@
+import { positionTime } from "@dispatch/shared";
+
 import { courierForDevice, recordPosition } from "@/bot/gps";
 
 export const dynamic = "force-dynamic";
@@ -61,8 +63,9 @@ async function handle(request: Request) {
   if (!courier) return new Response("OK", { status: 200 });
 
   if (report.accuracy === null || report.accuracy <= MAX_ACCURACY_M) {
-    // Un reloj adelantado no puede dejar la moto «con señal» para siempre.
-    const at = report.at.getTime() > Date.now() ? new Date() : report.at;
+    // Hora del servidor si el reloj del celular está cerca: un celular atrasado
+    // no puede contar como sin señal, ni uno adelantado dejar la moto «en vivo».
+    const at = positionTime(report.at, new Date());
     await recordPosition(courier.id, { lat: report.lat, lng: report.lng }, at);
   }
   return new Response("OK", { status: 200 });

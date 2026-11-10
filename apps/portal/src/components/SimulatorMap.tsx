@@ -1,9 +1,11 @@
 "use client";
 
+import { NO_SIGNAL_MS } from "@dispatch/shared/domain/gps";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { LEAFLET_CSS, loadLeaflet, OSM_TILES, type Leaflet } from "@/lib/leaflet";
 import { clock, useNow } from "@/lib/use-now";
 
 /**
@@ -73,6 +75,8 @@ type SimCourier = {
   controlledBy: string | null;
   parked: Point | null;
   route: Point[];
+  /** Moto real con GPS (issue #42): reporta desde un celular de verdad. */
+  real?: boolean;
 };
 
 type State = {
@@ -81,7 +85,6 @@ type State = {
     speed: number;
     radiusKm: number;
     mode: string;
-    sinSenalMin: number;
     gatePercent: number;
     returnPercent: number;
     noAnswerPercent: number;
@@ -89,6 +92,9 @@ type State = {
   };
   home: Point;
   couriers: SimCourier[];
+  /** Motos con número real e identificador de GPS: no reciben pedidos del
+   *  simulador, solo un viaje de prueba que se les asigne al crearlo. */
+  realCouriers: SimCourier[];
   testNumbers: { id: number; name: string; status: string; controls: string | null }[];
   restaurants: { id: number; name: string; location: Point }[];
   trips: SimTrip[];
@@ -114,27 +120,6 @@ const STATUS_COLOR: Record<SimCourier["status"], string> = {
 
 const ROUTE_COLORS = ["#532ce1", "#0b6bcb", "#c2710c", "#059669", "#dc2626", "#7c3aed", "#0891b2", "#be185d"];
 
-const LEAFLET_SRC = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";
-
-// Leaflet llega por CDN, sin tipos: lo mínimo que se usa.
-type Leaflet = any;
-declare global {
-  interface Window {
-    L?: Leaflet;
-  }
-}
-
-function loadLeaflet(): Promise<Leaflet> {
-  if (window.L) return Promise.resolve(window.L);
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${LEAFLET_SRC}"]`);
-    const script = existing ?? Object.assign(document.createElement("script"), { src: LEAFLET_SRC, async: true });
-    script.addEventListener("load", () => resolve(window.L));
-    script.addEventListener("error", () => reject(new Error("No cargó Leaflet")));
-    if (!existing) document.head.appendChild(script);
-  });
-}
-
 async function post(body: Record<string, unknown>) {
   const res = await fetch("/api/simulador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
@@ -152,6 +137,9 @@ export function SimulatorMap() {
   const [mode, setMode] = useState<ClickMode>(null);
   const [chosenRestaurant, setOrderRestaurant] = useState<number | null>(null);
   const [orderReady, setOrderReady] = useState(5);
+  // `null`: lo despacha el algoritmo entre las simuladas. Un id: viaje de prueba
+  // para esa moto real.
+  const [orderFor, setOrderFor] = useState<number | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [busy, setBusy] = useState(false);
   const now = useNow(1000);
@@ -210,7 +198,7 @@ export function SimulatorMap() {
         if (cancelled || !mapEl.current || map.current) return;
         L.current = leaflet;
         const m = leaflet.map(mapEl.current, { zoomControl: true, doubleClickZoom: false, minZoom: 11, maxZoom: 19 }).setView([3.4372, -76.5225], 13);
-        leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
+        leaflet.tileLayer(OSM_TILES, { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
         layers.current = {
           couriers: new Map(),
           static: leaflet.layerGroup().addTo(m),
@@ -231,6 +219,9 @@ export function SimulatorMap() {
   }, [mode]);
 
   const orderRestaurant = chosenRestaurant ?? state?.restaurants[0]?.id ?? null;
+  // Al viaje de prueba solo se le puede dar una moto real conectada.
+  const realConnected = (state?.realCouriers ?? []).filter((c) => c.status !== "offline");
+  const orderTarget = realConnected.some((c) => c.id === orderFor) ? orderFor : null;
 
   // Lo que hace un toque en el mapa depende del modo y de lo elegido: el mapa
   // llama siempre a la última versión.
@@ -241,7 +232,7 @@ export function SimulatorMap() {
       setMode(null);
       if (current.kind === "order") {
         if (orderRestaurant === null) return setError("Elige el restaurante");
-        void run({ action: "order", restaurantId: orderRestaurant, lat: p.lat, lng: p.lng, readyInMinutes: orderReady });
+        void run({ action: "order", restaurantId: orderRestaurant, lat: p.lat, lng: p.lng, readyInMinutes: orderReady, courierId: orderTarget });
       } else if (current.kind === "add") {
         void run({ action: "add", lat: p.lat, lng: p.lng });
       } else {
@@ -254,9 +245,11 @@ export function SimulatorMap() {
     };
   });
 
-  const names = useMemo(() => new Map((state?.couriers ?? []).map((c) => [String(c.id), c.name])), [state]);
+  // Las simuladas y las reales con GPS, en el mismo mapa; las reales se marcan.
+  const motos = useMemo(() => [...(state?.couriers ?? []), ...(state?.realCouriers ?? []).map((c) => ({ ...c, real: true }))], [state]);
+  const names = useMemo(() => new Map(motos.map((c) => [String(c.id), c.name])), [motos]);
   const trip = state?.trips.find((t) => t.id === selectedTrip) ?? null;
-  const signalMs = (state?.config.sinSenalMin ?? 2) * 60_000;
+  const signalMs = NO_SIGNAL_MS;
 
   // Dibuja lo que cambió.
   useEffect(() => {
@@ -267,17 +260,20 @@ export function SimulatorMap() {
 
     // Motos: se mueven en su lugar, sin redibujar.
     const seen = new Set<number>();
-    for (const c of state.couriers) {
+    for (const c of motos) {
       if (c.lat == null || c.lng == null) continue;
+      // Una moto real desconectada no se muestra: al terminar el turno deja de verse.
+      if (c.real && c.status === "offline") continue;
       seen.add(c.id);
-      const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) > signalMs;
+      const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
       const color = stale ? STATUS_COLOR.offline : STATUS_COLOR[c.status];
-      const ring = c.controlledBy ? "box-shadow:0 0 0 3px #532ce1;" : "";
-      const html = `<div style="position:relative;width:30px;height:30px;border-radius:50%;background:${color};${ring}display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff">🛵${
+      // Morado: la controla un número de prueba. Azul: moto real con GPS.
+      const ring = c.real ? "box-shadow:0 0 0 3px #0b6bcb;" : c.controlledBy ? "box-shadow:0 0 0 3px #532ce1;" : "";
+      const html = `<div style="position:relative;width:30px;height:30px;border-radius:50%;background:${color};${ring}display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff">${c.real ? "📡" : "🛵"}${
         c.openTrips.length ? `<span style="position:absolute;top:-6px;right:-6px;background:#0d0b14;color:#fff;border-radius:9px;font:600 11px/18px sans-serif;min-width:18px;text-align:center">${c.openTrips.length}</span>` : ""
       }</div>`;
       const icon = leaflet.divIcon({ html, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
-      const label = `${esc(c.name)}${c.controlledBy ? ` · 📱 ${esc(c.controlledBy)}` : ""}${c.openTrips[0] ? ` · ${esc(c.openTrips[0].label)}` : ""}${stale ? " · sin señal" : ""}`;
+      const label = `${c.real ? "Moto real · " : ""}${esc(c.name)}${c.controlledBy ? ` · 📱 ${esc(c.controlledBy)}` : ""}${c.openTrips[0] ? ` · ${esc(c.openTrips[0].label)}` : ""}${stale ? ` · sin señal${c.locationUpdatedAt ? ` desde ${timeOfDay(c.locationUpdatedAt)}` : ""}` : ""}`;
       let marker = ls.couriers.get(c.id);
       if (!marker) {
         marker = leaflet.marker([c.lat, c.lng], { icon, zIndexOffset: 1000 }).addTo(m);
@@ -319,7 +315,7 @@ export function SimulatorMap() {
 
     // La ruta de cada moto.
     ls.routes.clearLayers();
-    state.couriers.forEach((c, i) => {
+    motos.forEach((c, i) => {
       if (c.route.length < 2) return;
       leaflet
         .polyline(
@@ -339,7 +335,7 @@ export function SimulatorMap() {
         leaflet.polyline(x.ruta_puntos, { color: i === 0 ? "#059669" : "#8b869c", weight: i === 0 ? 5 : 3, opacity: 0.8 }).addTo(ls.focus);
       });
     }
-  }, [state, now, selectedCourier, trip, signalMs]);
+  }, [state, motos, now, selectedCourier, trip, signalMs]);
 
   // Al llegar los datos por primera vez, centra en el simulador.
   const centered = useRef(false);
@@ -353,6 +349,7 @@ export function SimulatorMap() {
   const pending = (state?.trips ?? []).filter((t) => t.status === "pending");
   const active = (state?.trips ?? []).filter((t) => t.status !== "pending");
   const courier = state?.couriers.find((c) => c.id === selectedCourier) ?? null;
+  const realCourier = state?.realCouriers.find((c) => c.id === selectedCourier) ?? null;
 
   return (
     <div className="grid h-dvh grid-cols-1 bg-canvas text-ink md:grid-cols-[380px_1fr]">
@@ -438,6 +435,23 @@ export function SimulatorMap() {
               </option>
             ))}
           </select>
+          {realConnected.length > 0 && (
+            <label className="grid gap-1 text-sm">
+              Para
+              <select
+                className="w-full rounded-lg border border-line bg-canvas px-2 py-1.5 text-sm"
+                value={orderTarget ?? ""}
+                onChange={(e) => setOrderFor(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">El algoritmo (motos simuladas)</option>
+                {realConnected.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    📡 Viaje de prueba para {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex items-center justify-between gap-2 text-sm">
             Listo en (min)
             <input type="number" min={0} max={180} value={orderReady} onChange={(e) => setOrderReady(Number(e.target.value))} className="w-20 rounded-lg border border-line bg-canvas px-2 py-1" />
@@ -452,12 +466,44 @@ export function SimulatorMap() {
                 const r = state?.restaurants.find((x) => x.id === orderRestaurant);
                 if (!r) return;
                 const p = randomNear(r.location, Math.min(3, state!.config.radiusKm));
-                void run({ action: "order", restaurantId: r.id, lat: p.lat, lng: p.lng, readyInMinutes: orderReady });
+                void run({ action: "order", restaurantId: r.id, lat: p.lat, lng: p.lng, readyInMinutes: orderReady, courierId: orderTarget });
               }}
             >
               Cliente al azar
             </Button>
           </div>
+        </Section>
+
+        <Section title={`Motos reales con GPS (${state?.realCouriers.length ?? 0})`}>
+          {!state?.realCouriers.length && (
+            <p className="text-sm text-ink-3">Ninguna. En Flota, «Ver más» → GPS → «Generar» convierte un número de prueba en moto real.</p>
+          )}
+          {state?.realCouriers.map((c) => {
+            const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
+            return (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setSelectedCourier(c.id);
+                  if (c.lat != null && c.lng != null && c.status !== "offline") map.current?.panTo([c.lat, c.lng]);
+                }}
+                className={`flex w-full justify-between rounded-lg px-2 py-1 text-left text-sm ${c.id === selectedCourier ? "bg-clapi-soft" : "can-hover:hover:bg-sunken"}`}
+              >
+                <span>📡 {c.name}</span>
+                <span className="text-ink-3">
+                  {c.status === "offline"
+                    ? "desconectada"
+                    : !c.locationUpdatedAt
+                      ? "sin ubicación todavía"
+                      : stale
+                        ? `sin señal desde ${timeOfDay(c.locationUpdatedAt)}`
+                        : c.openTrips.length
+                          ? `en vivo · ${c.openTrips[0].label}`
+                          : "en vivo"}
+                </span>
+              </button>
+            );
+          })}
         </Section>
 
         <Section title="Números de prueba">
@@ -496,6 +542,21 @@ export function SimulatorMap() {
           </Section>
         )}
 
+        {realCourier && (
+          <Section title={`Moto real ${realCourier.name}`}>
+            <p className="text-sm">
+              {realCourier.openTrips.length ? realCourier.openTrips.map((t) => `${t.code}: ${t.label}`).join(" · ") : "Sin pedidos"}
+            </p>
+            <p className="text-xs text-ink-3">
+              Reporta desde su celular: no se mueve ni se conecta desde aquí. Última ubicación:{" "}
+              {realCourier.locationUpdatedAt ? `${timeOfDay(realCourier.locationUpdatedAt)}` : "ninguna"}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setSelectedCourier(null)}>Cerrar</Button>
+            </div>
+          </Section>
+        )}
+
         {trip && <Ranking trip={trip} names={names} now={now} onClose={() => setSelectedTrip(null)} />}
 
         <Section title={`Por despachar (${pending.length})`}>
@@ -518,7 +579,7 @@ export function SimulatorMap() {
 
         <Section title={`Motos (${state?.couriers.length ?? 0})`}>
           {state?.couriers.map((c) => {
-            const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) > signalMs;
+            const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
             return (
               <button
                 key={c.id}
@@ -545,6 +606,11 @@ export function SimulatorMap() {
       </div>
     </div>
   );
+}
+
+/** «3:42 p. m.»: la hora de la última ubicación. */
+function timeOfDay(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit", timeZone: "America/Bogota" });
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -676,22 +742,3 @@ function randomNear(center: Point, km: number): Point {
 }
 
 /** Lo mínimo de la hoja de estilos de Leaflet, como en el mapa de zonas. */
-const LEAFLET_CSS = `
-.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
-.leaflet-container{overflow:hidden;outline:0;-webkit-tap-highlight-color:transparent;background:#f1eff7}
-.leaflet-container.leaflet-touch-zoom{touch-action:pan-x pan-y}.leaflet-container.leaflet-touch-drag{touch-action:none}
-.leaflet-pane{z-index:400}.leaflet-overlay-pane{z-index:400}.leaflet-marker-pane{z-index:600}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}
-.leaflet-map-pane canvas{z-index:100}.leaflet-map-pane svg{z-index:200}
-.leaflet-zoom-animated{transform-origin:0 0}.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform .25s cubic-bezier(0,0,.25,1)}
-.leaflet-interactive{cursor:pointer}.leaflet-grab{cursor:grab}.leaflet-dragging .leaflet-grab{cursor:grabbing}
-.leaflet-marker-icon{display:block}.leaflet-tile{visibility:hidden}.leaflet-tile-loaded{visibility:inherit}
-.leaflet-container img.leaflet-tile{max-width:none!important;max-height:none!important;user-select:none}
-.leaflet-control-attribution{margin:0;padding:0 5px;font-size:11px;background:rgba(255,255,255,.8);color:#333}
-.leaflet-control-container .leaflet-top,.leaflet-control-container .leaflet-bottom{position:absolute;z-index:800;pointer-events:none}
-.leaflet-top{top:0}.leaflet-left{left:0}.leaflet-right{right:0}.leaflet-bottom{bottom:0}
-.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both;margin:12px 0 0 12px}
-.leaflet-bar{border:1px solid #e9e6f1;border-radius:6px;background:#fff;overflow:hidden}
-.leaflet-bar a{display:block;width:32px;height:32px;line-height:32px;text-align:center;text-decoration:none;color:#0d0b14;font-size:18px;font-weight:600}
-.leaflet-bar a+a{border-top:1px solid #e9e6f1}
-.leaflet-tooltip{position:absolute;padding:2px 6px;background:#fff;color:#0d0b14;border:1px solid #e9e6f1;border-radius:4px;white-space:nowrap;font-size:12px;pointer-events:none}
-`;
