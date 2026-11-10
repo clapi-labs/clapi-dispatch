@@ -39,7 +39,7 @@ La central marca en el mapa **solo las zonas donde sí hay domicilio**. Lo que q
 
 - Las zonas son un **área del mapa**, no el nombre del barrio que devuelve Google. Por eso sale igual con **pin** o con **dirección escrita**.
 - **No cambian el precio:** el domicilio se cobra solo por km.
-- Lo que hace el bot en cada caso: «Zonas de servicio en el bot», abajo.
+- Lo que hace el bot en cada caso, con los mensajes: «Zonas de servicio en el bot», abajo.
 
 **Dónde se guardan:** tabla `service_zones` (nombre, contorno en `ring` y, si salió de un barrio, su código en `barrio_code`). Cada creación, cambio y borrado deja una copia en `service_zone_versions` (con quién lo hizo): una zona borrada o cambiada sin querer se recupera de ahí.
 
@@ -104,10 +104,20 @@ Solo usa la librería estándar de Python. Las capas de la IDESC vienen en MAGNA
 
 ### Zonas de servicio en el bot
 
-**Por construir** (la Parte 2 de esta tarea, [PLAN](PLAN.md) B-4): hoy las zonas se guardan y se prueban en el mapa, pero el bot todavía no las consulta.
+En `order.ts`, con la entrega ubicada y antes de cotizar, cada entrega sin precio pasa por `coverageAt` (`apps/bot/src/bot/coverage.ts`, con sus pruebas). Las zonas se leen en cada mensaje: una zona nueva o cambiada aplica desde el siguiente.
 
-1. En `order.ts`, después de ubicar la entrega: dentro → normal; cerca → a la central; fuera → «no hay servicio» sin crear el pedido; sin zonas → como hoy.
-2. Sin coordenadas no hay revisión posible, pero tampoco precio: el pedido ya pasa a la central.
+| Caso | Al restaurante | El pedido |
+|---|---|---|
+| Dentro | Lo de siempre: el precio y el botón | Sigue normal |
+| Cerca (≤ 300 m del borde) | «Déjame confirmar con la central si llegamos hasta … 🙏 Te aviso en un momento.» | Queda guardado y el chat pasa a la central (consulta de cobertura) |
+| Fuera | «Qué pena, pero hasta … no manejamos domicilio 🙏» | Esa entrega no se pide; si no queda ninguna, no se crea el pedido |
+| Sin zonas | Lo de siempre | Sigue normal |
+
+- **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda y lo que vale por km, y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
+- Con varias entregas, cada una por su lado: las de fuera se quitan con su aviso, las de cerca van juntas en una consulta y las de dentro esperan con su precio.
+- El tope de km por calles (`maxKm`) sigue aparte: se revisa después de las zonas.
+- **Sin coordenadas no hay revisión:** una dirección que el mapa no ubicó y la central validó a mano no tiene punto.
+- Si cambia la dirección de una entrega, se vuelve a revisar. Si cambia la recogida, también: todo se vuelve a cotizar.
 
 ### Las herramientas del mapa anterior
 

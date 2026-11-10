@@ -125,7 +125,17 @@ export type DraftFields = {
   metodoPago: PaymentMethod | null;
 };
 
-export type AdvisorQueryItem = { indice: number; direccion: string; barrio: string | null; cliente: string | null };
+/** Lo que el bot le preguntó a la central de una entrega. `cobertura`: la
+ *  entrega quedó fuera de las zonas de servicio, cerca del borde de `zona`
+ *  (¿se hace?); `precio` es lo que vale por km. Sin `cobertura`: el mapa no
+ *  ubicó la dirección (¿es válida y cuánto vale?). */
+export type AdvisorQueryItem = {
+  indice: number;
+  direccion: string;
+  barrio: string | null;
+  cliente: string | null;
+  cobertura?: { zona: string; metros: number; precio: number } | null;
+};
 
 export type ConversationKind = "restaurant" | "courier";
 

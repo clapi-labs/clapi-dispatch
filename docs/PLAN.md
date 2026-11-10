@@ -163,19 +163,20 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** `apps/bot/src/bot/order.ts` (recogida), `packages/shared/src/domain/restaurant-identity.ts`, `apps/bot/src/services/google/geocode.ts`, la página Restaurantes del portal.
 
-### B-4 · Zonas de servicio en el bot · Bot · M
+### B-4 · Zonas de servicio · Bot + Portal · M
 
 **Objetivo:** que el bot respete las zonas de servicio que la central marca en el mapa (solo donde sí hay domicilio). Reemplaza a las zonas sin cobertura y al precio mínimo por zona, que se quitaron (#30 y #31 quedan sin efecto).
 
 **Parte 1, el portal (hecha):** un solo apartado **Zonas** con las zonas de servicio; se crean desde un barrio o a mano, se editan, se renombran y se borran; meter una esquina en cualquier tramo del borde, quitarla y deshacer, con mouse y en el celular; zoom hasta la cuadra y sin límite para moverse; 21 barrios urbanos más (Cachipay, Bochalema, Pacífico y el resto del suelo de expansión del sur). El precio queda solo por km. Detalle en [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Zonas de servicio».
 
-**Éxito de la Parte 2:**
-- Con zonas cargadas, por el chat de prueba: una entrega adentro → pedido normal; a 300 m o menos del borde → pasa a la central, que dice si se hace; más lejos → el bot dice que no hay servicio y no se crea el pedido.
-- Sin zonas cargadas → todo funciona como hoy.
-- Después de desplegarla, las zonas que marcó la central siguen iguales.
-- Pruebas del dentro, cerca y lejos.
+**Parte 2, el bot (hecha, falta probarla en staging):** dentro → normal; a 300 m o menos del borde → la central decide en el portal con «Sí, se hace» o «No se hace»; más lejos → «Qué pena, pero hasta … no manejamos domicilio» y no se crea el pedido; sin zonas → como antes. Con pruebas de dentro, cerca, lejos y sin zonas.
 
-**Dónde mirar:** [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md) («Zonas de servicio en el bot»), `packages/shared/src/domain/service-zones.ts` (`serviceVerdictAt`), `apps/bot/src/bot/order.ts`, el panel de consulta de dirección del portal.
+**Falta, en staging:**
+- Con zonas cargadas, por el chat de prueba: una entrega adentro → pedido normal; cerca del borde → pasa a la central; lejos → el bot dice que no hay servicio y no se crea el pedido.
+- Sin zonas cargadas → todo funciona como hoy.
+- Después de desplegar la Parte 2, las zonas que marcó la central siguen iguales.
+
+**Dónde mirar:** [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md) («Zonas de servicio en el bot»), `packages/shared/src/domain/service-zones.ts` (`serviceVerdictAt`), `apps/bot/src/bot/coverage.ts`, `order.ts` y `advisor.ts`, `apps/portal/src/components/AdvisorQueryPanel.tsx`.
 
 ### B-5 · Pedir torre y apartamento cuando hace falta · Bot · M
 
