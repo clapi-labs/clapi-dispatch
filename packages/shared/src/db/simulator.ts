@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 
-import { and, asc, eq, inArray, isNotNull, isNull, max, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, max, not, notInArray, or, sql } from "drizzle-orm";
 
 import { db } from "./client";
 import { openTripCondition } from "./dispatch-queue";
 import { getEngineConfig } from "./engine-config";
 import { assignments, conversations, courierProfiles, couriers, restaurants, settings, simulatorControls, trips } from "./schema";
-import { simulatorEnabled } from "./simulator-flag";
+import { hasGpsDevice, realGpsCourier, simulatorEnabled } from "./simulator-flag";
 
 /**
  * El simulador de staging (docs/OPERACION.md, «Simulador»). Mueve motos y
@@ -215,6 +215,26 @@ export async function controlledBy(phoneCourierId: number) {
   return row?.courier ?? null;
 }
 
+/** Si es una moto real con GPS, activa (simulator-flag.ts): a esas se les da el
+ *  viaje de prueba. */
+export async function isRealGpsCourier(courierId: number) {
+  const [row] = await db
+    .select({ id: couriers.id })
+    .from(couriers)
+    .where(and(eq(couriers.id, courierId), eq(couriers.active, true), realGpsCourier()))
+    .limit(1);
+  return !!row;
+}
+
+/** Suelta la moto simulada que controla ese número, si controla una. Al darle
+ *  identificador de GPS, un número de prueba pasa a ser una moto real. */
+export async function releaseControlOf(phoneCourierId: number) {
+  await db
+    .update(simulatorControls)
+    .set({ simCourierId: null, since: new Date() })
+    .where(and(eq(simulatorControls.phoneCourierId, phoneCourierId), isNotNull(simulatorControls.simCourierId)));
+}
+
 /** Todos los controles vigentes: número → moto. Lo lee el mapa. */
 export async function listControls() {
   return db
@@ -282,6 +302,8 @@ export async function claimControl(simCourierId: number): Promise<(PhoneCourier 
     .where(
       and(
         eq(couriers.simulated, false),
+        // Una moto real con GPS reporta su propia ubicación: no controla otra.
+        not(hasGpsDevice()),
         eq(couriers.active, true),
         inArray(couriers.status, CONNECTED),
         or(isNull(simulatorControls.phoneCourierId), isNull(simulatorControls.simCourierId)),

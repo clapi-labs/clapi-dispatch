@@ -4,7 +4,7 @@ import type { DeliveryPlace, RouteStop } from "../domain/phase";
 import { db } from "./client";
 import { getEngineConfig } from "./engine-config";
 import { assignments, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
-import { dispatchableCourier } from "./simulator-flag";
+import { assignableByHand, dispatchableCourier } from "./simulator-flag";
 
 /** Para una consulta con `trips` y `assignments`: lo que el motorizado todavía
  *  tiene encima, incluido un viaje entregado del que está volviendo. */
@@ -57,8 +57,9 @@ export async function assignNextCourier(tripId: number): Promise<{ courierId: nu
   return null;
 }
 
-/** Reclama la moto, si sigue en uno de esos estados, y deja la asignación. */
-async function bindCourier(tripId: number, courierId: number, from: ("available" | "busy")[], now: Date) {
+/** Reclama la moto, si sigue en uno de esos estados y entre las que `allowed`
+ *  admite, y deja la asignación. */
+async function bindCourier(tripId: number, courierId: number, from: ("available" | "busy")[], now: Date, allowed = dispatchableCourier()) {
   const [courier] = await db
     .update(couriers)
     .set({
@@ -66,7 +67,7 @@ async function bindCourier(tripId: number, courierId: number, from: ("available"
       lastAssignedAt: now,
       deliveriesThisShift: sql`${couriers.deliveriesThisShift} + 1`,
     })
-    .where(and(eq(couriers.id, courierId), eq(couriers.active, true), dispatchableCourier(), inArray(couriers.status, from)))
+    .where(and(eq(couriers.id, courierId), eq(couriers.active, true), allowed, inArray(couriers.status, from)))
     .returning({ id: couriers.id, name: couriers.name });
   if (!courier) return null;
 
@@ -106,8 +107,15 @@ async function bindCourier(tripId: number, courierId: number, from: ("available"
  * libre u ocupada, porque la idea es que las motos no queden quietas: el engine
  * ya midió si le cabe. `null` si el viaje ya no estaba pendiente o la moto ya no
  * está disponible; el viaje sigue pendiente.
+ *
+ * `byHand`: lo asigna la central. En staging, eso incluye las motos reales con
+ * GPS (viaje de prueba), que el despacho automático nunca elige.
  */
-export async function assignTripTo(tripId: number, courierId: number): Promise<{ courierId: number; courierName: string } | null> {
+export async function assignTripTo(
+  tripId: number,
+  courierId: number,
+  { byHand = false }: { byHand?: boolean } = {},
+): Promise<{ courierId: number; courierName: string } | null> {
   const now = new Date();
   const [claimedTrip] = await db
     .update(trips)
@@ -116,7 +124,7 @@ export async function assignTripTo(tripId: number, courierId: number): Promise<{
     .returning({ id: trips.id });
   if (!claimedTrip) return null;
 
-  const courier = await bindCourier(tripId, courierId, ["available", "busy"], now);
+  const courier = await bindCourier(tripId, courierId, ["available", "busy"], now, byHand ? assignableByHand() : dispatchableCourier());
   if (courier) return { courierId: courier.id, courierName: courier.name };
 
   await db.update(trips).set({ status: "pending", updatedAt: now }).where(eq(trips.id, tripId));
