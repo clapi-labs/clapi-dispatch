@@ -1,5 +1,5 @@
-import { zonesAt } from "@dispatch/shared";
-import { listPriceZones } from "@dispatch/shared/db";
+import { zoneVerdictAt } from "@dispatch/shared";
+import { listPriceZones, listRestrictedZones } from "@dispatch/shared/db";
 
 import { askBot } from "@/lib/bot";
 
@@ -15,10 +15,10 @@ const REASONS: Record<string, string> = {
 };
 
 /**
- * «Probar una dirección» del mapa de precios por zona: con una dirección
- * escrita (la ubica el bot, igual que una entrega) o un punto del mapa,
- * responde en qué zonas cae y cuál manda, con su mínimo. Lee las zonas
- * guardadas, así que muestra lo mismo que cobraría la siguiente cotización.
+ * «Probar» del mapa de zonas: con una dirección escrita (la ubica el bot,
+ * igual que una entrega) o un punto del mapa, responde qué pasa ahí: sin
+ * cobertura, el mínimo que aplica o solo por km (`zoneVerdictAt`). Lee las
+ * zonas guardadas, así que muestra lo mismo que usaría la siguiente cotización.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown };
@@ -40,6 +40,13 @@ export async function POST(request: Request) {
     point = { lat, lng };
   }
 
-  const zones = zonesAt(point, await listPriceZones()).map((z) => ({ id: z.id, name: z.name, minPrice: z.minPrice }));
-  return Response.json({ point, neighborhood, zone: zones[0] ?? null, zones });
+  const [coverage, prices] = await Promise.all([listRestrictedZones(), listPriceZones()]);
+  const verdict = zoneVerdictAt(point, coverage, prices);
+  return Response.json({
+    point,
+    neighborhood,
+    kind: verdict.kind,
+    zone: verdict.zone ? { id: verdict.zone.id, name: verdict.zone.name } : null,
+    priceZones: verdict.priceZones.map((z) => ({ id: z.id, name: z.name, minPrice: z.minPrice })),
+  });
 }

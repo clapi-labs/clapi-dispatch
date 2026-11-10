@@ -2,7 +2,7 @@ import { createPriceZone, listPriceZones, validatePriceZone } from "@dispatch/sh
 
 export const dynamic = "force-dynamic";
 
-/** Zonas con precio mínimo: las lee y las guarda el mapa de /precios-zona. */
+/** Zonas con precio mínimo: las lee y las guarda el mapa de /zonas. */
 export async function GET() {
   return Response.json(await listPriceZones());
 }
