@@ -75,7 +75,15 @@ export type DeliveryDraft = DeliveryFields & {
 
 /** Lo que el bot le preguntó a la central: las entregas (por posición) que
  *  el mapa no ubicó. Mientras espera, el bot no responde en ese chat. */
-export type AdvisorQuery = { entregas: number[]; desde: string };
+/** Una entrega cerca del borde de una zona de servicio, para que la central
+ *  decida si se hace: la zona más cercana, a cuántos metros y lo que vale
+ *  por km (lo que se cobra si dice que sí y no lo cambia). */
+export type CoverageQueryItem = { indice: number; zona: string; metros: number; precio: number; km: number };
+
+/** Lo que el bot le preguntó a la central. `motivo` vacío o "direccion": el
+ *  mapa no ubicó la dirección (¿es válida y cuánto vale?). "cobertura": la
+ *  entrega quedó fuera de las zonas de servicio, cerca del borde (¿se hace?). */
+export type AdvisorQuery = { entregas: number[]; desde: string; motivo?: "direccion" | "cobertura"; cobertura?: CoverageQueryItem[] };
 
 /** En qué va el pedido: `cotizado` = ya se le mandó el precio y se espera la
  *  confirmación; `confirmado` = confirmó y se espera lo que falte. */
@@ -114,8 +122,9 @@ export type OrderDraft = {
    *  respondió sin pedirle que confirme. Pasa a pedido cuando decide
    *  mandarlo («dale», los datos del cliente, el tiempo). */
   soloPrecio?: boolean;
-  /** El mapa no ubicó una dirección (o no respondió): se le preguntó a la
-   *  central si es válida y cuánto vale. Lo responde en el portal. */
+  /** Algo que decide la central y responde en el portal: el mapa no ubicó una
+   *  dirección (¿es válida y cuánto vale?), o la entrega quedó cerca del borde
+   *  de una zona de servicio (¿se hace?). Ver `AdvisorQuery`. */
   consultaAsesor?: AdvisorQuery | null;
   /** Los nombres ya comparados con los restaurantes (normalizados): cada uno
    *  se compara una sola vez por pedido. */

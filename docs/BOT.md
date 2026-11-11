@@ -83,7 +83,14 @@ El cliente quiere sistematizar los datos: que el restaurante se acomode al forma
 
 **Precio por distancia.** El bot cobra lo de la tabla por km (menú **Tarifas** del portal). Ninguna zona cambia el precio. Sale igual con pin o con dirección escrita (las dos dan un punto en el mapa) y el restaurante solo ve el precio final. Un cambio en la tabla aplica desde la siguiente cotización; un pedido ya confirmado conserva su precio. No hay tarifa por defecto: sin la dirección ubicada en el mapa no se cotiza. Si Google no ubica la dirección de entrega o falla, el bot le pregunta el precio a la central (ver arriba); si no ubica la recogida de un restaurante nuevo por una falla de Google, el chat pasa a la central; si la tabla de rangos por km está vacía, también. Detalle y ubicación simulada para pruebas: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md).
 
-**Zonas de servicio.** La central marca en el mapa (menú **Zonas**) solo dónde sí hay domicilio. Hoy el bot todavía no las consulta: es la Parte 2 de la tarea ([PLAN](PLAN.md) B-4), y las reglas están en [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Zonas de servicio».
+**Zonas de servicio.** La central marca en el mapa (menú **Zonas**) solo dónde sí hay domicilio. Con la entrega ubicada (pin o dirección escrita), antes de cotizar:
+
+- **Dentro de una zona:** el pedido sigue normal.
+- **Fuera, pero a 300 m o menos del borde de una:** el bot no decide solo. Al restaurante: «Déjame confirmar con la central si llegamos hasta Bochalema 🙏 Te aviso en un momento.» En el portal, la conversación sale arriba con el panel de la consulta: lo que vale por km, a cuántos metros de qué zona queda y **Sí, se hace** (con el precio de la tabla, que se puede cambiar) o **No se hace**. Si sí, el bot sigue: «Confirmé con la central: sí llegamos ✅» y el pedido con el botón de confirmar. Si no, «Qué pena, pero hasta Bochalema no manejamos domicilio 🙏» y esa entrega no se pide.
+- **Fuera y más lejos:** «Qué pena, pero hasta Navarro no manejamos domicilio 🙏». No se crea el pedido; con varias entregas, siguen las demás.
+- **Sin ninguna zona cargada:** como antes, sin restringir nada.
+
+Cuenta solo dónde se entrega y las zonas son las mismas para todos los restaurantes. La frase «hasta esa dirección no manejamos domicilio» es la del cliente. Una entrega que la central validó a mano (el mapa no la ubicó) no tiene punto y no se revisa. Detalle: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Zonas de servicio».
 
 ## Horario
 

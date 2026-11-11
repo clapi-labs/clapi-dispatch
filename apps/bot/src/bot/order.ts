@@ -25,12 +25,14 @@ import {
   getServiceHours,
   hoursFor,
   linkRestaurantPhone,
+  listServiceZones,
   quoteByDistance,
   saveRestaurant,
   type BotConfig,
   type Restaurant,
 } from "@dispatch/shared/db";
 
+import { coverageAt, coverageQueryReason, nearEdgeText, noServiceText } from "@/bot/coverage";
 import { say } from "@/bot/messaging";
 import { dispatchNewTrip } from "@/dispatch/engine";
 import { notifyAssigned } from "@/bot/notify";
@@ -319,6 +321,33 @@ async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraf
   const text = mapDown
     ? `No puedo ubicar direcciones en este momento 🙏 Ya le pregunto a la central cuánto vale el domicilio a ${list}. Te aviso en un momento.`
     : `No logro ubicar ${list} en el mapa 🗺️ Ya le pregunto a la central si la dirección está bien y cuánto vale el domicilio. Te aviso en un momento 🙏`;
+  await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
+}
+
+type NearEdge = { delivery: DeliveryDraft; zone: string; meters: number; precio: number; km: number };
+
+/**
+ * Entregas fuera de las zonas de servicio pero cerca del borde (docs/
+ * DIRECCIONES-Y-ZONAS.md, «Zonas de servicio en el bot»): el bot no decide
+ * solo, le pregunta a la central si se hacen. Como en la consulta de
+ * dirección, el borrador se conserva y el bot no contesta en ese chat hasta
+ * que la central responde en el portal (`advisor.ts`). `note`: lo que se le
+ * diga antes al restaurante (las entregas sin servicio).
+ */
+async function askCoverage(ctx: Context, draft: OrderDraft, near: NearEdge[], note: string) {
+  draft.consultaAsesor = {
+    entregas: near.map((n) => draft.entregas.indexOf(n.delivery)),
+    desde: new Date().toISOString(),
+    motivo: "cobertura",
+    cobertura: near.map((n) => ({ indice: draft.entregas.indexOf(n.delivery), zona: n.zone, metros: n.meters, precio: n.precio, km: n.km })),
+  };
+  await updateConversation(ctx.conversation.id, {
+    botPaused: true,
+    escalationReason: coverageQueryReason(near.map((n) => ({ address: fullAddress(n.delivery), zone: n.zone, meters: n.meters }))),
+    draft,
+    failedAttempts: 0,
+  });
+  const text = [note, nearEdgeText(near.map((n) => deliveryLabel(n.delivery)))].filter(Boolean).join("\n\n");
   await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
@@ -647,11 +676,21 @@ export async function handleRestaurant(ctx: Context) {
   }
 
   // 4. Cotizar lo que no tenga precio. Un precio nuevo siempre se muestra y se
-  // confirma, aunque el restaurante ya hubiera confirmado lo anterior.
+  // confirma, aunque el restaurante ya hubiera confirmado lo anterior. Antes,
+  // las zonas de servicio: fuera y lejos no se pide; cerca del borde lo
+  // decide la central. Sin zonas cargadas no se restringe nada.
+  const zones = deliveries.some((d) => !d.cotizacion) ? await listServiceZones() : [];
   const outOfRange: { delivery: DeliveryDraft; km: number }[] = [];
+  const noService: DeliveryDraft[] = [];
+  const nearEdge: NearEdge[] = [];
   let newQuote = false;
   for (const d of deliveries) {
     if (d.cotizacion) continue;
+    const coverage = coverageAt(d.ubicacionEntrega, zones);
+    if (coverage.kind === "fuera") {
+      noService.push(d);
+      continue;
+    }
     const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config);
     if (quote.precio === null) {
       await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
@@ -661,15 +700,25 @@ export async function handleRestaurant(ctx: Context) {
       outOfRange.push({ delivery: d, km: quote.km! });
       continue;
     }
+    if (coverage.kind === "cerca") {
+      nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km });
+      continue;
+    }
     d.cotizacion = { precio: quote.precio, km: quote.km };
     newQuote = true;
   }
-  if (outOfRange.length) {
-    draft.entregas = draft.entregas.filter((d) => !outOfRange.some((o) => o.delivery === d));
-  }
-  const coverageNote = outOfRange
-    .map((o) => `Hasta ${deliveryLabel(o.delivery)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`)
+  const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];
+  if (dropped.length) draft.entregas = draft.entregas.filter((d) => !dropped.includes(d));
+  const coverageNote = [
+    noServiceText(noService.map(deliveryLabel)),
+    ...outOfRange.map((o) => `Hasta ${deliveryLabel(o.delivery)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`),
+  ]
+    .filter(Boolean)
     .join("\n");
+  if (nearEdge.length) {
+    await askCoverage(ctx, draft, nearEdge, coverageNote);
+    return;
+  }
   const quoted = draft.entregas.filter((d) => d.cotizacion);
 
   if (!quoted.length) {
@@ -683,7 +732,7 @@ export async function handleRestaurant(ctx: Context) {
   // con el botón. Confirmar también acepta los datos dudosos (❓).
   const accepted = confirms && draft.resumenMostrado === summaryOf(quoted);
   if (!accepted) {
-    const priceChanged = newQuote || outOfRange.length > 0;
+    const priceChanged = newQuote || dropped.length > 0;
     // Solo había preguntado el precio y no decidió mandarlo («gracias», «ok»):
     // no se le insiste ni cuenta como intento. El precio queda guardado por si
     // después dice «dale» o manda los datos.

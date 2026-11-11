@@ -136,8 +136,9 @@ export async function resumeBot(conversationId: number) {
     .where(eq(schema.conversations.id, conversationId));
 }
 
-/** Las direcciones que el bot le preguntó a la central (ver `askAdvisor` en
- *  apps/bot/src/bot/order.ts). `null` si no hay consulta pendiente. */
+/** Las entregas que el bot le preguntó a la central (ver `askAdvisor` y
+ *  `askCoverage` en apps/bot/src/bot/order.ts). `null` si no hay consulta
+ *  pendiente. */
 function advisorQuery(raw: unknown): AdvisorQueryItem[] | null {
   if (!raw) return null;
   const draft = normalizeDraft(raw);
@@ -146,7 +147,9 @@ function advisorQuery(raw: unknown): AdvisorQueryItem[] | null {
     const d = draft.entregas[indice];
     if (!d?.direccionEntrega) return [];
     const direccion = [d.direccionEntrega, d.detalleDireccion].filter(Boolean).join(" · ");
-    return [{ indice, direccion, barrio: d.barrio ?? null, cliente: d.nombreCliente ?? null }];
+    const near = draft.consultaAsesor!.motivo === "cobertura" ? draft.consultaAsesor!.cobertura?.find((c) => c.indice === indice) : undefined;
+    const cobertura = near ? { zona: near.zona, metros: near.metros, precio: near.precio } : null;
+    return [{ indice, direccion, barrio: d.barrio ?? null, cliente: d.nombreCliente ?? null, cobertura }];
   });
 }
 
