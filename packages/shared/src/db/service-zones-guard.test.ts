@@ -17,12 +17,12 @@ const CREATED_IN = 18;
 const TABLES = "(service_zones|service_zone_versions)";
 
 const DESTRUCTIVE = [
-  new RegExp(`DROP\s+TABLE[^;]*"?${TABLES}"?`, "i"),
-  new RegExp(`TRUNCATE[^;]*"?${TABLES}"?`, "i"),
-  new RegExp(`DELETE\s+FROM\s+"?${TABLES}"?`, "i"),
-  new RegExp(`UPDATE\s+"?${TABLES}"?\s+SET`, "i"),
-  new RegExp(`ALTER\s+TABLE\s+"?${TABLES}"?[^;]*(DROP\s+COLUMN|ALTER\s+COLUMN|RENAME)`, "i"),
-  new RegExp(`ALTER\s+TABLE\s+"?${TABLES}"?\s+RENAME`, "i"),
+  new RegExp(String.raw`DROP\s+TABLE[^;]*"?${TABLES}"?`, "i"),
+  new RegExp(String.raw`TRUNCATE[^;]*"?${TABLES}"?`, "i"),
+  new RegExp(String.raw`DELETE\s+FROM\s+"?${TABLES}"?`, "i"),
+  new RegExp(String.raw`UPDATE\s+"?${TABLES}"?\s+SET`, "i"),
+  new RegExp(String.raw`ALTER\s+TABLE\s+"?${TABLES}"?[^;]*(DROP\s+COLUMN|ALTER\s+COLUMN|RENAME)`, "i"),
+  new RegExp(String.raw`ALTER\s+TABLE\s+"?${TABLES}"?\s+RENAME`, "i"),
 ];
 
 function files(dir: string): string[] {
@@ -34,6 +34,19 @@ function files(dir: string): string[] {
 }
 
 describe("las zonas de servicio no se pierden", () => {
+  it("la revisión de migraciones sí detecta lo que borra o cambia", () => {
+    const harmful = [
+      `DROP TABLE "service_zones" CASCADE;`,
+      `TRUNCATE service_zone_versions;`,
+      `DELETE FROM "service_zones" WHERE id > 0;`,
+      `UPDATE "service_zones" SET "name" = 'x';`,
+      `ALTER TABLE "service_zones" DROP COLUMN "ring";`,
+      `ALTER TABLE "service_zones" RENAME TO "zonas";`,
+    ];
+    for (const sql of harmful) assert.ok(DESTRUCTIVE.some((p) => p.test(sql)), `no detecta: ${sql}`);
+    assert.ok(!DESTRUCTIVE.some((p) => p.test(`ALTER TABLE "service_zones" ADD COLUMN "note" text;`)), "agregar una columna sí se puede");
+  });
+
   it("ninguna migración posterior las borra ni las cambia", () => {
     const later = readdirSync(MIGRATIONS).filter((f) => /^\d{4}_.*\.sql$/.test(f) && Number(f.slice(0, 4)) > CREATED_IN);
     for (const file of later) {

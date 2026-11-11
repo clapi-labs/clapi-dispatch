@@ -344,7 +344,7 @@ input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius
     for (const z of [...zones].sort((a, b) => b.area - a.area)) {
       if (ed && ed.zoneId === z.id) continue;
       L.polygon(z.ring, { renderer: svg, color, weight: 2, fillColor: color, fillOpacity: 0.18, interactive: mode === "idle" })
-        .bindTooltip(z.name, { sticky: true })
+        .bindTooltip(el("span", { textContent: z.name }), { sticky: true })
         .on("click", (e) => { if (mode === "idle") { L.DomEvent.stop(e); editZone(z.id); } })
         .addTo(zoneLayer);
     }
