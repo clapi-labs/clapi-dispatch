@@ -23,6 +23,7 @@
     "db:migrate": "npm run db:migrate --workspace=@dispatch/shared",
     "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared",
     "user:create": "npm run user:create --workspace=@dispatch/shared --",
+    "zonas:importar": "npm run zonas:importar --workspace=@dispatch/shared --",
     "restaurant:create": "npm run restaurant:create --workspace=@dispatch/bot --"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import { zoneVerdictAt } from "@dispatch/shared";
-import { listPriceZones, listRestrictedZones } from "@dispatch/shared/db";
+import { NEAR_ZONE_M, serviceVerdictAt } from "@dispatch/shared";
+import { listServiceZones } from "@dispatch/shared/db";
 
 import { askBot } from "@/lib/bot";
 
@@ -16,9 +16,10 @@ const REASONS: Record<string, string> = {
 
 /**
  * «Probar» del mapa de zonas: con una dirección escrita (la ubica el bot,
- * igual que una entrega) o un punto del mapa, responde qué pasa ahí: sin
- * cobertura, el mínimo que aplica o solo por km (`zoneVerdictAt`). Lee las
- * zonas guardadas, así que muestra lo mismo que usaría la siguiente cotización.
+ * igual que una entrega) o un punto del mapa, responde qué pasa con una
+ * entrega ahí (`serviceVerdictAt`): dentro de una zona, cerca del borde (la
+ * central decide), lejos (no hay servicio) o sin zonas marcadas (no se
+ * restringe nada). Lee las zonas guardadas: es lo que usaría el bot.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown };
@@ -40,13 +41,14 @@ export async function POST(request: Request) {
     point = { lat, lng };
   }
 
-  const [coverage, prices] = await Promise.all([listRestrictedZones(), listPriceZones()]);
-  const verdict = zoneVerdictAt(point, coverage, prices);
+  const verdict = serviceVerdictAt(point, await listServiceZones());
+  const zoneOf = (z: { id: number; name: string }) => ({ id: z.id, name: z.name });
   return Response.json({
     point,
     neighborhood,
+    nearM: NEAR_ZONE_M,
     kind: verdict.kind,
-    zone: verdict.zone ? { id: verdict.zone.id, name: verdict.zone.name } : null,
-    priceZones: verdict.priceZones.map((z) => ({ id: z.id, name: z.name, minPrice: z.minPrice })),
+    zones: verdict.kind === "dentro" ? verdict.zones.map(zoneOf) : [],
+    nearest: verdict.kind === "cerca" || verdict.kind === "fuera" ? { ...zoneOf(verdict.zone), distanceM: Math.round(verdict.distanceM) } : null,
   });
 }

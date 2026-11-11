@@ -120,6 +120,20 @@
       "when": 1794327001709,
       "tag": "0016_alertas_celular",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794353187734,
+      "tag": "0017_sin_zonas_de_precio_ni_sin_cobertura",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794353194015,
+      "tag": "0018_zonas_de_servicio",
+      "breakpoints": true
     }
   ]
 }
