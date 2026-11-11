@@ -73,8 +73,6 @@ export type DeliveryDraft = DeliveryFields & {
   validadaPorAsesor?: boolean;
 };
 
-/** Lo que el bot le preguntó a la central: las entregas (por posición) que
- *  el mapa no ubicó. Mientras espera, el bot no responde en ese chat. */
 /** Una entrega cerca del borde de una zona de servicio, para que la central
  *  decida si se hace: la zona más cercana, a cuántos metros y lo que vale
  *  por km (lo que se cobra si dice que sí y no lo cambia). */
@@ -82,7 +80,9 @@ export type CoverageQueryItem = { indice: number; zona: string; metros: number; 
 
 /** Lo que el bot le preguntó a la central. `motivo` vacío o "direccion": el
  *  mapa no ubicó la dirección (¿es válida y cuánto vale?). "cobertura": la
- *  entrega quedó fuera de las zonas de servicio, cerca del borde (¿se hace?). */
+ *  entrega quedó fuera de las zonas de servicio, cerca del borde (¿se hace?).
+ *  `entregas`: las que pregunta, por posición. Mientras espera, el bot no
+ *  responde en ese chat. */
 export type AdvisorQuery = { entregas: number[]; desde: string; motivo?: "direccion" | "cobertura"; cobertura?: CoverageQueryItem[] };
 
 /** En qué va el pedido: `cotizado` = ya se le mandó el precio y se espera la
