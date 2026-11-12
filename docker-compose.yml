@@ -60,7 +60,9 @@ services:
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      # /api/live: el proceso está vivo. /api/health (la base, el worker y el engine)
+      # es para el monitoreo externo: un despliegue que reinicia el worker no es un fallo del bot.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/live"]
       interval: 10s
       timeout: 3s
       retries: 5

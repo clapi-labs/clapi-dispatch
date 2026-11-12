@@ -215,6 +215,8 @@ Cómo se configura cada celular, con [Traccar Client](https://www.traccar.org/cl
 2. En la app: ese identificador y, como URL del servidor, `https://<host del bot>/api/gps`.
 3. Precisión alta y reportar cada 10 segundos, también con la moto quieta, con la pantalla apagada y la app en segundo plano.
 
+El receptor acepta los tres formatos de Traccar Client: los datos en la URL, en el cuerpo del POST (la versión nueva de la app) o en JSON (`apps/bot/src/bot/gps-report.ts`). Un reporte que no se puede leer, o de un identificador desconocido, se responde con 200 y se descarta: la app muestra «Upload response 200» aunque no se haya guardado nada, así que la prueba de que llegó es verlo «En vivo» en Flota.
+
 Paso a paso para conectar a un domiciliario: [OPERACION.md](OPERACION.md), «Conectar a un domiciliario al GPS». La guía corta y el video para que cada domiciliario instale la app solo, en Android y en iPhone, salen de la prueba con los celulares reales (issue #42, segunda parte).
 
 **En vivo y sin señal.** Una sola regla para todo el sistema (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`):
