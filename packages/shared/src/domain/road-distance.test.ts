@@ -55,8 +55,16 @@ describe("createRoadRouter: km por calle con respaldo", () => {
     const router = createRoadRouter({
       url: "http://osrm:5000",
       timeoutMs: 30,
+      // El temporizador de AbortSignal.timeout no mantiene vivo el proceso: sin
+      // `alive`, Node no ve nada pendiente y cancela la prueba antes del aviso.
       fetch: (_url, init) =>
-        new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason))),
+        new Promise((_resolve, reject) => {
+          const alive = setTimeout(() => {}, 1_000);
+          init.signal.addEventListener("abort", () => {
+            clearTimeout(alive);
+            reject(init.signal.reason);
+          });
+        }),
       log: quiet,
     });
     const started = Date.now();
