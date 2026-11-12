@@ -2,6 +2,7 @@ import { assignPendingTrips, purgeOldPositions, releaseIdleControls, runPushAler
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
+import { recordWorkerTick } from "@/db/queries/worker-heartbeat";
 import { runEngine } from "@/dispatch/engine";
 
 import { isInternal } from "../auth";
@@ -86,6 +87,14 @@ export async function POST(request: Request) {
     alerted = (await runPushAlerts()).length;
   } catch (error) {
     console.error("[tick] no se pudieron mandar las alertas al celular:", error);
+  }
+
+  // La vuelta terminó: `/api/health` usa esta hora para saber si la
+  // asignación sigue andando. Al final, para que un tick que falla antes no cuente.
+  try {
+    await recordWorkerTick();
+  } catch (error) {
+    console.error("[tick] no se pudo anotar la vuelta:", error);
   }
 
   return Response.json({ assigned, reminded, alerted });
