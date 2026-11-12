@@ -224,7 +224,7 @@ docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c \
 
 ## 6b. Avisos: si el sistema se cae
 
-Un servicio **externo** revisa el sistema cada 5 minutos desde fuera del servidor (si el servidor se cae, no puede avisar él mismo) y avisa a un **grupo de Telegram de la empresa** cuando algo falla y cuando se recupera. Issue #51.
+Un servicio **externo** (HetrixTools) revisa el sistema cada minuto desde varios lugares fuera del servidor (si el servidor se cae, no puede avisar él mismo) y avisa a un **grupo de Telegram de la empresa** cuando algo falla y cuando se recupera. Issue #51.
 
 **Qué se vigila** (staging hoy; producción con los mismos pasos cuando exista):
 
@@ -237,25 +237,27 @@ Un servicio **externo** revisa el sistema cada 5 minutos desde fuera del servido
 - **El worker** anota la hora de cada vuelta completa en `settings` (`worker_tick`). Se guarda en la base, no en memoria: un reinicio del bot no lo pierde, y un despliegue (que reinicia el worker en menos de un minuto) no cuenta como detenido.
 - **Docker no usa `/api/health`**, sino `/api/live` (el proceso está vivo; Caddy no la expone). Si Docker usara la completa, un despliegue que reinicia el worker o el engine parecería fallido y `deploy.sh` volvería atrás.
 
-**Servicio y cuenta.** UptimeRobot, plan gratuito, con la cuenta de la **empresa** (correo compartido del equipo, 2FA, acceso de al menos dos personas; ver #41). Ningún token, enlace ni identificador del grupo de Telegram va en el repositorio, ni en issues, PRs o capturas: si una captura los muestra, se tapan.
+**Servicio y cuenta.** HetrixTools, plan gratuito (se descartó UptimeRobot porque su aviso por Telegram es de pago), con la cuenta de la **empresa** (correo compartido del equipo, 2FA, acceso de al menos dos personas; ver #41). Ningún token, enlace ni identificador del grupo de Telegram va en el repositorio, ni en issues, PRs o capturas: si una captura los muestra, se tapan.
 
 **Configurarlo** (una vez por monitor; los nombres de los menús pueden cambiar):
-1. En el grupo de Telegram, un administrador agrega el bot de UptimeRobot siguiendo la integración de Telegram de UptimeRobot (*Integrations → Telegram*). Queda como «contacto de alerta».
-2. *New monitor* → tipo HTTP(s), la dirección de la tabla, intervalo de 5 minutos, y el contacto de alerta del grupo.
-3. Para el bot, que cuente como caído cualquier respuesta distinta de 200 (es lo que hace por defecto).
-4. Probar con «Test notification» que el mensaje llega al grupo.
+1. **El bot en el grupo** (una sola vez): un administrador agrega a Telegram el bot oficial `hetrixtools_bot` (hay otros de nombre parecido; ver la [guía de HetrixTools](https://docs.hetrixtools.com/telegram-integration-group-notifications/)). No necesita ser administrador del grupo: que diga «no tiene acceso a los mensajes» es normal, solo no lee lo que se habla.
+2. En el grupo se escribe `/start` (o `/start@hetrixtools_bot`) y el bot contesta con el ID del grupo.
+3. En HetrixTools, *Contact Lists* → la lista del equipo → sección *Telegram*: pegar el ID **con el signo menos** del principio y guardar. Sin el menos Telegram lo toma como un chat personal y el aviso no llega a ningún lado. Probar con «Send test notification» que llega al grupo.
+4. *Uptime Monitors* → nuevo monitor tipo sitio web (HTTP/HTTPS), la dirección de la tabla, intervalo de 1 minuto y esa *Contact List*. Cuenta como caído cualquier respuesta distinta de 200, que es lo que se quiere para el bot.
+
+Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo al activar temas o nombrar administradores), Telegram le cambia el ID a uno que empieza por `-100`. Se repite el `/start` y se pega el nuevo en la *Contact List*. El ID real también se ve en la dirección del grupo abierto en Telegram Web.
 
 **Quién recibe los avisos:** los miembros del grupo de Telegram de la empresa. Lo administra Jdavidruanob.
-- **Agregar a alguien:** un administrador del grupo lo añade desde Telegram. No hay que tocar UptimeRobot.
+- **Agregar a alguien:** un administrador del grupo lo añade desde Telegram. No hay que tocar HetrixTools.
 - **Quitar a alguien:** se le saca del grupo el mismo día que sale del equipo (`docs/SEGURIDAD.md`, «Accesos»).
 
-**Sumar producción u otro producto:** en la misma cuenta de UptimeRobot, crear sus monitores (su `/api/health` o equivalente y su página principal) con el **mismo contacto de alerta**. Que el nombre del monitor diga el producto y el entorno (por ejemplo «Dispatch · producción · bot»), porque los avisos de todos llegan al mismo grupo.
+**Sumar producción u otro producto:** en la misma cuenta de HetrixTools, crear sus monitores (su `/api/health` o equivalente y su página principal) con la **misma Contact List**. Que el nombre del monitor diga el producto y el entorno (por ejemplo «Dispatch · producción · bot»), porque los avisos de todos llegan al mismo grupo.
 
 **Probarlo a propósito** (sin datos reales):
 
 | Prueba | Cómo | Qué debe pasar |
 |---|---|---|
-| Bot apagado | `docker stop dispatch-bot-1` | Aviso en 10 min o menos; al `docker start`, el de recuperación |
+| Bot apagado | `docker stop dispatch-bot-1` | Aviso en unos 2 a 3 minutos; al `docker start`, el de recuperación |
 | Worker detenido | `docker stop dispatch-worker-1` | Aviso (a los 2 min sin vueltas, más el intervalo del monitor) |
 | Base detenida | `docker stop dispatch-postgres-1` | Aviso |
 | Engine apagado en modo `auto` | `docker stop dispatch-engine-1` | Aviso. En `queue` o `shadow`, no |
