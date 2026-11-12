@@ -168,7 +168,8 @@ flowchart LR
 |---|---|---|---|
 | `GET /api/webhook/whatsapp` | Meta, al configurar el webhook | `WHATSAPP_VERIFY_TOKEN` | Responde el reto de verificación |
 | `POST /api/webhook/whatsapp` | Meta, con cada mensaje | Firma `x-hub-signature-256` con `WHATSAPP_APP_SECRET` | Recibe mensajes y botones |
-| `GET /api/health` | Cualquiera | Ninguna (no expone datos) | Dice si faltan variables y si el bot está activo |
+| `GET /api/health` | El monitoreo externo (UptimeRobot) | Ninguna (solo dice `ok` o no) | 200 `{"ok":true}` o 503 `{"ok":false}`: configuración, base, worker y, en modo `auto`, engine. El detalle va a los registros ([OPERACION.md](OPERACION.md), «Avisos») |
+| `GET /api/live` | El healthcheck de Docker | No expuesta | El proceso está vivo. No revisa nada más, para que un despliegue no parezca fallido |
 | `GET`/`POST /api/gps` | Traccar Client en el celular del motorizado, o el simulador | Identificador GPS aleatorio por moto; los no registrados se descartan | Guarda la posición y detecta llegadas (`bot/gps.ts`) |
 | `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Corre el despacho (engine o cola), avisa, manda recordatorios y cierra esperas de cliente |
 | `POST /api/internal/notify` | portal | `x-internal-secret` + no expuesta | Avisa por WhatsApp cuando el portal asigna o marca entregado |

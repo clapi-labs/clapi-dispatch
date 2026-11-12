@@ -67,6 +67,8 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** `apps/bot/src/app/api/health/route.ts`, healthchecks de `deploy/compose.yml`.
 
+**Estado (#51):** `/api/health` ya dice la verdad (base, worker, engine) y solo responde `ok` o no; Docker usa `/api/live`. Falta conectar UptimeRobot al grupo de Telegram y probarlo en staging ([OPERACION.md](OPERACION.md), «Avisos»). Se marca hecha cuando las pruebas pasen.
+
 ### I-3 · Despliegue automático a staging · Infra · M
 
 **Objetivo:** que un merge a `dev` llegue a staging sin que nadie entre al servidor.
