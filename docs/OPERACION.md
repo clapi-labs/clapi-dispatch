@@ -34,7 +34,7 @@ Lo importante:
 |---|---|---|
 | Staging | https://staging.dispatch.clapi.solutions | https://bot.staging.dispatch.clapi.solutions |
 
-Salud del bot: `https://bot.staging.dispatch.clapi.solutions/api/health` → `{"ok":true,"missing":[],"botActive":true}`. Si `missing` trae nombres, faltan secretos en el `.env`.
+Salud del sistema: `https://bot.staging.dispatch.clapi.solutions/api/health` → `{"ok":true}` (200) o `{"ok":false}` (503). Qué falló queda en los registros del bot (`docker logs dispatch-bot-1 | grep health`). Lo vigila el monitoreo externo: ver «Avisos».
 
 ## 1. Entrar al servidor
 
@@ -205,7 +205,7 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 
 | Síntoma | Causa probable |
 |---|---|
-| `/api/health` con `missing` no vacío | Falta un secreto en el `.env` |
+| `/api/health` dice `{"ok":false}` | El motivo está en `docker logs dispatch-bot-1 \| grep health`: falta un secreto, la base no contesta, el worker no completa vueltas o el engine no responde en modo `auto` |
 | Cambié un secreto y no surte efecto | Falta redesplegar |
 | `deploy.sh` dice «Ya hay un despliegue en curso» | Otro despliegue activo; esperar |
 | `deploy.sh` falla bajando imágenes | `images.yml` aún no terminó para ese hash, o el hash está mal |
@@ -221,6 +221,49 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c \
   "update conversations set draft = null, failed_attempts = 0, bot_paused = false, escalation_reason = null where phone = '<número>'"
 ```
+
+## 6b. Avisos: si el sistema se cae
+
+Un servicio **externo** (HetrixTools) revisa el sistema cada minuto desde varios lugares fuera del servidor (si el servidor se cae, no puede avisar él mismo) y avisa a un **grupo de Telegram de la empresa** cuando algo falla y cuando se recupera. Issue #51.
+
+**Qué se vigila** (staging hoy; producción con los mismos pasos cuando exista):
+
+| Monitor | Dirección | Falla si |
+|---|---|---|
+| Bot y sistema | `https://bot.staging.dispatch.clapi.solutions/api/health` | No responde 200. Responde 503 si falta configuración, la base no contesta, el worker lleva más de 2 minutos sin completar una vuelta (la asignación se detuvo) o el engine no responde con el modo `auto` |
+| Portal | `https://staging.dispatch.clapi.solutions/login` | No carga (no responde 200) |
+
+- `/api/health` hacia afuera solo dice `{"ok":true}` o `{"ok":false}`; el detalle queda en los registros del bot. Recuerda la respuesta 10 s, para que llamarlo seguido no cargue la base. Regla: `apps/bot/src/health/verdict.ts`.
+- **El worker** anota la hora de cada vuelta completa en `settings` (`worker_tick`). Se guarda en la base, no en memoria: un reinicio del bot no lo pierde, y un despliegue (que reinicia el worker en menos de un minuto) no cuenta como detenido.
+- **Docker no usa `/api/health`**, sino `/api/live` (el proceso está vivo; Caddy no la expone). Si Docker usara la completa, un despliegue que reinicia el worker o el engine parecería fallido y `deploy.sh` volvería atrás.
+
+**Servicio y cuenta.** HetrixTools, plan gratuito (se descartó UptimeRobot porque su aviso por Telegram es de pago), con la cuenta de la **empresa** (correo compartido del equipo, 2FA, acceso de al menos dos personas; ver #41). Ningún token, enlace ni identificador del grupo de Telegram va en el repositorio, ni en issues, PRs o capturas: si una captura los muestra, se tapan.
+
+**Configurarlo** (una vez por monitor; los nombres de los menús pueden cambiar):
+1. **El bot en el grupo** (una sola vez): un administrador agrega a Telegram el bot oficial `hetrixtools_bot` (hay otros de nombre parecido; ver la [guía de HetrixTools](https://docs.hetrixtools.com/telegram-integration-group-notifications/)). No necesita ser administrador del grupo: que diga «no tiene acceso a los mensajes» es normal, solo no lee lo que se habla.
+2. En el grupo se escribe `/start` (o `/start@hetrixtools_bot`) y el bot contesta con el ID del grupo.
+3. En HetrixTools, *Contact Lists* → la lista del equipo → sección *Telegram*: pegar el ID **con el signo menos** del principio y guardar. Sin el menos Telegram lo toma como un chat personal y el aviso no llega a ningún lado. Probar con «Send test notification» que llega al grupo.
+4. *Uptime Monitors* → nuevo monitor tipo sitio web (HTTP/HTTPS), la dirección de la tabla, intervalo de 1 minuto y esa *Contact List*. Cuenta como caído cualquier respuesta distinta de 200, que es lo que se quiere para el bot.
+
+Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo al activar temas o nombrar administradores), Telegram le cambia el ID a uno que empieza por `-100`. Se repite el `/start` y se pega el nuevo en la *Contact List*. El ID real también se ve en la dirección del grupo abierto en Telegram Web.
+
+**Quién recibe los avisos:** los miembros del grupo de Telegram de la empresa. Lo administra Jdavidruanob.
+- **Agregar a alguien:** un administrador del grupo lo añade desde Telegram. No hay que tocar HetrixTools.
+- **Quitar a alguien:** se le saca del grupo el mismo día que sale del equipo (`docs/SEGURIDAD.md`, «Accesos»).
+
+**Sumar producción u otro producto:** en la misma cuenta de HetrixTools, crear sus monitores (su `/api/health` o equivalente y su página principal) con la **misma Contact List**. Que el nombre del monitor diga el producto y el entorno (por ejemplo «Dispatch · producción · bot»), porque los avisos de todos llegan al mismo grupo.
+
+**Probarlo a propósito** (sin datos reales):
+
+| Prueba | Cómo | Qué debe pasar |
+|---|---|---|
+| Bot apagado | `docker stop dispatch-bot-1` | Aviso en unos 2 a 3 minutos; al `docker start`, el de recuperación |
+| Worker detenido | `docker stop dispatch-worker-1` | Aviso (a los 2 min sin vueltas, más el intervalo del monitor) |
+| Base detenida | `docker stop dispatch-postgres-1` | Aviso |
+| Engine apagado en modo `auto` | `docker stop dispatch-engine-1` | Aviso. En `queue` o `shadow`, no |
+| Despliegue normal | `./deploy.sh deploy "$(cat .tag)"` | Ningún aviso |
+
+Al terminar cada prueba: `docker start …` y comprobar el aviso de recuperación.
 
 ## 7. Infraestructura (solo el administrador)
 
