@@ -103,8 +103,8 @@ async function answerCoverage(conversation: ConversationRow, draft: ReturnType<t
     const a = byIndex.get(i)!;
     if (!d) continue;
     if (a.valida) {
-      const km = query.cobertura?.find((c) => c.indice === i)?.km ?? null;
-      d.cotizacion = { precio: a.precio!, km };
+      const item = query.cobertura?.find((c) => c.indice === i);
+      d.cotizacion = { precio: a.precio!, km: item?.km ?? null, fuente: item?.fuente };
     } else {
       refused.add(i);
     }

@@ -182,6 +182,48 @@ La ubicación en vivo llega de la app gratuita [Traccar Client](https://www.trac
 
 **Las posiciones se borran a las 24 horas.** Solo se guarda la última de cada moto; la de una moto que lleva más de un día sin reportar se borra, y a las evaluaciones del algoritmo de más de un día se les quitan las posiciones de las motos. Lo hace el tick cada 10 minutos (`purgeOldPositions`, `packages/shared/src/db/gps-retention.ts`). Las horas de cada servicio (llegó, recogió, entregó) se conservan con el pedido.
 
+## 4d. Mapa de calles (OSRM)
+
+El precio del domicilio y los minutos de viaje del engine se pueden medir con los **km reales por calle**, en vez de la línea recta × 1,3. Los mide un OSRM propio, en el mismo servidor (contenedor `dispatch-osrm-1`, sin puertos públicos): no cuesta por consulta y no manda datos afuera. Qué cambia en el bot y el portal: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Distancia por calle»; en el engine: [ALGORITMO.md](ALGORITMO.md).
+
+**El mapa:** OpenStreetMap de Colombia (Geofabrik), recortado a Cali, Jamundí, Yumbo, Candelaria y el borde de Palmira, con el perfil de carro de OSRM (las motos usan las mismas vías y sentidos). La imagen `dispatch-osrm` lo trae ya procesado (`apps/osrm/Dockerfile`): al arrancar no descarga nada. Con solo esa área, el grafo debería ocupar unos cientos de MB de RAM; el límite es `mem_limit: 512m`, y con él la suma de los límites de todos los contenedores queda por debajo de los 4 GB del cx23. Tras el primer despliegue, confirmar el consumo real con `docker stats --no-stream`.
+
+**El interruptor** (`settings.routing_config`, apagado por defecto). Apagado, todo funciona exactamente como antes. **Se enciende al mismo tiempo que se carga la tabla de precios nueva** en Tarifas: con la tabla de hoy todos los precios subirían de golpe, porque la calle mide en promedio más que la línea recta × 1,3.
+```bash
+# Encender (aplica desde la siguiente cotización y el siguiente tick, sin redesplegar)
+docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c   "insert into settings (key, value) values ('routing_config', '{\"porCalle\": true}') on conflict (key) do update set value = excluded.value"
+# Apagar: lo mismo con false
+```
+
+**Si OSRM no responde** (caído, reiniciando, o tarda más de 800 ms en el bot y 1 s en el engine): se usa la línea recta × 1,3, el pedido sigue, el restaurante no ve nada distinto y la caída queda registrada:
+- En los registros del bot y del engine, una línea `[calles] OSRM falló (…)` al empezar la caída y `[calles] OSRM volvió a responder` al terminar. Durante la caída no se le vuelve a preguntar en 30 s, para no esperar en cada cotización.
+- En cada viaje, `trips.route_source`: `calle` o `linea_recta`. Con el interruptor encendido, `linea_recta` quiere decir que ese viaje se cotizó con el respaldo.
+- En cada evaluación del engine, `engine_evaluations.response->'tiempos'`: `fuente` (`osrm`, `haversine` o `mixta`) y `respaldo` (por qué no se usó OSRM, o `null`).
+```bash
+docker logs dispatch-bot-1 2>&1 | grep '\[calles\]'
+docker logs dispatch-engine-1 2>&1 | grep '\[calles\]'
+docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c   "select route_source, count(*) from trips where created_at > now() - interval '1 day' group by 1"
+docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c   "select response->'tiempos'->>'fuente' fuente, count(*) from engine_evaluations where updated_at > now() - interval '1 day' group by 1"
+```
+Probar el respaldo a propósito: `docker stop dispatch-osrm-1`, pedir un domicilio (cotiza igual) y mirar los registros; `docker start dispatch-osrm-1` lo devuelve.
+
+**Probar contra Google Maps** (al encenderlo en staging): para 5 trayectos reales, comparar los km del portal (tarjeta del viaje) con la ruta en carro de Google Maps entre los mismos dos puntos. La diferencia debe ser de 10 % o menos.
+```bash
+# Los km que da OSRM para dos puntos (lng,lat;lng,lat), desde el servidor:
+docker exec dispatch-osrm-1 wget -qO- "http://127.0.0.1:5000/route/v1/driving/-76.5225,3.4372;-76.532,3.4516?overview=false"
+```
+
+**Cuánto cambian las distancias** frente a las de hoy, con los restaurantes y las zonas de ese servidor (solo números agregados; sirve para ajustar la tabla nueva):
+```bash
+/opt/dispatch/compare-distances.sh
+```
+`compare-distances.sh` no viaja con el despliegue: se copia una vez como `deploy.sh` (arriba, «Cambios en `deploy.sh`»). En local: `OSRM_URL=http://localhost:5000 npm run calles:comparar` con `docker compose --profile calles up osrm`.
+
+**Actualizar el mapa** (una vez al mes, o cuando falte una calle nueva): en `apps/osrm/Dockerfile`, cambiar `MAPA_FECHA` al archivo del día 1 del mes en Geofabrik (`colombia-AAMMDD.osm.pbf`) y `MAPA_MD5` al de su `.md5`; PR a `dev`. `images.yml` baja el mapa, lo recorta y lo procesa (unos minutos; la caché lo evita mientras el Dockerfile no cambie) y el despliegue normal cambia el contenedor. Antes de pasarlo a producción, correr `compare-distances.sh` en staging: si la mediana cambia mucho, revisar antes de seguir.
+```bash
+curl -s https://download.geofabrik.de/south-america/colombia-261201.osm.pbf.md5
+```
+
 ## 5. Usuarios del portal
 
 No hay registro público. Se crean en el servidor:
@@ -214,6 +256,7 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 | El bot no responde | `BOT_ACTIVE` en `false`, token de WhatsApp vencido (el temporal dura ~24 h) o falla de OpenAI |
 | Certificado no emitido | DNS aún sin propagar o puertos 80/443 cerrados |
 | No llegan las alertas al celular | En ese celular, **Alertas al celular** dice si están activas o bloqueadas, y **Enviar una de prueba** las prueba. En los registros del bot y del portal, `[alertas]` dice qué rechazó el servicio de notificaciones |
+| Con el interruptor de km por calle encendido, los viajes salen con `route_source = linea_recta` | OSRM no responde: `docker ps` (¿`dispatch-osrm-1` healthy?) y `docker logs dispatch-bot-1 2>&1 \| grep '\[calles\]'`. Mientras tanto se cotiza en línea recta × 1,3, sin afectar los pedidos |
 | Un chat de prueba quedó con un pedido a medio armar que se mezcla con los nuevos | El borrador no vence ni se cancela todavía ([PLAN](PLAN.md) B-1). Se limpia a mano, abajo |
 
 **Limpiar un chat de prueba** (solo staging): borra el pedido a medio armar y devuelve el chat al bot; los mensajes quedan.

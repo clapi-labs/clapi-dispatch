@@ -20,7 +20,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed:demo": "tsx --env-file-if-exists=../../.env.local src/db/seed-demo-cli.ts",
     "user:create": "tsx --env-file-if-exists=../../.env.local src/db/create-user-cli.ts",
-    "zonas:importar": "tsx --env-file-if-exists=../../.env.local src/db/service-zones-import-cli.ts"
+    "zonas:importar": "tsx --env-file-if-exists=../../.env.local src/db/service-zones-import-cli.ts",
+    "calles:comparar": "tsx --env-file-if-exists=../../.env.local src/db/compare-distances-cli.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

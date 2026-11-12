@@ -50,6 +50,8 @@ services:
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       # Modo sombra del engine; vacío = no corre.
       ENGINE_URL: http://engine:3003
+      # Km por calle. Sin el perfil "calles" no hay OSRM y se usa línea recta × 1,3.
+      OSRM_URL: http://osrm:5000
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
@@ -68,6 +70,7 @@ services:
     build: apps/engine
     environment:
       PORT: 3003
+      OSRM_URL: http://osrm:5000
     ports:
       - "127.0.0.1:3003:3003"
     healthcheck:
@@ -75,6 +78,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+
+  # OSRM con el mapa de Cali. Opcional: la primera vez baja ~330 MB y tarda
+  # unos minutos.  docker compose --profile calles up --build
+  osrm:
+    build: apps/osrm
+    profiles: [calles]
+    ports:
+      - "127.0.0.1:5000:5000"
     restart: unless-stopped
 
   worker:

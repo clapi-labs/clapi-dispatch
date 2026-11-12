@@ -40,7 +40,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 1. **Primera ola:** I-1, I-2, I-4, B-1, B-2, C-4.
 2. **Segunda ola:** I-3, I-7, B-3, C-1, D-1, D-2.
-3. **Tercera ola:** I-5, B-4, B-5, C-2, C-3, D-3, D-4. I-6 queda aplazada.
+3. **Tercera ola:** I-5, B-4, B-5, C-2, C-3, D-3, D-4, D-5. I-6 queda aplazada.
 
 ---
 
@@ -221,9 +221,26 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Éxito:**
 - Verificado y anotado: si Google tiene modo moto en Colombia, el costo con el volumen real y lo que permiten sus términos sobre guardar resultados.
-- Si conviene: una sola consulta por pedido para las finalistas, respaldo a Haversine si Google falla o pasa del tope diario, y el costo por pedido medido en staging.
+- Si conviene: una sola consulta por pedido para las finalistas, respaldo a los km por calle de OSRM (D-5) si Google falla o pasa del tope diario, y el costo por pedido medido en staging.
 
 **Dónde mirar:** [ALGORITMO.md](ALGORITMO.md) («Cómo calcula los tiempos»), `apps/engine/`.
+
+### D-5 · Precio y tiempos con la distancia real por calle (#50) · Bot + Despacho · M
+
+**Objetivo:** que el bot cobre y el engine asigne con los km reales por calle, no con la línea recta × 1,3, que en el 54 % de los trayectos se queda corta por más de 0,5 km ([DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Distancia por calle»).
+
+**Hecho, falta probarlo en staging:** OSRM propio con el mapa de Cali (imagen `dispatch-osrm`, en el mismo servidor); el bot cotiza con sus km y los guarda con el viaje; el portal los muestra en la tarjeta y en la consulta de cobertura; el engine mide los minutos con la misma fuente (`tiempos: "osrm"`); si OSRM no responde, línea recta × 1,3 sin frenar nada y con la caída registrada. Interruptor `settings.routing_config.porCalle`, apagado. Pruebas del respaldo y del interruptor en `road-distance.test.ts`, `quote.test.ts`, `engine-request.test.ts` y `apps/engine/tests/test_calles.py`.
+
+**Falta, en staging** ([OPERACION.md](OPERACION.md), «Mapa de calles (OSRM)»):
+- Con el interruptor apagado, cotizaciones y decisiones del engine iguales a las de antes.
+- `compare-distances.sh`: cuánto cambia frente a la distancia de hoy y cuánto tarda cada ruta; los números van al PR.
+- Encendido: 5 trayectos de prueba con 10 % o menos de diferencia con Google Maps.
+- `docker stop dispatch-osrm-1`: el bot sigue cotizando y el engine asignando, y la caída queda en los registros.
+- `docker stats`: consumo real de `dispatch-osrm-1`.
+
+**Para encenderlo en producción:** la tabla de precios nueva del cliente, cargada en Tarifas al mismo tiempo (ver «Decisiones y pendientes del dueño»).
+
+**Dónde mirar:** `packages/shared/src/domain/road-distance.ts`, `packages/shared/src/db/quote.ts`, `apps/engine/calles.py`, `apps/osrm/Dockerfile`.
 
 ### D-4 · Comparar el engine con la central · Despacho · M · depende de D-1
 
@@ -311,6 +328,7 @@ No son tareas de desarrollo, pero varias tareas dependen de ellas.
 **Con el cliente (William):**
 - Las preguntas de [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Preguntas para Williams»: cuántos pedidos lleva una moto en valle, tiempos de alertas y recordatorios, cobro de un pedido devuelto.
 - El criterio para pasar a `auto` en producción (D-4).
+- La tabla de precios para km por calle (D-5): sin ella no se enciende `routing_config.porCalle`, porque con la de hoy todos los precios subirían.
 
 **Con Meta:**
 - Método de pago en la cuenta (sin él, Meta no entrega mensajes de servicio desde el 1 de octubre de 2026) y la tarifa de Colombia en la tabla oficial.

@@ -134,7 +134,8 @@ export type AdvisorQueryItem = {
   direccion: string;
   barrio: string | null;
   cliente: string | null;
-  cobertura?: { zona: string; metros: number; precio: number } | null;
+  /** `km`: con los que se cotizó (`porCalle`: medidos por calle). */
+  cobertura?: { zona: string; metros: number; precio: number; km: number | null; porCalle: boolean } | null;
 };
 
 export type ConversationKind = "restaurant" | "courier";

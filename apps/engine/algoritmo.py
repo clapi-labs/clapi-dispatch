@@ -9,7 +9,9 @@ contrato (docs/ALGORITMO.md) están en evaluar_peticion.
 import math
 from datetime import datetime, timedelta, timezone
 
-ENGINE_VERSION = "2026.11.1"
+import calles
+
+ENGINE_VERSION = "2026.11.2"
 
 RADIO_TIERRA_KM = 6371.0
 # Colombia no tiene horario de verano: UTC−5 todo el año, sin depender de tzdata en la imagen.
@@ -17,7 +19,7 @@ HORA_CALI = timezone(timedelta(hours=-5))
 
 # Constantes que se pueden sobrescribir en el campo "config" de cada petición.
 DEFAULTS = {
-    "FACTOR_RUTA": 1.3,           # la ruta por calles es ~30% más larga que la línea recta
+    "FACTOR_RUTA": 1.3,           # la ruta por calles es ~30% más larga que la línea recta (respaldo de OSRM)
     "VELOCIDAD_KMH": 25.0,        # velocidad promedio de una moto en ciudad
 
     # F_tiempo
@@ -295,8 +297,9 @@ def evaluar_peticion(peticion):
     lanza KeyError; un valor inválido, ValueError.
     """
     c = configurar(peticion.get("config"))
-    if peticion.get("tiempos", "haversine") != "haversine":
-        raise ValueError("Por ahora solo se admite tiempos = haversine")  # Google llega en el paso 4
+    pedidos = peticion.get("tiempos", "haversine")
+    if pedidos not in ("haversine", "osrm"):
+        raise ValueError("tiempos debe ser haversine u osrm")  # Google llega en el paso 4
     ahora = float(peticion["ahora"])
     modo = peticion.get("modo") or modo_por_hora(ahora, c)
     if modo not in c["PESOS"]:
@@ -311,9 +314,15 @@ def evaluar_peticion(peticion):
     motos = [dict(m, paradas=[dict(p, t_listo=minutos_hasta(p["listo_ts"])) if "listo_ts" in p else dict(p)
                               for p in m.get("paradas", [])])
              for m in peticion["motos"]]
-    ev = evaluar(motos, tuple(pedido["restaurante"]), tuple(pedido["cliente"]), float(peticion["radio_km"]),
+    restaurante, cliente, radio_km = tuple(pedido["restaurante"]), tuple(pedido["cliente"]), float(peticion["radio_km"])
+    tiempo, tiempos = medir_tiempos(pedidos, motos, restaurante, cliente, radio_km, c)
+    ev = evaluar(motos, restaurante, cliente, radio_km,
                  ahora, modo=modo, t_listo=minutos_hasta(pedido["listo_ts"]),
-                 multipedido=bool(peticion["multipedido"]), c=c)
+                 multipedido=bool(peticion["multipedido"]), tiempo=tiempo, c=c)
+    if pedidos == "osrm":
+        usos = tiempo.usos
+        tiempos.update(tramos_calle=usos["calle"], tramos_linea_recta=usos["linea_recta"],
+                       fuente="osrm" if not usos["linea_recta"] else "haversine" if not usos["calle"] else "mixta")
 
     faltan = ev["despacho"]["faltan_min"]
     plan = None
@@ -337,4 +346,25 @@ def evaluar_peticion(peticion):
         "plan": plan,
         "motos": ev["motos"],
         "explicacion": ev["explicacion"],
+        "tiempos": tiempos,
     }
+
+
+def medir_tiempos(pedidos, motos, restaurante, cliente, radio_km, c):
+    """La función de minutos de viaje y qué fuente se pidió y se usó.
+
+    "haversine": línea recta × FACTOR_RUTA, como siempre. "osrm": km por calle (calles.py) para todos
+    los tramos que puede recorrer una moto que pase los filtros; lo que OSRM no mida, en línea recta.
+    """
+    respaldo = tiempo_haversine(c)
+    if pedidos != "osrm":
+        return respaldo, {"pedido": "haversine", "fuente": "haversine", "respaldo": None}
+    # Solo los puntos de las motos que pueden competir: la que no tiene señal o está fuera del radio
+    # queda excluida antes de calcular ninguna ruta.
+    puntos = [restaurante, cliente]
+    for m in motos:
+        pos = (m["lat"], m["lon"])
+        if not m["sin_senal"] and haversine_km(pos, restaurante) <= radio_km:
+            puntos += [pos] + [tuple(p["punto"]) for p in m["paradas"]]
+    km, motivo = calles.tabla_km(puntos)
+    return calles.tiempo_por_calle(km, respaldo, c["VELOCIDAD_KMH"]), {"pedido": "osrm", "respaldo": motivo}

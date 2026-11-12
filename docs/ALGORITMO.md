@@ -22,17 +22,34 @@ flowchart LR
 ```
 
 - **El bot arma la foto y decide qué hacer con el resultado.** El engine solo calcula. Ofertas, reintentos y WhatsApp quedan fuera del algoritmo.
-- **Google Maps solo mide** (minutos y km). El algoritmo decide. Por ahora solo se usa Haversine: Google queda pendiente.
+- **El mapa solo mide** (km y minutos). El algoritmo decide. Hoy mide el OSRM propio (km por calle) cuando está encendido `settings.routing_config.porCalle`; si no, Haversine × 1,3. Google para las finalistas queda pendiente ([PLAN](PLAN.md) D-3).
 - El modo (`queue | shadow | auto`) va en `settings.engine_config`, cambiable sin redesplegar. Por defecto es `shadow`: la cola asigna y el engine solo calcula. En `auto` la cola no asigna nada, y lo que el engine no pueda asignar lo asigna la central a mano. Producción pasa a `auto` cuando el GPS funcione con motos reales y la comparación con la central convenza ([PLAN](PLAN.md) D-4).
 
 ## Cómo calcula los tiempos
 
 La función `tiempo(a, b)` es intercambiable:
 
-| Modo | Uso |
+| Modo (`tiempos`) | Uso |
 |---|---|
-| Haversine × 1,3 a 25 km/h | Pruebas automáticas y CI: gratis, sin red, reproducible |
-| Google Maps | Staging y producción; también calibración en el simulador |
+| `haversine`: línea recta × 1,3 a 25 km/h | Con el interruptor apagado (por defecto), y en las pruebas automáticas y CI: gratis, sin red, reproducible |
+| `osrm`: km por calle del OSRM propio a 25 km/h | Con `settings.routing_config.porCalle` encendido. Los mismos km con que el bot cobra el domicilio: precio y asignación miden igual |
+| Google Maps | Pendiente: solo para las finalistas ([PLAN](PLAN.md) D-3) |
+
+**Por calle con OSRM** (`apps/engine/calles.py`). El bot manda `tiempos: "osrm"` cuando el interruptor está encendido. El engine pide a OSRM, en **una sola consulta** (`/table`), la distancia por calle entre todos los puntos de la evaluación: el restaurante, el cliente y, de cada moto con señal dentro del radio, su posición y sus paradas pendientes. Cada tramo pasa a minutos con la misma `VELOCIDAD_KMH` de siempre: solo cambia la distancia, no la fórmula del score ni los pesos. El filtro por radio sigue en línea recta.
+
+- **Respaldo:** si OSRM no responde en 1 s, o falla, toda la evaluación usa Haversine × `FACTOR_RUTA`, y durante 30 s no se le vuelve a preguntar. Un tramo sin ruta, o con un punto a más de 500 m de toda calle del mapa, va en línea recta y el resto por calle. Nunca se frena una asignación por OSRM.
+- **Qué fuente se usó:** la respuesta trae `tiempos`, que queda en `engine_evaluations.response`:
+
+```jsonc
+"tiempos": {
+  "pedido": "osrm",                 // lo que pidió el bot: haversine | osrm
+  "fuente": "osrm",                 // lo que se usó: osrm | haversine | mixta
+  "respaldo": null,                 // por qué no se usó OSRM ("OSRM falló: …", "sin OSRM_URL"…)
+  "tramos_calle": 14, "tramos_linea_recta": 0
+}
+```
+
+  Con `tiempos: "haversine"` es `{"pedido": "haversine", "fuente": "haversine", "respaldo": null}` y la decisión es idéntica a la de antes (`tests/test_calles.py`). La caída también queda en el registro del contenedor (`[calles] …`, ver [OPERACION](OPERACION.md), «Mapa de calles»).
 
 Flujo por pedido para gastar poco en Google:
 1. Filtro por radio con Haversine (gratis).
@@ -40,7 +57,7 @@ Flujo por pedido para gastar poco en Google:
 3. **Una** matriz a Google para las 3 mejores (`FINALISTAS_GOOGLE`, ajustable en `config`). Con 2 elegibles, para esas 2; con una sola no se consulta: se le asigna directo.
 4. El algoritmo puntúa.
 
-Si Google falla o se supera el tope diario, se usa Haversine. OSRM queda fuera del sistema: solo fue un sustituto gratuito dentro del simulador.
+Si Google falla o se supera el tope diario, se usa el cálculo por calle de OSRM, y si este falla, Haversine.
 
 *Por verificar antes de construir:* si Google ofrece modo moto (`TWO_WHEELER`) en Colombia, el costo con volumen real y los límites de caché de sus términos.
 
@@ -89,7 +106,7 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
       { "tipo": "C", "punto": [3.43, -76.51], "pedido": 101 }
     ]
   }],
-  "tiempos": "haversine",          // haversine | google
+  "tiempos": "haversine",          // haversine | osrm (km por calle); google, pendiente
   "config": {}                     // opcional: sobrescribe constantes
 }
 ```
@@ -109,7 +126,7 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 
 ```jsonc
 {
-  "engine_version": "2026.11.1",
+  "engine_version": "2026.11.2",
   "modo": "pico",
   "pesos": [0.70, 0.20, 0.10],
   "despacho": {
@@ -132,7 +149,8 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
     "secuencia": "Recoge nuevo → Recoge #101 → Entrega #101 → Entrega nuevo",
     "ruta_puntos": [[3.45, -76.53], [3.4516, -76.5320]]
   }],
-  "explicacion": "Servicio asignado a 17 por tiempo de llegada al restaurante (82.4 vs 64.0 de 9)"
+  "explicacion": "Servicio asignado a 17 por tiempo de llegada al restaurante (82.4 vs 64.0 de 9)",
+  "tiempos": { "pedido": "haversine", "fuente": "haversine", "respaldo": null }  // ver «Cómo calcula los tiempos»
 }
 ```
 
@@ -231,10 +249,11 @@ Mismo repo para tener un solo CI, un solo despliegue por commit y el contrato ve
 1. ~~Escribir y acordar el contrato JSON.~~ Hecho (ver «Contrato»).
 2. ~~`engine` con Haversine y los casos como tests en CI (sin Google).~~ Hecho: `apps/engine`, imagen `dispatch-engine` y job en `ci.yml`.
 3. ~~El bot llama al engine en modo `shadow` y guarda el ranking.~~ Hecho (ver «Modo sombra»). Decide de verdad cuando haya GPS.
-4. Google Maps para las 3 mejores, con respaldo a Haversine ([PLAN](PLAN.md) D-3).
-5. ~~GPS: identificadores aleatorios por moto; el receptor descarta los no registrados.~~ Hecho (`/api/gps`). Falta instalarlo en los celulares ([PLAN](PLAN.md) D-1).
-6. ~~Modo `auto`.~~ Hecho (`apps/bot/src/dispatch/engine.ts`). Probado en staging con el simulador; falta probarlo en la calle.
-7. Comparar con la realidad y pasar a `auto` cuando los números convenzan ([PLAN](PLAN.md) D-4).
+4. ~~Km por calle con OSRM propio, con respaldo a Haversine.~~ Hecho (`apps/engine/calles.py`, interruptor `settings.routing_config.porCalle`).
+5. Google Maps para las 3 mejores, con respaldo a OSRM ([PLAN](PLAN.md) D-3).
+6. ~~GPS: identificadores aleatorios por moto; el receptor descarta los no registrados.~~ Hecho (`/api/gps`). Falta instalarlo en los celulares ([PLAN](PLAN.md) D-1).
+7. ~~Modo `auto`.~~ Hecho (`apps/bot/src/dispatch/engine.ts`). Probado en staging con el simulador; falta probarlo en la calle.
+8. Comparar con la realidad y pasar a `auto` cuando los números convenzan ([PLAN](PLAN.md) D-4).
 
 ## Pendientes por decidir
 

@@ -6,7 +6,7 @@
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
 - **Recogida:** la del restaurante registrado, sin volver a geocodificar. Si no está registrado, hoy se ubica lo que escribió como origen. **Decidido:** la recogida de un restaurante nuevo la verifica la central a mano, no Google ni Places; el flujo está por definir ([PLAN](PLAN.md) B-3).
 - **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.
-- **Se cobra solo por distancia** (Haversine × 1,3, tabla de rangos por km del portal, menú **Tarifas**). Ninguna zona cambia el precio. Sin ubicación no hay precio.
+- **Se cobra solo por distancia** (tabla de rangos por km del portal, menú **Tarifas**): km por calle desde la recogida hasta la entrega, o línea recta × 1,3 con el interruptor apagado. Ver «Distancia por calle», abajo. Ninguna zona cambia el precio. Sin ubicación no hay precio.
 - **Si Google no ubica la entrega, o no responde**, el bot le pregunta a la central si la dirección es válida y cuánto vale, y le dice al restaurante que ya le avisa. La central responde desde el panel de la conversación en el portal ([BOT.md](BOT.md), «La dirección»).
 - **Si Google falla al ubicar la recogida de un restaurante nuevo**, el bot responde «No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central» y la conversación queda en el portal con el pedido a medio armar.
 - **Ubicación simulada** para pruebas y demostraciones: `GEOCODE_SIMULADO=true` (la misma dirección siempre cae en el mismo punto de Cali). El chat de prueba la usa por defecto; `npm run bot:chat -- --google` usa Google de verdad. Nunca en producción.
@@ -18,6 +18,25 @@
 **Por medir** ([PLAN](PLAN.md) B-3): si Google ubica mejor una recogida con el nombre del restaurante delante de la dirección, o sin él. Se compara desde el servidor, mirando `location_type` (solo `ROOFTOP` o `RANGE_INTERPOLATED` cuentan) y si el punto cae en Cali.
 
 Idea para después (no decidida): un geocodificador propio con los datos de OpenStreetMap del mapa de zonas, y Google solo cuando el propio no encuentre.
+
+## Distancia por calle
+
+Con qué km se cobra el domicilio (`deliveryDistance` y `quoteByDistance` en `packages/shared/src/db/quote.ts`; el cliente de OSRM en `packages/shared/src/domain/road-distance.ts`, con sus pruebas).
+
+**Por qué:** la línea recta × 1,3 se queda corta. Comparada con rutas reales en 1.286 trayectos (cada restaurante de staging hacia el centro de cada zona de servicio), la calle mide en el caso típico 1,55 veces la línea recta, de 1,27 a 2,14 según la ruta; en 694 trayectos (54 %) el cálculo viejo se quedaba corto por más de 0,5 km, y en el peor caso por 3,6 km. Como el error cambia de una ruta a otra, ninguna tabla lo compensa.
+
+**Cómo funciona:**
+
+- Con el interruptor `settings.routing_config.porCalle` **encendido**, el bot le pide a un **OSRM propio** (en el mismo servidor, con el mapa de OpenStreetMap de Cali) los km por calle desde la recogida hasta la entrega, con el perfil de carro. Esos km, con un decimal, buscan el precio en la tabla de Tarifas, igual que antes.
+- **Apagado** (por defecto), todo funciona exactamente como antes: línea recta × 1,3, sin consultar OSRM. Se enciende **al mismo tiempo** que se carga la tabla de precios hecha para km por calle: con la tabla de hoy todos los precios subirían de golpe. Cómo encenderlo: [OPERACION](OPERACION.md), «Mapa de calles (OSRM)».
+- **Si OSRM no responde** en 800 ms, o falla: se usa la línea recta × 1,3, el pedido no se frena, el restaurante no ve ningún error y la caída queda en el registro (`[calles] …`). Tras una caída no se le pregunta durante 30 s, para que las cotizaciones no esperen. Si un punto queda a más de 500 m de toda calle del mapa (fuera del área cargada), esa entrega va en línea recta.
+- **Se guardan con el viaje** los km con que se cotizó (`trips.route_km`) y de dónde salieron (`trips.route_source`: `calle` o `linea_recta`), congelados como el precio. Las distancias no se guardan aparte: medir con el OSRM local tarda pocos milisegundos.
+- **El portal muestra esos mismos km:** en la tarjeta del viaje y en la consulta de cobertura («Sí, se hace»), que dice «… km por calle» junto al precio. Los viajes anteriores, sin `route_km`, se siguen mostrando en línea recta × 1,3.
+- **El engine** mide los minutos de viaje con la misma fuente ([ALGORITMO](ALGORITMO.md), «Cómo calcula los tiempos»): precio y asignación miden igual.
+- **Siguen en línea recta:** los 300 m de «cerca de una zona» (abajo), el radio del engine y el ETA que se le da al restaurante.
+- El tope de km por calles de la agencia (`maxKm`) se compara con los km de la cotización: por calle si está encendido.
+
+**Cuánto cambia** en un servidor, con sus restaurantes y zonas: `compare-distances.sh` ([OPERACION](OPERACION.md), «Mapa de calles (OSRM)»).
 
 ## Zonas de servicio
 
@@ -113,7 +132,7 @@ En `order.ts`, con la entrega ubicada y antes de cotizar, cada entrega sin preci
 | Fuera | «Qué pena, pero hasta … no manejamos domicilio 🙏» | Esa entrega no se pide; si no queda ninguna, no se crea el pedido |
 | Sin zonas | Lo de siempre | Sigue normal |
 
-- **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda y lo que vale por km, y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
+- **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda, los km de la cotización (por calle, si está encendido) y lo que vale por km, y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
 - Con varias entregas, cada una por su lado: las de fuera se quitan con su aviso, las de cerca van juntas en una consulta y las de dentro esperan con su precio.
 - El tope de km por calles (`maxKm`) sigue aparte: se revisa después de las zonas.
 - **Sin coordenadas no hay revisión:** una dirección que el mapa no ubicó y la central validó a mano no tiene punto.

@@ -26,6 +26,7 @@ npm run dev:bot / dev:portal       # una app sola con next dev
 npm run bot:chat                   # conversar con el bot desde la terminal (WhatsApp simulado; necesita DATABASE_URL y OPENAI_API_KEY en .env.local)
 npm run bot:gps                    # motos de prueba que se mueven y reportan GPS al bot local (solo contra una base local)
 npm run bot:eval:restaurantes      # compara nombres de restaurantes contra OpenAI de verdad (gasta la llave; no va en CI)
+npm run calles:comparar            # km por calle (OSRM_URL) frente a línea recta × 1,3, con los restaurantes y zonas de la base; solo agregados
 npm test                           # pruebas unitarias (*.test.ts en packages/shared y apps/bot)
 npm run lint                       # eslint en cada workspace
 npm run typecheck                  # tsc --build (project references; el bot se revisa en el build o con tsc -p apps/bot)
@@ -49,6 +50,7 @@ Cambios de esquema: editar `schema.ts`, correr `db:generate` y commitear la migr
 - **Simulador de staging** (`SIMULATOR_ENABLED=1`, solo staging): motos simuladas en `couriers`, `scripts/simulador.mjs` las mueve y reporta por `/api/gps`, el bot desvía sus mensajes a números de prueba (`apps/bot/src/simulator/`) y el portal tiene el mapa en `/simulador`. Ver `docs/OPERACION.md`, «Simulador».
 - **`scripts/worker.mjs`**: sin dependencias; cada 5 s hace `POST /api/internal/tick` al bot, que asigna viajes pendientes y notifica. El tick debe ser seguro en paralelo (los viajes se reclaman con UPDATE condicional).
 - **`apps/engine`**: algoritmo de asignación (`POST /evaluar`). `settings.engine_config.mode`: `queue`, `shadow` o `auto`, donde asigna él y la cola no se usa. Ver `docs/ALGORITMO.md`. El flujo del motorizado, sus estados y el GPS: `docs/FLUJO-DOMICILIARIO.md`.
+- **`apps/osrm`**: OSRM propio con el mapa de Cali ya procesado (imagen `dispatch-osrm`). Con `settings.routing_config.porCalle` el bot cotiza con sus km por calle (`packages/shared/src/db/quote.ts`) y el engine mide los minutos con ellos (`apps/engine/calles.py`); si no responde, línea recta × 1,3. Ver `docs/DIRECCIONES-Y-ZONAS.md`, «Distancia por calle», y `docs/OPERACION.md`, «Mapa de calles (OSRM)».
 
 ## Despliegue e infraestructura
 

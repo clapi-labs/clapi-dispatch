@@ -29,7 +29,8 @@ class Respuesta(unittest.TestCase):
     def test_campos(self):
         r = algoritmo.evaluar_peticion(peticion([moto("Ana")]))
         self.assertEqual(set(r), {"engine_version", "modo", "pesos", "despacho", "ganador", "plan", "motos",
-                                  "explicacion"})
+                                  "explicacion", "tiempos"})
+        self.assertEqual(r["tiempos"], {"pedido": "haversine", "fuente": "haversine", "respaldo": None})
         self.assertEqual(r["engine_version"], algoritmo.ENGINE_VERSION)
         self.assertEqual(r["ganador"], "Ana")
         self.assertNotIn("aportes", r["motos"][0])
@@ -135,7 +136,7 @@ class Validacion(unittest.TestCase):
         with self.assertRaises(ValueError):
             algoritmo.evaluar_peticion(p)
 
-    def test_solo_haversine_por_ahora(self):
+    def test_tiempos_haversine_u_osrm(self):
         with self.assertRaises(ValueError):
             algoritmo.evaluar_peticion(peticion([moto("Ana")], tiempos="google"))
 

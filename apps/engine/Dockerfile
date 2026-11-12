@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
-COPY algoritmo.py api.py ./
+COPY algoritmo.py api.py calles.py ./
 USER app
 # El puerto lo fija docker-compose (PORT); 3003 por defecto.
 CMD ["python", "api.py"]

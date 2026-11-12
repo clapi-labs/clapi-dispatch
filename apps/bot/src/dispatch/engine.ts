@@ -1,6 +1,18 @@
 import { and, asc, desc, eq, gt, inArray, isNull, max, or } from "drizzle-orm";
 
-import { assignNextCourier, assignTripTo, db, dispatchableCourier, getBotConfig, getEngineConfig, openTripCondition, saveCourierRoute, schema, type EngineConfig } from "@dispatch/shared/db";
+import {
+  assignNextCourier,
+  assignTripTo,
+  db,
+  dispatchableCourier,
+  getBotConfig,
+  getEngineConfig,
+  getRoutingConfig,
+  openTripCondition,
+  saveCourierRoute,
+  schema,
+  type EngineConfig,
+} from "@dispatch/shared/db";
 import { customerWaitEndsAt, tripPhase, type RouteStop } from "@dispatch/shared";
 
 import { buildEvaluarRequest, type SnapshotCourier } from "@/dispatch/engine-request";
@@ -22,10 +34,22 @@ import { env } from "@/env";
 const MAX_AGE_MS = 3 * 60 * 60_000;
 const ENGINE_TIMEOUT_MS = 3_000;
 
+/** La configuración del engine más el interruptor de km por calle. */
+type EngineRunConfig = EngineConfig & { porCalle: boolean };
+
+async function engineRunConfig(): Promise<EngineRunConfig> {
+  const [engine, routing] = await Promise.all([getEngineConfig(), getRoutingConfig()]);
+  return { ...engine, porCalle: routing.porCalle };
+}
+
 type EngineStop = { tipo: RouteStop["tipo"]; pedido: number | null };
 
 type EngineResponse = {
   engine_version: string;
+  /** Con qué midió los minutos de viaje: `fuente` osrm, haversine o mixta, y
+   *  `respaldo` con el motivo si OSRM no respondió. Queda en
+   *  engine_evaluations.response. */
+  tiempos?: { pedido: string; fuente: string; respaldo: string | null };
   despacho: { despachar_ts: number; faltan_min: number };
   ganador: string | null;
   plan: EngineStop[] | null;
@@ -123,7 +147,7 @@ async function evaluate(
   previous: number,
   couriers: SnapshotCourier[],
   now: Date,
-  config: EngineConfig,
+  config: EngineRunConfig,
 ): Promise<{ result: Evaluated; common: Partial<typeof schema.engineEvaluations.$inferInsert> }> {
   const built = buildEvaluarRequest(trip, couriers, now, config);
   if (!built.ok) {
@@ -161,7 +185,7 @@ async function evaluate(
   return { result: { winner, faltan, plan: response.plan }, common };
 }
 
-async function runShadow(config: EngineConfig) {
+async function runShadow(config: EngineRunConfig) {
   const now = new Date();
   // Los que siguen esperando, y los abiertos recientes que aún no se
   // evaluaron. Los decididos o expirados ya no se tocan.
@@ -204,7 +228,7 @@ async function runShadow(config: EngineConfig) {
 
 /** Evalúa un pedido pendiente y, si ya es hora, se lo asigna a la ganadora y
  *  guarda su ruta. Devuelve si quedó asignado. */
-async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: number, couriers: SnapshotCourier[], config: EngineConfig) {
+async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: number, couriers: SnapshotCourier[], config: EngineRunConfig) {
   const now = new Date();
   const { result, common } = await evaluate(trip, previous, couriers, now, config);
   if (!result) return false;
@@ -225,7 +249,7 @@ async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: num
 
 /** Modo `auto`: los pendientes, el más viejo primero. Tras cada asignación se
  *  vuelve a leer la flota: esa moto ya tiene otra ruta para el siguiente pedido. */
-async function runAuto(config: EngineConfig): Promise<number[]> {
+async function runAuto(config: EngineRunConfig): Promise<number[]> {
   const rows = await db
     .select({ trip: schema.trips, evaluation: schema.engineEvaluations })
     .from(schema.trips)
@@ -248,7 +272,7 @@ async function runAuto(config: EngineConfig): Promise<number[]> {
 /** Lo corre el tick. Devuelve los viajes que acaban de recibir moto. */
 export async function runEngine(): Promise<number[]> {
   if (!env.engineUrl) return [];
-  const config = await getEngineConfig();
+  const config = await engineRunConfig();
   if (config.mode === "auto") return runAuto(config);
   if (config.mode === "shadow") await runShadow(config);
   return [];
@@ -261,7 +285,7 @@ export async function dispatchTrip(tripId: number): Promise<boolean> {
   const [trip] = await db.select().from(schema.trips).where(and(eq(schema.trips.id, tripId), eq(schema.trips.status, "pending"))).limit(1);
   if (!trip) return false;
   try {
-    return await assignIfDue(trip, 0, await loadCouriers(), await getEngineConfig());
+    return await assignIfDue(trip, 0, await loadCouriers(), await engineRunConfig());
   } catch (error) {
     console.error(`[engine] no se pudo despachar el viaje ${tripId}:`, error);
     return false;

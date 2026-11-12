@@ -52,6 +52,9 @@ export async function createTrip(
       sourceWaMessageId: order.mensajeOrigen,
       readyAt,
       deliveryFee: price,
+      // Los km con que se cotizó, para que el portal muestre los mismos.
+      routeKm: draft.cotizacion?.km ?? null,
+      routeSource: draft.cotizacion?.km != null ? (draft.cotizacion.fuente ?? null) : null,
     })
     .returning();
   return trip;
