@@ -34,10 +34,13 @@ RUN curl -fsSL --retry 3 -o colombia.osm.pbf "https://download.geofabrik.de/sout
 #    y sentidos), preparado para MLD.
 FROM ${OSRM_IMAGE} AS grafo
 COPY --from=recorte /data/cali.osm.pbf /data/cali.osm.pbf
+# El chmod: osrm-extract deja cali.osrm.fileIndex solo para root (700), y el
+# servidor corre como nobody; sin él no arranca («Permission denied»).
 RUN osrm-extract -p /opt/car.lua /data/cali.osm.pbf \
  && osrm-partition /data/cali.osrm \
  && osrm-customize /data/cali.osrm \
- && rm /data/cali.osm.pbf
+ && rm /data/cali.osm.pbf \
+ && chmod -R a+rX /data
 
 # 3) Solo el servidor y el grafo.
 FROM ${OSRM_IMAGE}
