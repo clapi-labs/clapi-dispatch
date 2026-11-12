@@ -62,3 +62,21 @@ describe("buildEvaluarRequest: señal de GPS", () => {
     assert.equal(built.request.motos[0].cuota, 4);
   });
 });
+
+describe("buildEvaluarRequest: interruptor de km por calle", () => {
+  it("apagado (o sin definir) pide tiempos en línea recta, como siempre", () => {
+    for (const s of [settings, { ...settings, porCalle: false }]) {
+      const built = buildEvaluarRequest(trip, [moto(1, ago(0))], now, s);
+      assert.ok(built.ok);
+      assert.equal(built.request.tiempos, "haversine");
+    }
+  });
+
+  it("encendido pide los tiempos por calle a OSRM; el resto de la petición no cambia", () => {
+    const off = buildEvaluarRequest(trip, [moto(1, ago(0))], now, settings);
+    const on = buildEvaluarRequest(trip, [moto(1, ago(0))], now, { ...settings, porCalle: true });
+    assert.ok(off.ok && on.ok);
+    assert.equal(on.request.tiempos, "osrm");
+    assert.deepEqual({ ...on.request, tiempos: "haversine" }, off.request);
+  });
+});

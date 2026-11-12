@@ -66,8 +66,10 @@ export type DeliveryDraft = DeliveryFields & {
   ubicacionEntrega?: { lat: number; lng: number } | null;
   /** La dirección que se geocodificó; si cambia, se vuelve a ubicar y cotizar. */
   direccionUbicada?: string | null;
-  /** `km` null = el precio lo dio el asesor, sin distancia medida. */
-  cotizacion?: { precio: number; km: number | null } | null;
+  /** `km` null = el precio lo dio el asesor, sin distancia medida. `fuente`:
+   *  de dónde salieron los km (`calle` = OSRM; `linea_recta` = línea recta ×
+   *  1,3). Vacía en los borradores de antes de este dato. */
+  cotizacion?: { precio: number; km: number | null; fuente?: "calle" | "linea_recta" } | null;
   /** El mapa no la ubicó, pero el asesor dijo que es válida y cuánto vale:
    *  no se vuelve a buscar mientras no cambie la dirección. */
   validadaPorAsesor?: boolean;
@@ -76,7 +78,7 @@ export type DeliveryDraft = DeliveryFields & {
 /** Una entrega cerca del borde de una zona de servicio, para que la central
  *  decida si se hace: la zona más cercana, a cuántos metros y lo que vale
  *  por km (lo que se cobra si dice que sí y no lo cambia). */
-export type CoverageQueryItem = { indice: number; zona: string; metros: number; precio: number; km: number };
+export type CoverageQueryItem = { indice: number; zona: string; metros: number; precio: number; km: number; fuente?: "calle" | "linea_recta" };
 
 /** Lo que el bot le preguntó a la central. `motivo` vacío o "direccion": el
  *  mapa no ubicó la dirección (¿es válida y cuánto vale?). "cobertura": la

@@ -34,7 +34,9 @@ export type SnapshotCourier = {
   route: RouteStop[] | null;
 };
 
-export type EngineSettings = { radioKm: number; multipedido: boolean; asumirRegreso: boolean };
+/** `porCalle` (settings.routing_config): los minutos de viaje con los km por
+ *  calle de OSRM, los mismos con que se cotiza. Si no, línea recta × 1,3. */
+export type EngineSettings = { radioKm: number; multipedido: boolean; asumirRegreso: boolean; porCalle?: boolean };
 
 type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
 
@@ -54,7 +56,7 @@ export type EvaluarRequest = {
     disponible_desde_ts: number;
     paradas: Parada[];
   }[];
-  tiempos: "haversine";
+  tiempos: "haversine" | "osrm";
 };
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
@@ -123,7 +125,7 @@ export function buildEvaluarRequest(
           paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id), settings.asumirRegreso),
         };
       }),
-      tiempos: "haversine",
+      tiempos: settings.porCalle ? "osrm" : "haversine",
     },
   };
 }

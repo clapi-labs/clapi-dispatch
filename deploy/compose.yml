@@ -74,6 +74,8 @@ services:
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       # Modo sombra del engine; vacío = no corre.
       ENGINE_URL: http://engine:3003
+      # Km por calle (settings.routing_config.porCalle). Si no responde, línea recta × 1,3.
+      OSRM_URL: http://osrm:5000
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
       # Solo en staging: "1" enciende el simulador (docs/OPERACION.md, «Simulador»).
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
@@ -117,6 +119,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3003
+      OSRM_URL: http://osrm:5000
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
       interval: 10s
@@ -124,6 +127,20 @@ services:
       retries: 6
       start_period: 5s
     mem_limit: 128m
+
+  # Distancias por calle con el mapa de Cali (apps/osrm). Sin puertos: solo lo
+  # alcanzan el bot y el engine. Si se cae, cotizan y asignan en línea recta × 1,3.
+  osrm:
+    image: ${REGISTRY}/dispatch-osrm:${IMAGE_TAG:?}
+    restart: unless-stopped
+    healthcheck:
+      # Una ruta corta dentro de Cali: prueba que el grafo cargó.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/route/v1/driving/-76.5225,3.4372;-76.532,3.4516?overview=false"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    mem_limit: 512m
 
   worker:
     image: ${REGISTRY}/dispatch-worker:${IMAGE_TAG:?}

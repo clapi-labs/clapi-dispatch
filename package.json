@@ -24,6 +24,7 @@
     "db:seed:demo": "npm run db:seed:demo --workspace=@dispatch/shared",
     "user:create": "npm run user:create --workspace=@dispatch/shared --",
     "zonas:importar": "npm run zonas:importar --workspace=@dispatch/shared --",
+    "calles:comparar": "npm run calles:comparar --workspace=@dispatch/shared --",
     "restaurant:create": "npm run restaurant:create --workspace=@dispatch/bot --"
   },
   "devDependencies": {

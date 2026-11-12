@@ -134,6 +134,13 @@
       "when": 1794353194015,
       "tag": "0018_zonas_de_servicio",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794444971846,
+      "tag": "0019_distancia_por_calle",
+      "breakpoints": true
     }
   ]
 }

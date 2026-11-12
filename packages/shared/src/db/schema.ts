@@ -202,6 +202,13 @@ export const trips = pgTable(
      *  tabla de tarifas (zona de recogida × zona de entrega) y se congela al
      *  crear el viaje — cambiar la tarifa mañana no reescribe el arqueo de hoy. */
     deliveryFee: integer("delivery_fee").notNull().default(0),
+    /** Los km con que se cotizó, congelados como el precio: el portal muestra
+     *  estos. Nulos si el precio lo puso la central sin distancia, o en los
+     *  viajes de antes de este dato (ahí se calculan en línea recta × 1,3). */
+    routeKm: real("route_km"),
+    /** `calle` (OSRM) o `linea_recta` (interruptor apagado, o respaldo porque
+     *  OSRM no respondió). */
+    routeSource: text("route_source").$type<"calle" | "linea_recta">(),
     pickupZone: text("pickup_zone"),
     deliveryZone: text("delivery_zone"),
     paymentMethod: text("payment_method").$type<PaymentMethod>(),

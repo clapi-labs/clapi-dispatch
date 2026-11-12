@@ -18,6 +18,7 @@ import {
   type Interpretation,
   type OrderDraft,
   type OrderFieldKey,
+  type RoadSource,
 } from "@dispatch/shared";
 import {
   getBotConfig,
@@ -259,7 +260,7 @@ function summaryOf(quoted: DeliveryDraft[]) {
  *  si pasa del tope de la agencia; `precio` null si la tabla por km está vacía. */
 async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig) {
   const quote = await quoteByDistance(pickup, delivery);
-  return { precio: quote.price, km: quote.km, outOfRange: config.maxKm !== null && quote.km > config.maxKm };
+  return { precio: quote.price, km: quote.km, fuente: quote.source, outOfRange: config.maxKm !== null && quote.km > config.maxKm };
 }
 
 /**
@@ -324,7 +325,7 @@ async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraf
   await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
-type NearEdge = { delivery: DeliveryDraft; zone: string; meters: number; precio: number; km: number };
+type NearEdge = { delivery: DeliveryDraft; zone: string; meters: number; precio: number; km: number; fuente: RoadSource };
 
 /**
  * Entregas fuera de las zonas de servicio pero cerca del borde (docs/
@@ -339,7 +340,7 @@ async function askCoverage(ctx: Context, draft: OrderDraft, near: NearEdge[], no
     entregas: near.map((n) => draft.entregas.indexOf(n.delivery)),
     desde: new Date().toISOString(),
     motivo: "cobertura",
-    cobertura: near.map((n) => ({ indice: draft.entregas.indexOf(n.delivery), zona: n.zone, metros: n.meters, precio: n.precio, km: n.km })),
+    cobertura: near.map((n) => ({ indice: draft.entregas.indexOf(n.delivery), zona: n.zone, metros: n.meters, precio: n.precio, km: n.km, fuente: n.fuente })),
   };
   await updateConversation(ctx.conversation.id, {
     botPaused: true,
@@ -701,10 +702,10 @@ export async function handleRestaurant(ctx: Context) {
       continue;
     }
     if (coverage.kind === "cerca") {
-      nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km });
+      nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km, fuente: quote.fuente });
       continue;
     }
-    d.cotizacion = { precio: quote.precio, km: quote.km };
+    d.cotizacion = { precio: quote.precio, km: quote.km, fuente: quote.fuente };
     newQuote = true;
   }
   const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];

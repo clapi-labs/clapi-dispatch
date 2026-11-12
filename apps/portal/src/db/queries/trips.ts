@@ -12,7 +12,8 @@ export type TripWithAssignment = TripRow & {
   courierPhone: string | null;
   assignedAt: Date | null;
   deliveredAt: Date | null;
-  /** Kilómetros del domicilio; nulo si falta alguna de las dos ubicaciones. */
+  /** Kilómetros del domicilio, los mismos con que se cotizó (por calle con el
+   *  interruptor encendido); nulo si falta alguna de las dos ubicaciones. */
   distanceKm: number | null;
   /** Cuándo WhatsApp avisó que leyó el mensaje. */
   readAt: Date | null;
@@ -108,7 +109,8 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     courierPhone: r.courierPhone,
     assignedAt: r.assignedAt,
     deliveredAt: r.deliveredAt,
-    distanceKm: r.trip.pickupLocation && r.trip.deliveryLocation ? routeKm(r.trip.pickupLocation, r.trip.deliveryLocation) : null,
+    // Los km con que se cotizó; en los viajes de antes de guardarlos, la línea recta × 1,3 de siempre.
+    distanceKm: r.trip.routeKm ?? (r.trip.pickupLocation && r.trip.deliveryLocation ? routeKm(r.trip.pickupLocation, r.trip.deliveryLocation) : null),
     readAt: r.readAt,
     seenAt: r.seenAt,
     seenReminderAt: r.seenReminderAt,

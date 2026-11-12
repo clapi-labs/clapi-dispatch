@@ -148,7 +148,7 @@ function advisorQuery(raw: unknown): AdvisorQueryItem[] | null {
     if (!d?.direccionEntrega) return [];
     const direccion = [d.direccionEntrega, d.detalleDireccion].filter(Boolean).join(" · ");
     const near = draft.consultaAsesor!.motivo === "cobertura" ? draft.consultaAsesor!.cobertura?.find((c) => c.indice === indice) : undefined;
-    const cobertura = near ? { zona: near.zona, metros: near.metros, precio: near.precio } : null;
+    const cobertura = near ? { zona: near.zona, metros: near.metros, precio: near.precio, km: near.km ?? null, porCalle: near.fuente === "calle" } : null;
     return [{ indice, direccion, barrio: d.barrio ?? null, cliente: d.nombreCliente ?? null, cobertura }];
   });
 }
