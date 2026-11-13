@@ -25,6 +25,7 @@ Automatización de domicilios para una agencia de logística B2B: los restaurant
 | [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md) | Arquitectura, entornos y decisiones de infraestructura |
 | [`docs/OPERACION.md`](docs/OPERACION.md) | Servidor: desplegar, secretos, usuarios, simulador y diagnóstico |
 | [`docs/ACCESO-SERVIDOR.md`](docs/ACCESO-SERVIDOR.md) | Pedir acceso SSH al servidor de staging |
+| [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md) | Reglas mínimas de seguridad, qué hacer si se filtra una llave y la rutina mensual |
 
 Comandos y arquitectura del código, en corto: [`CLAUDE.md`](CLAUDE.md).
 
