@@ -28,7 +28,8 @@ aside { background: var(--panel); border-right: 1px solid var(--line); display: 
 .back:hover { filter: brightness(1.1); }
 h1 { font-size: 18px; font-weight: 600; margin: 0; }
 .lead { margin: 0; color: var(--muted); font-size: 13px; }
-.scroll { overflow-y: auto; padding: 14px 16px 16px; display: grid; gap: 16px; align-content: start; }
+.scroll { overflow-y: auto; padding: 14px 16px 16px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.scroll > * { min-width: 0; }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 0 0 6px; display: block; }
 button { font: inherit; font-weight: 500; border-radius: 8px; padding: 7px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; touch-action: manipulation; }
 button:hover { border-color: var(--muted); }
@@ -44,6 +45,9 @@ button.new:hover, button.new[aria-pressed="true"] { background: var(--zone); col
 input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--fg); }
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; min-width: 0; }
+.test-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; }
+.test-row input { grid-column: 1 / -1; min-width: 0; }
+.test-row button { padding: 7px 9px; white-space: nowrap; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .card { display: grid; gap: 8px; border: 1.5px solid var(--zone); border-radius: 10px; padding: 12px; }
 .card p { margin: 0; }
@@ -55,7 +59,7 @@ input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius
 .results li button { width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 8px 10px; display: flex; justify-content: space-between; gap: 8px; }
 .results li button:hover { background: var(--bg); }
 .results small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
-.verdict { display: grid; gap: 4px; border-radius: 10px; padding: 10px 12px; }
+.verdict { display: grid; gap: 4px; border-radius: 10px; padding: 10px 12px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .verdict b { font-size: 15px; }
 .verdict.dentro { background: var(--zone-soft); color: var(--zone); }
 .verdict.cerca { background: var(--near-soft); color: var(--near); }
@@ -66,10 +70,11 @@ input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius
 select { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--fg); }
 .money { display: flex; align-items: center; gap: 6px; }
 .money input { text-align: right; font-family: var(--font-mono); }
-.fare { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin: 4px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 13px; }
+.fare { width: 100%; max-width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 12px; margin: 4px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 13px; }
 .fare dt { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
-.fare dd { margin: 0; text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.fare dd { margin: 0; min-width: 0; text-align: right; font-family: var(--font-mono); white-space: normal; overflow-wrap: anywhere; }
 .fare .total { font-weight: 700; color: var(--fg); }
+#testBox, #resultBox { min-width: 0; max-width: 100%; }
 .zone .tag.adj { color: var(--accent); }
 .zones { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .zone { display: flex; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 8px; padding: 8px; cursor: pointer; }
@@ -150,6 +155,10 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
   .fare dt:first-child { margin-top: 0; }
   .fare dd { text-align: left; white-space: normal; padding-bottom: 2px; }
 }
+@media (max-width: 480px) {
+  /* Al dedo, los botones de probar quedan más altos. */
+  .test-row button { min-height: 44px; }
+}
 @media (prefers-reduced-motion: reduce) { .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; } }
 </style>
 </head>
@@ -213,11 +222,12 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
       <section id="testBox">
         <label class="label" for="testRest">Probar desde el restaurante</label>
         <select id="testRest"><option value="">Sin restaurante: solo la cobertura</option></select>
-        <p class="status" style="margin:4px 0 10px">Con un restaurante sale el precio que cotizaría el bot. Toca «Probar un punto» en el mapa o escribe una dirección (gasta una consulta del mapa de Google). No crea pedidos ni manda mensajes.</p>
+        <p class="status" style="margin:4px 0 10px">Con un restaurante sale el precio que cotizaría el bot. Escribe una dirección o toca «Probar punto» para marcar la entrega en el mapa (la dirección gasta una consulta del mapa de Google). No crea pedidos ni manda mensajes.</p>
         <label class="label" for="addr">Probar una dirección</label>
-        <form class="row" id="testForm">
-          <input id="addr" type="text" placeholder="Como la mandaría el restaurante" autocomplete="off">
+        <form class="test-row" id="testForm">
+          <input id="addr" type="text" placeholder="Dirección de entrega" autocomplete="off">
           <button type="submit" id="testAddrBtn">Probar</button>
+          <button type="button" id="testBtn" aria-pressed="false">Probar punto</button>
         </form>
         <div id="resultBox" style="margin-top:8px" hidden></div>
       </section>
@@ -236,7 +246,6 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
   <div class="mapwrap">
     <div id="map" role="application" aria-label="Mapa de zonas de servicio de Cali y Jamundí"></div>
     <div class="modebar">
-      <button id="testBtn" type="button" aria-pressed="false">Probar un punto</button>
       <button id="finishBtn" class="primary" type="button" hidden>Terminar borde</button>
       <button id="undoBtn" type="button" hidden>Deshacer</button>
       <button id="removeBtn" type="button" hidden>Quitar esquina</button>
