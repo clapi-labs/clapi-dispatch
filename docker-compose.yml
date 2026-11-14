@@ -133,6 +133,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-solo-para-local-no-usar-en-prod}
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
       BOT_URL: http://bot:3001
+      # Km por calle para la vista previa de Tarifas y «Probar un punto».
+      OSRM_URL: http://osrm:5000
     depends_on:
       migrate: { condition: service_completed_successfully }
       bot: { condition: service_started }
