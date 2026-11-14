@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { DeliveryPlace, RouteStop } from "../domain/phase";
 import { db } from "./client";
@@ -6,13 +6,10 @@ import { getEngineConfig } from "./engine-config";
 import { assignments, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
 import { assignableByHand, dispatchableCourier } from "./simulator-flag";
 
-/** Para una consulta con `trips` y `assignments`: lo que el motorizado todavía
- *  tiene encima, incluido un viaje entregado del que está volviendo. */
-export const openTripCondition = () =>
-  or(
-    inArray(trips.status, ["assigned", "en_route"]),
-    and(eq(trips.status, "delivered"), isNotNull(assignments.returnStartedAt), isNull(assignments.finishedAt)),
-  );
+/** Para una consulta con `trips`: lo que el motorizado todavía tiene encima.
+ *  El servicio termina al entregar: lo que deba volver a llevar al restaurante
+ *  es un pendiente aparte (`return_debts`), que no lo deja ocupado. */
+export const openTripCondition = () => inArray(trips.status, ["assigned", "en_route"]);
 
 /**
  * Asignación por cola (round-robin): mientras el engine no esté al frente
@@ -232,16 +229,13 @@ async function releaseCourier(courierId: number) {
 }
 
 /**
- * La entrega: el viaje pasa a entregado con la hora real y el lugar. Si debe
- * volver a recogida (`returning`), sigue ocupado hasta `finishTrip`; si no,
- * queda libre y toma el siguiente pendiente. `null` si el viaje ya no estaba
- * en ruta (un doble toque, o el portal y el motorizado marcándolo a la vez):
- * no es un error, ya se hizo.
+ * La entrega: el viaje pasa a entregado con la hora real y el lugar, y el
+ * servicio termina ahí. Si no lleva nada más queda libre y toma el siguiente
+ * pendiente; un pendiente de regreso (el datáfono, la plata) no lo deja
+ * ocupado. `null` si el viaje ya no estaba en ruta (un doble toque, o el portal
+ * y el motorizado marcándolo a la vez): no es un error, ya se hizo.
  */
-export async function deliverTrip(
-  tripId: number,
-  { place, returning }: { place: DeliveryPlace; returning: boolean },
-): Promise<{ newlyAssigned: number[] } | null> {
+export async function deliverTrip(tripId: number, { place }: { place: DeliveryPlace }): Promise<{ newlyAssigned: number[] } | null> {
   const now = new Date();
 
   const [trip] = await db
@@ -253,25 +247,10 @@ export async function deliverTrip(
 
   const [assignment] = await db
     .update(assignments)
-    .set({ deliveredAt: now, deliveryPlace: place, ...(returning ? { returnStartedAt: now } : { finishedAt: now }) })
+    .set({ deliveredAt: now, deliveryPlace: place, finishedAt: now })
     .where(eq(assignments.tripId, tripId))
     .returning({ courierId: assignments.courierId });
 
-  if (returning) return { newlyAssigned: [] };
   if (assignment?.courierId) await releaseCourier(assignment.courierId);
-  return { newlyAssigned: await assignPendingTrips() };
-}
-
-/** «Ya volví»: termina el servicio de quien estaba de regreso. `null` si no
- *  estaba volviendo o ya había terminado. */
-export async function finishTrip(tripId: number): Promise<{ newlyAssigned: number[] } | null> {
-  const [assignment] = await db
-    .update(assignments)
-    .set({ finishedAt: new Date() })
-    .where(and(eq(assignments.tripId, tripId), isNotNull(assignments.returnStartedAt), isNull(assignments.finishedAt)))
-    .returning({ courierId: assignments.courierId });
-  if (!assignment) return null;
-
-  if (assignment.courierId) await releaseCourier(assignment.courierId);
   return { newlyAssigned: await assignPendingTrips() };
 }

@@ -26,8 +26,10 @@ export type SimulatorConfig = {
   speed: number;
   /** Cuántas motos simuladas se crean al reiniciar. */
   motos: number;
-  /** De las motos que se manejan solas, qué parte deja en portería, vuelve a
-   *  recogida o reporta un cliente que no contesta (0 a 100). */
+  /** De las motos que se manejan solas, qué parte deja en portería, deja un
+   *  pendiente de regreso (`returnPercent`: declara el datáfono o la plata y lo
+   *  cierra sola unos minutos después de entregar) o reporta un cliente que no
+   *  contesta (0 a 100). */
   gatePercent: number;
   returnPercent: number;
   noAnswerPercent: number;

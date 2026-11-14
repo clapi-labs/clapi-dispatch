@@ -1,12 +1,12 @@
 "use client";
 
 import { isBeforePickup, PHASE_LABEL, phaseSince, tripPhase, type TripPhase } from "@dispatch/shared/domain/phase";
-import { ArrowRightLeft, Bike, Check, CheckCircle2, ChevronDown, CornerDownLeft } from "lucide-react";
+import { ArrowRightLeft, Bike, Check, CheckCircle2, ChevronDown } from "lucide-react";
 import { motion } from "motion/react";
 import { memo, useState, type MouseEvent } from "react";
 
 import { AssignDialog } from "@/components/AssignDialog";
-import { ConfirmDialog, Modal } from "@/components/Modal";
+import { Modal } from "@/components/Modal";
 import { PhoneLink } from "@/components/PhoneLink";
 import type { DeliveryOutcome } from "@/components/TripsProvider";
 import { formatCOP, initials } from "@/lib/format";
@@ -60,7 +60,6 @@ const PHASE_TONE: Record<TripPhase, string> = {
   at_delivery: "bg-clapi-soft text-clapi-ink",
   waiting_customer: "bg-warn-soft text-warn",
   undelivered: "bg-warn-soft text-warn",
-  returning: "bg-gold-soft text-gold-ink",
   delivered: "bg-ok-soft text-ok",
   // Resalta: es lo que el restaurante tiene que avisarle a su cliente.
   gate: "bg-gold-soft text-gold-ink",
@@ -83,8 +82,6 @@ function PhaseBadge({ trip, alert }: { trip: Trip; alert: boolean }) {
   return (
     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${alert ? "bg-danger text-white" : PHASE_TONE[phase]}`}>
       {PHASE_LABEL[phase]}
-      {/* Mientras vuelve no se pierde dónde quedó el pedido. */}
-      {phase === "returning" && trip.deliveryPlace === "gate" ? " · dejó en portería" : ""}
       {phase === "carrying" && trip.leftDeliveryAt ? " · se fue sin marcar la entrega" : ""}
       {min !== null ? ` · ${min} min` : ""}
       {reminded}
@@ -93,14 +90,13 @@ function PhaseBadge({ trip, alert }: { trip: Trip; alert: boolean }) {
 }
 
 const OUTCOMES: { label: string; outcome: DeliveryOutcome }[] = [
-  { label: "Entregado, terminó", outcome: { place: "customer", returning: false } },
-  { label: "Entregado, vuelve a recogida", outcome: { place: "customer", returning: true } },
-  { label: "En portería, terminó", outcome: { place: "gate", returning: false } },
-  { label: "En portería, vuelve a recogida", outcome: { place: "gate", returning: true } },
+  { label: "Entregado", outcome: { place: "customer" } },
+  { label: "En portería", outcome: { place: "gate" } },
 ];
 
 /** Las mismas opciones que tiene el motorizado en WhatsApp, para cuando no pudo
- *  marcarlo él. */
+ *  marcarlo él. El servicio termina al entregar: si tiene que volver por el
+ *  datáfono o la plata, eso es un pendiente aparte (Pendientes). */
 function DeliverDialog({ code, onChoose, onClose }: { code: string; onChoose: (outcome: DeliveryOutcome) => void; onClose: () => void }) {
   return (
     <Modal label={`Marcar entrega de ${code}`} onClose={onClose}>
@@ -137,14 +133,12 @@ export const TripCard = memo(function TripCard({
   trip,
   focused = false,
   onDeliver,
-  onFinish,
   onAssign,
 }: {
   trip: Trip;
   /** Se llegó a él desde una alerta del celular: se marca un momento. */
   focused?: boolean;
   onDeliver: (id: number, outcome: DeliveryOutcome) => void;
-  onFinish: (id: number) => void;
   onAssign: (id: number, courierId: number | null) => Promise<boolean>;
 }) {
   // Si el engine lo está aguantando a propósito, cuenta desde la hora de despachar.
@@ -153,9 +147,7 @@ export const TripCard = memo(function TripCard({
   const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
   const [open, setOpen] = useState(false);
   const [confirmingDeliver, setConfirmingDeliver] = useState(false);
-  const [confirmingBack, setConfirmingBack] = useState(false);
   const [assigning, setAssigning] = useState(false);
-  const returning = tripPhase(trip) === "returning";
   const phaseAlert = useAfter(trip.alertAt ? Date.parse(trip.alertAt) : null);
   const tag = [trip.distanceKm != null && `${Math.max(1, Math.round(trip.distanceKm))} km`, trip.deliveryFee > 0 && formatCOP(trip.deliveryFee)].filter(Boolean).join(" · ");
 
@@ -286,32 +278,11 @@ export const TripCard = memo(function TripCard({
             Entregado
           </button>
         )}
-        {returning && (
-          <button
-            type="button"
-            onClick={() => setConfirmingBack(true)}
-            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
-          >
-            <CornerDownLeft size={14} />
-            Ya volvió
-          </button>
-        )}
       </footer>
 
       {confirmingDeliver && <DeliverDialog code={trip.code} onChoose={(outcome) => onDeliver(trip.id, outcome)} onClose={() => setConfirmingDeliver(false)} />}
 
       {assigning && <AssignDialog trip={trip} onAssign={(courierId) => onAssign(trip.id, courierId)} onClose={() => setAssigning(false)} />}
-
-      {confirmingBack && (
-        <ConfirmDialog
-          title={`¿${trip.courierName ?? "El domiciliario"} ya volvió?`}
-          points={["Termina el servicio y queda libre si no lleva otro."]}
-          confirmLabel="Sí, ya volvió"
-          tone="primary"
-          onConfirm={() => onFinish(trip.id)}
-          onClose={() => setConfirmingBack(false)}
-        />
-      )}
     </motion.article>
   );
 });

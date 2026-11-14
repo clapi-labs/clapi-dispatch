@@ -98,7 +98,7 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
   for (const courierId of new Set(open.map((r) => r.courierId!))) {
     const mine = open
       .filter((r) => r.courierId === courierId)
-      .map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r, status: r.trip.status }), false) }));
+      .map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r, status: r.trip.status })) }));
     next.set(courierId, orderStops(plans.get(courierId), mine)[0]?.pedido);
   }
 

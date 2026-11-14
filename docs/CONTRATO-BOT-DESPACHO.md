@@ -90,8 +90,8 @@ El engine no guarda nada: todo lo que necesita lo lee el despacho de la base. El
 | Hora en que la comida está lista | `trips.ready_at` | Al crear el viaje |
 | Recogido | `assignments.picked_up_at` | Cuando el motorizado toca «Recogí» |
 | Entregado | `assignments.delivered_at` y `delivery_place` | Cuando el motorizado marca la entrega |
-| De regreso | `assignments.return_started_at` | Cuando marca la entrega con «vuelvo» |
-| Terminado | `assignments.finished_at` | Al marcar la entrega con «terminé» o al tocar «Ya volví» |
+| Terminado | `assignments.finished_at` | Al marcar la entrega (el servicio termina ahí) o al devolver un pedido no entregado |
+| Pendientes de regreso | `return_debts` | Cuando declara que lleva el datáfono o quedó debiendo. No lo dejan ocupado ni cambian su ruta: el despacho no los lee todavía (#60) |
 | Conexión del motorizado | `couriers.status` y la hora | Cuando escribe para conectarse |
 
 El despacho se encarga del resto: la `cuota`, el `plan` de cada asignación y `disponible_desde_ts`.

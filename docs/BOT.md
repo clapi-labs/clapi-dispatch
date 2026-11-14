@@ -115,13 +115,13 @@ Cada mensaje que el bot envía cuesta (mensajes de servicio en Colombia: unos US
 | Restaurante | Servicio motorizado confirmado: quién va (solo el nombre; nunca el teléfono del domiciliario: la agencia es la intermediaria) | No |
 | Restaurante | Quién va (solo si la moto se asigna después de confirmar) | Sí: `notifyRestaurantOnAssign` (encendido). Con el algoritmo es lo normal, porque espera a que la comida casi esté |
 | Restaurante | Entregado, con la hora real | Sí: `settings.bot_config.notifyRestaurantOnDelivery` (encendido). El de portería sale siempre |
-| Motorizado | Mensaje 1: a dónde ir a recoger, con «Voy en camino» y «Recogí» | No |
-| Motorizado | Mensaje 2: a dónde entregar, con la lista de entrega | No |
-| Motorizado | «Ya volví», solo si debe volver (con GPS, el regreso se cierra solo, pero el botón sigue de respaldo) | No |
+| Motorizado | Mensaje 1: a dónde ir a recoger, con «Recogí», «Llevo datáfono» y «Quedé debiendo» | No |
+| Motorizado | Mensaje 2: a dónde entregar, con «Entregado», «En portería» y «Cliente no contesta» | No |
+| Motorizado | Cómo cerrar un pendiente de regreso («Devuelve el datáfono en…», «Quedó anotado que le debes a…»), solo si declaró uno; va junto con el «terminado» | No |
 | Motorizado | Recordatorios si no sale o no recoge a tiempo (solo si hace falta) | Se ajustan en `settings.bot_config` |
 | Motorizado | «A-08 terminado», salvo que ya le haya llegado otro pedido | Sí: `confirmDeliveryToCourier` (encendido) |
 
-**Son seis mensajes por servicio** en el caso normal (cinco si con la entrega ya le llega otro pedido), con la configuración por defecto; cada recordatorio, regreso o dato que falte suma uno. Lo que no se manda nunca: aceptar o rechazar el servicio, recordatorios de efectivo, reenviar la ficha cada vez que el motorizado escribe. El «leído» y el «escribiendo…» no se cobran.
+**Son seis mensajes por servicio** en el caso normal (cinco si con la entrega ya le llega otro pedido), con la configuración por defecto; cada recordatorio, pendiente de regreso o dato que falte suma uno. Lo que no se manda nunca: aceptar o rechazar el servicio, recordatorios de efectivo, reenviar la ficha cada vez que el motorizado escribe. El «leído» y el «escribiendo…» no se cobran.
 
 Medirlo: `npm run bot:mensajes` (últimos 30 días) o `npm run bot:mensajes -- 2026-10-01`. Cuenta los del bot y los de la central. Da los mensajes a restaurantes y a motorizados, el promedio por servicio y el costo mensual estimado.
 
@@ -132,7 +132,8 @@ Lo normal es que no escriban. Cuando escriben, el bot clasifica el mensaje (`app
 | Mensaje | Qué pasa |
 |---|---|
 | «Ok», «voy», «ya lo vi», «listo», 👍 con un pedido sin confirmar | Cuenta como «Voy en camino» (el más viejo sin confirmar) |
-| «Ya recogí», «entregado», «lo dejé en portería», «ya volví» | Lo mismo que el botón, si solo hay un pedido al que le aplique. Lo demás sigue a la clasificación |
+| «Ya recogí», «entregado», «lo dejé en portería» | Lo mismo que el botón, si solo hay un pedido al que le aplique. Lo demás sigue a la clasificación |
+| «Recogí, llevo datáfono», «quedé debiendo en Donde Lucho», «ya devolví el datáfono», «ya le pagué a Donde Lucho» | Declara o cierra un pendiente de regreso, en cualquier momento, también después de entregar. Si no se sabe de qué restaurante, se le pregunta. «No llevo datáfono» o un mensaje largo no cuentan y siguen a la clasificación |
 | «Ok», «voy», «ya recogí», «listo» sin nada por confirmar | Nada: no se responde |
 | «Mándame la dirección», «la ficha» | Se le reenvía la ficha |
 | Novedad: «me accidenté», «no puedo ir», «el cliente no baja», «cancelo» | Queda **en emergencia** (rojo en Flota: no se le asigna nada más, conserva lo que lleva), su chat pasa a la central con el motivo, y se le responde «Recibido 🙏 La central ya te contacta». Ante la duda, se trata como novedad |
@@ -140,7 +141,9 @@ Lo normal es que no escriban. Cuando escriben, el bot clasifica el mensaje (`app
 | Pausa general | Botón «Pausar operación» del portal (`settings.business`), por ejemplo por lluvia. El bot no le responde a nadie y no entran pedidos nuevos; lo que está en curso sigue (el despacho asigna los pendientes, salen los avisos y los botones del motorizado funcionan). En Conversaciones todos los chats se escriben directo, sin intervenir, y al reanudar vuelven al bot |
 | Escribe estando desconectado y sin viajes | Queda conectado |
 
-**Sin base:** si el motorizado no tiene cambio y le toca volver al restaurante, marca la entrega con «vuelvo»: el restaurante recibe la hora real y él sigue ocupado hasta tocar «Ya volví». Solo él sabe si tiene que volver, porque depende de su base o del datáfono.
+**Pendientes de regreso:** si se lleva el datáfono del restaurante o le queda debiendo la comida, lo declara él al recoger (o por texto). El servicio termina igual al entregar, el restaurante recibe la hora real y él sigue recibiendo pedidos; el pendiente queda aparte hasta que lo cierre él o la central. La agencia no lleva bases ni montos. Detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Pendientes de regreso».
+
+**Paga con tarjeta:** «datáfono», «lleve datáfono», «paga con tarjeta» o «tarjeta» sin decir que ya está pagado se leen como pago con datáfono (`metodoPago: "datafono"`, corregido en código con `fixPaymentMethod` aunque el modelo lo lea como transferencia), y el mensaje 1 le dice al motorizado «Pide el datáfono en el restaurante». Al restaurante no se le pregunta el método de pago.
 
 Qué hace la central con una novedad: [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md).
 

@@ -259,23 +259,13 @@ async function handle(method: string, path: string, body: string | null): Promis
       t.status = "delivered";
       t.deliveredAt = t.updatedAt = now;
       t.deliveryPlace = data.place === "gate" ? "gate" : "customer";
-      t.returnStartedAt = data.returning ? now : null;
-      t.finishedAt = data.returning ? null : now;
-      const c = couriers.find((x) => x.id === t.courierId);
-      if (c && !data.returning) c.status = "available";
-    }
-    return json({ ok: true });
-  }
-  if (path.match(/^\/api\/trips\/\d+\/assign$/)) return json({ ok: true });
-  if ((m = path.match(/^\/api\/trips\/(\d+)\/finish$/))) {
-    const t = trips.find((x) => x.id === Number(m![1]));
-    if (t && t.returnStartedAt && !t.finishedAt) {
-      t.finishedAt = t.updatedAt = new Date().toISOString();
+      t.finishedAt = now;
       const c = couriers.find((x) => x.id === t.courierId);
       if (c) c.status = "available";
     }
     return json({ ok: true });
   }
+  if (path.match(/^\/api\/trips\/\d+\/assign$/)) return json({ ok: true });
 
   if (path === "/api/conversations/needs-help") return json({ count: summaries().filter(needsHelp).length });
   if (path === "/api/conversations") return json(summaries());

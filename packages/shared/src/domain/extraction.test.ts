@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { emptyDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, type Interpretation, type OrderDraft } from "./extraction";
+import { emptyDelivery, fixPaymentMethod, mentionsCardOnDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, type Interpretation, type OrderDraft } from "./extraction";
 
 type DeliveryFields = Interpretation["entregas"][number];
 
@@ -168,5 +168,36 @@ describe("removeDeliveries", () => {
     removeDeliveries(base, [2]);
     assert.equal(base.entregas.length, 2);
     assert.equal(base.entregas[0].nombreCliente, null);
+  });
+});
+
+describe("datáfono y tarjeta", () => {
+  it("«datáfono», «lleve datáfono» y «paga con tarjeta» son pago con datáfono", () => {
+    assert.equal(mentionsCardOnDelivery("lleve datáfono"), true);
+    assert.equal(mentionsCardOnDelivery("Llevar datafono por favor"), true);
+    assert.equal(mentionsCardOnDelivery("el cliente paga con tarjeta"), true);
+    assert.equal(mentionsCardOnDelivery("crédito o débito"), true);
+  });
+
+  it("lo que ya está pagado con tarjeta no lo es", () => {
+    assert.equal(mentionsCardOnDelivery("ya está pagado con tarjeta"), false);
+    assert.equal(mentionsCardOnDelivery("pagó con tarjeta por la página"), false);
+    assert.equal(mentionsCardOnDelivery("pago en efectivo, billete de 50"), false);
+  });
+
+  it("una entrega leída como transferencia pasa a datáfono si el mensaje lo dice", () => {
+    const [e] = fixPaymentMethod([fields({ metodoPago: "transferencia" })], "paga con tarjeta, lleve datáfono");
+    assert.equal(e.metodoPago, "datafono");
+  });
+
+  it("una sola entrega sin método también; con varias, la que no dijo nada se queda sin método", () => {
+    assert.equal(fixPaymentMethod([fields({ metodoPago: null })], "lleve datáfono")[0].metodoPago, "datafono");
+    const two = fixPaymentMethod([fields({ metodoPago: null }), fields({ metodoPago: "efectivo" })], "lleve datáfono");
+    assert.deepEqual(two.map((e) => e.metodoPago), [null, "efectivo"]);
+  });
+
+  it("sin mencionarlo no se toca nada", () => {
+    const [e] = fixPaymentMethod([fields({ metodoPago: "transferencia" })], "ya está pagado por Nequi");
+    assert.equal(e.metodoPago, "transferencia");
   });
 });

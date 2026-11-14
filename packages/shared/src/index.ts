@@ -3,6 +3,7 @@ export * from "./domain/extraction";
 export * from "./domain/gps";
 export * from "./domain/coordinates";
 export * from "./domain/service-zones";
+export * from "./domain/return-debts";
 export * from "./domain/road-distance";
 export * from "./domain/phase";
 export * from "./domain/restaurant-identity";

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -15,6 +16,7 @@ import {
 import type { Interpretation, OrderDraft, PaymentMethod } from "../domain/extraction";
 import type { OfferOutcome } from "../domain/dispatch/types";
 import type { DeliveryPlace, RouteStop } from "../domain/phase";
+import type { ReturnDebtReason } from "../domain/return-debts";
 
 /**
  * Esquema de CLAPI Dispatch.
@@ -212,9 +214,8 @@ export const trips = pgTable(
     pickupZone: text("pickup_zone"),
     deliveryZone: text("delivery_zone"),
     paymentMethod: text("payment_method").$type<PaymentMethod>(),
-    /** Sin uso: no se puede deducir el regreso del método de pago, porque
-     *  depende de la base o del datáfono. Lo dice el domiciliario al entregar
-     *  (`assignments.return_started_at`). */
+    /** Sin uso: no se puede deducir el regreso del método de pago. Si debe
+     *  volver lo declara el domiciliario al recoger (`return_debts`). */
     requiresCashReturn: boolean("requires_cash_return").notNull().default(false),
     /** Lo que el motorizado debe saber y no es un campo: "billete de 100
      *  mil", "torre A apto 705", "2 hamburguesas". */
@@ -368,7 +369,8 @@ export const assignments = pgTable(
     /** La hora real de la entrega, aunque después tenga que volver. */
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     deliveryPlace: text("delivery_place").$type<DeliveryPlace>(),
-    /** Entregó y debe volver a recogida: sigue ocupado hasta `finishedAt`. */
+    /** Sin uso desde los pendientes de regreso (`return_debts`): el servicio
+     *  termina al entregar. Se conserva para los viajes de antes. */
     returnStartedAt: timestamp("return_started_at", { withTimezone: true }),
     /** Cuándo terminó el servicio y quedó libre. */
     finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -621,3 +623,47 @@ export const pushAlertState = pgTable(
   },
   (t) => [uniqueIndex("push_alert_state_pk").on(t.kind, t.ref)],
 );
+
+// ---------------------------------------------------------------------------
+// Pendientes de regreso (docs/FLUJO-DOMICILIARIO.md, «Pendientes de regreso»)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que un domiciliario le debe a un restaurante después de entregar: el
+ * datáfono o la plata de la comida. Vive aparte del pedido: el pedido termina
+ * al entregarse y esto sigue abierto hasta que se cierre. La agencia no maneja
+ * la plata: no hay montos, solo quién, a quién, por qué y desde cuándo.
+ */
+export const returnDebts = pgTable(
+  "return_debts",
+  {
+    id: serial("id").primaryKey(),
+    courierId: integer("courier_id")
+      .notNull()
+      .references(() => couriers.id, { onDelete: "cascade" }),
+    /** El restaurante, si está registrado. */
+    restaurantId: integer("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
+    /** Como se ve en el pedido; también el de un restaurante sin registrar. */
+    restaurantName: text("restaurant_name").notNull(),
+    reason: text("reason").$type<ReturnDebtReason>().notNull(),
+    /** El pedido con que se declaró. Nulo si la central lo registró sin pedido. */
+    tripId: integer("trip_id").references(() => trips.id, { onDelete: "set null" }),
+    /** `courier` (botón o texto) o `central` (a mano desde el portal). */
+    declaredBy: text("declared_by").$type<"courier" | "central">().notNull(),
+    declaredByUserId: integer("declared_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Cuándo se le pidió cerrarlo: al entregar, o con «Mandar ya». */
+    reminderAt: timestamp("reminder_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by").$type<"courier" | "central">(),
+    resolvedByUserId: integer("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    // Un mismo pedido no tiene dos abiertos del mismo motivo (doble toque).
+    // Solo entre los abiertos: uno cerrado (pagó, o lo cerró la central) no
+    // impide volver a declararlo.
+    uniqueIndex("return_debts_trip_reason_idx").on(t.tripId, t.reason).where(sql`${t.resolvedAt} is null`),
+    index("return_debts_open_idx").on(t.courierId, t.resolvedAt),
+  ],
+);
+

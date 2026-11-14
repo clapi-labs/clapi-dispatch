@@ -20,16 +20,12 @@ export type EngineConfig = {
   radioKm: number;
   /** Si una moto ocupada puede recibir otro pedido. */
   multipedido: boolean;
-  /** Contar que toda moto puede tener que volver a recogida después de
-   *  entregar: solo se sabe al entregar, y es el peor caso para su ruta. */
-  asumirRegreso: boolean;
 };
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   mode: "shadow",
   radioKm: 4,
   multipedido: true,
-  asumirRegreso: true,
 };
 
 /** La configuración guardada, con los valores por defecto en lo que falte. */
@@ -41,6 +37,5 @@ export async function getEngineConfig(): Promise<EngineConfig> {
     mode: saved.mode === "queue" || saved.mode === "shadow" || saved.mode === "auto" ? saved.mode : DEFAULT_ENGINE_CONFIG.mode,
     radioKm: positive(saved.radioKm, DEFAULT_ENGINE_CONFIG.radioKm),
     multipedido: typeof saved.multipedido === "boolean" ? saved.multipedido : DEFAULT_ENGINE_CONFIG.multipedido,
-    asumirRegreso: typeof saved.asumirRegreso === "boolean" ? saved.asumirRegreso : DEFAULT_ENGINE_CONFIG.asumirRegreso,
   };
 }

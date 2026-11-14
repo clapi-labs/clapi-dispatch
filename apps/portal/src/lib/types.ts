@@ -1,5 +1,5 @@
 export type TripStatus = "pending" | "assigned" | "en_route" | "delivered" | "cancelled";
-export type PaymentMethod = "efectivo" | "transferencia";
+export type PaymentMethod = "efectivo" | "transferencia" | "datafono";
 export type CourierStatus = "available" | "busy" | "paused" | "offline";
 
 export type Trip = {
@@ -80,6 +80,33 @@ export type Courier = {
   /** Con el simulador: moto simulada, número de prueba o moto real con GPS, y
    *  con quién va ahora. */
   simulator?: { role: "simulated" | "test" | "real"; partner: string | null } | null;
+  /** Pendientes de regreso abiertos, por motivo (Pendientes). */
+  returnDebts?: { datafono: number; plata: number } | null;
+};
+
+/** Un pendiente de regreso, como lo manda `/api/pendientes`. */
+export type ReturnDebt = {
+  id: number;
+  courierId: number;
+  courierName: string;
+  restaurantId: number | null;
+  restaurantName: string;
+  reason: "datafono" | "plata";
+  tripId: number | null;
+  tripCode: string | null;
+  createdAt: string;
+  deliveredAt: string | null;
+  declaredBy: "courier" | "central";
+  reminderAt: string | null;
+  resolvedAt: string | null;
+  resolvedBy: "courier" | "central" | null;
+  resolvedByName: string | null;
+};
+
+export type ReturnDebtsData = {
+  open: ReturnDebt[];
+  resolved: ReturnDebt[];
+  datafonoAlertMinutes: number;
 };
 
 export type CourierProfile = {

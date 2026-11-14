@@ -3,6 +3,7 @@ import { assignPendingTrips, purgeOldPositions, releaseIdleControls, runPushAler
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
 import { recordWorkerTick } from "@/db/queries/worker-heartbeat";
+import { closeSimulatedDebts } from "@/simulator/plan";
 import { runEngine } from "@/dispatch/engine";
 
 import { isInternal } from "../auth";
@@ -19,7 +20,7 @@ let lastPurge = 0;
  * que quedaron esperando, avisa por WhatsApp, le recuerda al motorizado lo que
  * le falta marcar y corre el engine, que asigna o solo calcula según el modo.
  * Al final manda al celular de la central las alertas del portal que acaban
- * de pasar (chat que pide ayuda, moto asignada), aunque nadie tenga el portal
+ * de pasar (chat que pide ayuda, moto asignada, datáfono sin devolver), aunque nadie tenga el portal
  * abierto.
  *
  * Es seguro llamarlo seguido y en paralelo: cada viaje se reclama con un
@@ -67,6 +68,12 @@ export async function POST(request: Request) {
       await releaseIdleControls();
     } catch (error) {
       console.error("[tick] no se pudieron soltar las motos simuladas:", error);
+    }
+    // La moto simulada que se maneja sola cierra su pendiente de regreso.
+    try {
+      await closeSimulatedDebts();
+    } catch (error) {
+      console.error("[tick] no se pudieron cerrar los pendientes simulados:", error);
     }
   }
 

@@ -13,7 +13,9 @@
 
 import { normalizeName } from "./restaurant-identity";
 
-export type PaymentMethod = "efectivo" | "transferencia";
+/** `datafono`: el cliente paga con tarjeta al recibir, y el domiciliario
+ *  lleva el datáfono del restaurante. */
+export type PaymentMethod = "efectivo" | "transferencia" | "datafono";
 
 /** Lo que el modelo lee de cada entrega. Las claves en español son las que
  *  devuelve el modelo y las que muestra el portal. */
@@ -262,6 +264,33 @@ export function fullAddress(delivery: Pick<DeliveryDraft, "direccionEntrega" | "
   return [street, detail].filter(Boolean).join(" · ");
 }
 
+/** «Datáfono», «lleve datáfono», «paga con tarjeta», «tarjeta»: el cliente
+ *  paga con tarjeta al recibir. */
+const CARD_ON_DELIVERY = /(?<![\p{L}\p{N}])(?:dat[aá]fono|tarjeta|cr[eé]dito\s+o\s+d[eé]bito)(?![\p{L}\p{N}])/iu;
+/** Lo que dice que ya está pagado, aunque mencione la tarjeta («pagó con
+ *  tarjeta por la página»). */
+const ALREADY_PAID =
+  /(?<![\p{L}\p{N}])(?:ya\s+(?:est[aá]\s+)?pagad[oa]|pag[oó]\s+(?:con\s+tarjeta\s+)?(?:por|en)\s+(?:la\s+)?(?:p[aá]gina|app|web|link|rappi|nequi|daviplata)|ya\s+pag[oó]|pagad[oa]\s+con\s+tarjeta)(?![\p{L}\p{N}])/iu;
+
+/** ¿El mensaje dice que el cliente paga con datáfono? */
+export function mentionsCardOnDelivery(text: string): boolean {
+  return CARD_ON_DELIVERY.test(text) && !ALREADY_PAID.test(text);
+}
+
+/**
+ * Corrige el método de pago que leyó el modelo con lo que dice el mensaje:
+ * «tarjeta» o «datáfono» se leían como «ya pagado» y al domiciliario le
+ * llegaba «no cobres». Si el mensaje habla del datáfono, una entrega marcada
+ * como transferencia pasa a datáfono, y si el mensaje trae una sola entrega
+ * sin método, también. Lo que el restaurante no dijo no se llena.
+ */
+export function fixPaymentMethod<D extends { metodoPago: PaymentMethod | null }>(entregas: D[], messageText: string): D[] {
+  if (!mentionsCardOnDelivery(messageText)) return entregas;
+  return entregas.map((e) =>
+    e.metodoPago === "transferencia" || (e.metodoPago === null && entregas.length === 1) ? { ...e, metodoPago: "datafono" as const } : e,
+  );
+}
+
 /** "efectivo requiere retorno a base" (prompt maestro §A): la plata que
  *  cobra el motorizado no es suya, hay que liquidarla — a diferencia de una
  *  transferencia, que ya le llegó directo al restaurante o a la agencia. */
@@ -416,7 +445,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
-      "metodoPago": "efectivo" | "transferencia" | null,
+      "metodoPago": "efectivo" | "transferencia" | "datafono" | null,
       "listoEnMinutos": number | null,    // en cuántos minutos está lista la comida; 0 si ya está lista
       "notas": string | null,             // solo lo NUEVO de este mensaje que el motorizado deba saber
       "detalleDireccion": string | null,  // torre, bloque, apartamento, casa, piso, oficina o local: "Torre 3 apto 502"
@@ -447,7 +476,9 @@ Reglas:
   Ejemplo: "¿Cuánto a la Cra 98 # 45-30 Valle del Lili?" → "entregas": [{"direccionEntrega": "Cra 98 # 45-30, Valle del Lili", el resto null}], "intencion": "cotizar", "consulta": null.
 - Una línea "(Ubicación de WhatsApp: X)" es un pin que el restaurante mandó en ese punto del mensaje: es la dirección de la entrega de la que habla junto a él ("a esta", "para esta dirección", "aquí"). Usa X tal cual como su "direccionEntrega"; si esa entrega ya tenía una dirección escrita, el pin es su ubicación: deja la escrita.
 - Un lugar conocido sirve como dirección de entrega: "Clínica Farallones", "Centro Comercial Aquarela, local 12", "Unicentro". Guárdalo tal cual.
-- "Ya está pagado", "pagó por Nequi/transferencia", "pago Bancolombia", "Daviplata", "tarjeta", "crédito o débito", "pagado a través de Rappi" o "total a cobrar $0" = "transferencia" (y "valorACobrar" null: no se le cobra nada al cliente).
+- "Ya está pagado", "pagó por Nequi/transferencia", "pago Bancolombia", "Daviplata", "pagado a través de Rappi", "pagó con tarjeta por la página" o "total a cobrar $0" = "transferencia" (y "valorACobrar" null: no se le cobra nada al cliente).
+- "Datáfono", "lleve datáfono", "llevar datáfono", "paga con tarjeta", "tarjeta", "crédito o débito" (sin decir que ya está pagado) = "datafono": el cliente paga con tarjeta al recibir y el domiciliario lleva el datáfono del restaurante. Si dice el valor, va en "valorACobrar".
+- El método de pago solo se llena si el restaurante lo dice: nunca lo supongas ni lo preguntes.
 - Fotos de facturas o comandas: lee los datos del domicilio (nombre, teléfono, dirección, barrio, pago). Los productos y precios del pedido no van en ningún campo. Los datos del restaurante que imprime la factura (su nombre, dirección, teléfono, NIT) NO son del cliente.
 - "listoEnMinutos": "en 10", "listo en 15", "sale en 15 min" = ese número. "Ya está", "ya está listo", "pueden venir", "ya sale" = 0. Si da un rango ("10 a 15 min"), usa el menor. Si da una hora ("lista a las 7:40"), calcula los minutos desde la "Hora actual" que te paso. Si no dice nada del tiempo, null: nunca lo supongas.
 - "detalleDireccion": SOLO lo que identifica la puerta (torre, bloque, interior, apartamento, casa, piso, oficina, local, o un código como "C202"); el barrio y las indicaciones ("dejar en portería") nunca van ahí. Copia completos la torre Y el apartamento: "Torre 1 apto 604" → "Torre 1 apto 604", nunca solo "Apto 604".  Si llega después en un mensaje suelto ("torre 2 apto 301", "casa 14"), va a la entrega que no lo tenga. No lo repitas en "direccionEntrega" ni en "notas" (si ya va en "valorACobrar" o "metodoPago", tampoco en notas), pero no quites de "direccionEntrega" nada más: el nombre del conjunto o edificio y el barrio se quedan ahí.

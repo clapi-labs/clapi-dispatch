@@ -3,6 +3,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   getBotConfig,
+  openReturnDebts,
+  openReturnDebtsOfTrip,
   getEngineConfig,
   getSimulatorConfig,
   listControls,
@@ -58,7 +60,7 @@ export function nextMove(
 ): Move {
   const stops = orderStops(
     route,
-    open.map((t) => ({ id: t.trip.id, stops: stopsForPhase(t.phase, false) })),
+    open.map((t) => ({ id: t.trip.id, stops: stopsForPhase(t.phase) })),
   );
   const near = (p: Point | null) => !!position && !!p && meters(position, p) <= bot.gpsArrivalMeters;
 
@@ -97,9 +99,6 @@ export function nextMove(
       if (near(pickup)) return { target: pickup, act: controlled ? null : trip.id, waiting: controlled ? "Espera «Devolví el pedido»" : null };
       return { target: pickup, act: null, waiting: null };
     }
-
-    // B: vuelve a recogida; al llegar, gps.ts cierra el servicio.
-    if (pickup) return { target: pickup, act: null, waiting: null };
   }
   return { target: null, act: null, waiting: null };
 }
@@ -165,17 +164,22 @@ function roll(tripId: number, seed: number) {
   return (Math.imul(tripId ^ (seed * 0x9e3779b1), 0x85ebca6b) >>> 0) % 100;
 }
 
-/** Qué botón toca por ella una moto que se maneja sola. */
-export function autoButton(tripId: number, phase: TripPhase, config: SimulatorConfig): { id: string; title: string } | null {
+/**
+ * Qué botón toca por ella una moto que se maneja sola. Una parte
+ * (`returnPercent`) deja un pendiente de regreso: como recoge por GPS, lo
+ * declara con el botón del mensaje 1 antes de marcar la entrega. `declared`: ese
+ * pedido ya tiene su pendiente.
+ */
+export function autoButton(tripId: number, phase: TripPhase, config: SimulatorConfig, declared = false): { id: string; title: string } | null {
   if (phase === "undelivered") return { id: `returned:${tripId}`, title: "Devolví el pedido" };
   if (phase !== "carrying" && phase !== "at_delivery") return null;
   if (roll(tripId, 1) < config.noAnswerPercent) return { id: `noanswer:${tripId}`, title: "Cliente no contesta" };
+  if (!declared && roll(tripId, 3) < config.returnPercent) {
+    const datafono = roll(tripId, 4) < 50;
+    return datafono ? { id: `pickdebt:datafono:${tripId}`, title: "💳 Llevo datáfono" } : { id: `pickdebt:plata:${tripId}`, title: "💵 Quedé debiendo" };
+  }
   const gate = roll(tripId, 2) < config.gatePercent;
-  const back = roll(tripId, 3) < config.returnPercent;
-  return {
-    id: `done:${gate ? "gate" : "customer"}:${back ? "return" : "finish"}:${tripId}`,
-    title: `${gate ? "En portería" : "Entregado"}, ${back ? "vuelvo" : "terminé"}`,
-  };
+  return { id: `done:${gate ? "gate" : "customer"}:finish:${tripId}`, title: gate ? "🏢 En portería" : "✅ Entregado" };
 }
 
 /**
@@ -206,7 +210,8 @@ export async function actFor(courierId: number, tripId: number) {
     if (controller?.active && (controller.status === "available" || controller.status === "busy")) return null;
   }
 
-  const button = autoButton(tripId, tripPhase({ ...row.assignment, status: row.trip.status }), config);
+  const declared = (await openReturnDebtsOfTrip(tripId)).length > 0;
+  const button = autoButton(tripId, tripPhase({ ...row.assignment, status: row.trip.status }), config, declared);
   if (!button) return null;
   await handleIncoming({
     waMessageId: `${SIMULATED_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -218,4 +223,37 @@ export async function actFor(courierId: number, tripId: number) {
     title: button.title,
   });
   return button.id;
+}
+
+/** Lo que tarda una moto simulada que se maneja sola en cerrar su pendiente. */
+export const SIM_DEBT_CLOSE_MS = 10 * 60_000;
+
+/**
+ * Lo corre el tick con el simulador encendido: la moto simulada que se maneja
+ * sola cierra su pendiente unos minutos después de entregar, tocando el botón
+ * por el mismo camino que un toque de WhatsApp. Así los pendientes de staging
+ * no se acumulan. Una moto controlada no: eso lo hace el número de prueba.
+ */
+export async function closeSimulatedDebts(now = Date.now()) {
+  const [sims, controls] = await Promise.all([listSimulatedCouriers(), listControls()]);
+  const controlled = new Set(controls.map((c) => c.simCourierId));
+  const own = sims.filter((s) => !controlled.has(s.courier.id));
+  const closed: number[] = [];
+  for (const { courier } of own) {
+    for (const debt of await openReturnDebts(courier.id)) {
+      const since = debt.deliveredAt ?? (debt.tripId === null ? debt.createdAt : null);
+      if (!since || now - since.getTime() < SIM_DEBT_CLOSE_MS || closed.includes(debt.id)) continue;
+      await handleIncoming({
+        waMessageId: `${SIMULATED_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        phone: courier.phone,
+        profileName: null,
+        timestamp: new Date(),
+        kind: "button",
+        buttonId: `debtok:${debt.id}`,
+        title: debt.reason === "datafono" ? "✅ Ya lo devolví" : "✅ Ya pagué",
+      });
+      closed.push(debt.id);
+    }
+  }
+  return closed;
 }

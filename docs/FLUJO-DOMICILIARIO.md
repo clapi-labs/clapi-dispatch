@@ -30,9 +30,17 @@ Lleva solo lo necesario para ir a recoger:
 - Lugar de recogida, con detalles (local, entrada).
 - A qué hora está listo.
 - Waze hacia el lugar de recogida.
-- Barrio de destino y cobro, para que sepa antes de salir si necesita base o datáfono.
+- Barrio de destino y cobro, para que sepa antes de salir si necesita base o datáfono. Si el restaurante dijo que el cliente paga con tarjeta («datáfono», «lleve datáfono», «paga con tarjeta»), le dice «💳 El cliente paga con tarjeta» y **«Pide el datáfono en el restaurante»**; antes eso se leía como «ya pagado» y le decía que no cobrara. Al restaurante no se le pregunta el método de pago: solo se usa si lo dice.
 
-Botones: **«Voy en camino»** y **«Recogí»**.
+Botones, las tres formas de recoger (WhatsApp permite máximo 3):
+
+| Botón | Qué hace |
+|---|---|
+| 📦 Recogí | Lo normal |
+| 💳 Llevo datáfono | Recogí, y se lleva el datáfono del restaurante |
+| 💵 Quedé debiendo | Recogí, y no pudo pagar la comida |
+
+Las tres cuentan como «Recogí» y le llega el mensaje 2. Las otras dos además crean un **pendiente de regreso** (ver abajo). «Voy en camino» ya no va en el mensaje 1: lo marca el GPS, o lo que escriba («voy», «ok»), y el recordatorio de salida sí lo trae.
 
 ### Mensaje 2: al tocar «Recogí»
 
@@ -43,22 +51,21 @@ Lleva lo necesario para entregar:
 - Indicaciones.
 - Waze hacia la entrega.
 
-WhatsApp permite máximo 3 botones de respuesta, con títulos de 20 caracteres. Por eso las opciones van en una **lista** (hasta 10 filas, títulos de 24 caracteres), que se abre con el botón «Marcar entrega»:
+Si la recogida la marcó el GPS, no alcanzó a tocar los botones del datáfono o la plata: el mensaje 2 le pregunta «¿Te llevaste el datáfono o quedaste debiendo la comida? Escríbeme «llevo datáfono» o «quedé debiendo».».
 
-| Opción | Entrega | ¿Queda libre? |
-|---|---|---|
-| Entregado, terminé | Al cliente | Sí |
-| Entregado, vuelvo | Al cliente | No, vuelve a recogida |
-| En portería, terminé | En portería | Sí |
-| En portería, vuelvo | En portería | No, vuelve a recogida |
+Tres botones (WhatsApp permite máximo 3, con títulos de 20 caracteres):
+
+| Botón | Entrega |
+|---|---|
+| ✅ Entregado | Al cliente |
+| 🏢 En portería | En portería |
+| Cliente no contesta | Ver «Cliente no contesta» |
+
+El servicio **termina al marcar la entrega**: ya no se decide aquí si vuelve y no existe el estado «Volviendo». Si tiene que volver al restaurante, eso es un pendiente aparte, que no lo deja ocupado.
 
 Portería va como opción aparte y no dentro de «entregado», porque ese es el problema que tiene Williams: hoy no le avisan cuándo un pedido queda ahí.
 
-No hace falta un botón de «terminado» para todos: las opciones con «terminé» cierran el servicio en un solo paso.
-
-### Mensaje 3: solo si debe volver
-
-Al elegir una opción con «vuelvo» se le envía el botón **«Ya volví»**, que cierra ese servicio. Con GPS (fase 5), este mensaje desaparece.
+Los botones ya enviados de la lista anterior siguen sirviendo: «Entregado, vuelvo» y «En portería, vuelvo» solo marcan la entrega, y un «Ya volví» viejo no hace nada.
 
 ### Tocar un botón no tiene respuesta
 
@@ -66,11 +73,47 @@ Tocar un botón no se cobra y el toque queda visible en su chat, pero eso no le 
 
 Los pasos se pueden saltar: elegir una entrega también cuenta como recogido, y «Recogí» también cuenta como «Voy en camino». Un botón olvidado no daña el flujo.
 
-Lo que escriba también sirve: «voy», «ya recogí», «lo dejé en portería» y «ya volví» hacen lo mismo que el botón. Ante la duda, sigue aplicando la regla de novedades de [BOT.md](BOT.md).
+Lo que escriba también sirve: «voy», «ya recogí» y «lo dejé en portería» hacen lo mismo que el botón. Ante la duda, sigue aplicando la regla de novedades de [BOT.md](BOT.md).
+
+## Pendientes de regreso
+
+Después de entregar, a veces tiene que volver al restaurante:
+
+- **Datáfono:** el cliente pagó con tarjeta y él lleva la máquina del restaurante, que la necesita de vuelta.
+- **Plata:** no pudo pagar la comida al recogerla y le quedó debiendo al restaurante, que acepta que pague más tarde, incluso al final del día.
+
+La agencia no maneja las bases ni la plata de los domiciliarios: **decirlo es responsabilidad del domiciliario**, y el sistema lleva esos pendientes y se los muestra a la central. No se registran montos: solo quién, a quién, por qué y desde cuándo. Tabla `return_debts`; las reglas están en `packages/shared/src/domain/return-debts.ts` y lo de la base en `packages/shared/src/db/return-debts.ts`.
+
+**Declararlo.** Al recoger, con «💳 Llevo datáfono» o «💵 Quedé debiendo». También por texto, en cualquier momento, incluso después de entregar: «recogí, llevo datáfono», «quedé debiendo en Donde Lucho», «le debo a La Brasa». El restaurante sale del nombre que escribió o, si no dijo ninguno, de que lo que lleva sea de uno solo; con varios posibles se le pregunta cuál. Un pedido declara cada motivo una sola vez: un doble toque no crea otro.
+
+**Cerrarlo.** Al entregar ese pedido le llega, junto con el «✅ A-08 terminado.» si aplica:
+
+| Motivo | Mensaje | Botón |
+|---|---|---|
+| Datáfono | 💳 Devuelve el datáfono en Donde Lucho (A-07). | ✅ Ya lo devolví |
+| Plata | 💵 Quedó anotado que le debes a Donde Lucho (A-07). | ✅ Ya pagué |
+
+También lo cierra por texto («ya devolví el datáfono», «ya le pagué a Donde Lucho») o lo cierra la central. Un datáfono de un pedido que todavía lleva no lo puede cerrar él: lo sigue usando.
+
+**Agrupados.** Los del mismo domiciliario, restaurante y motivo van juntos («A-07 y A-08») y se cierran juntos.
+
+**En el portal: Pendientes.** Los abiertos, por domiciliario, restaurante y motivo, con sus pedidos y hace cuánto, y el historial de los cerrados en los últimos 7 días con quién los cerró y cuándo. La central puede:
+
+- **Registrar pendiente**, cuando el domiciliario no lo declaró y el restaurante reclama: domiciliario, motivo y el código del pedido o el restaurante.
+- **Mandar ya:** le escribe «📢 Pasa por Donde Lucho a devolver el datáfono» (o «a pagar lo que quedaste debiendo»), con el botón que lo cierra.
+- **Resuelto:** cierra el grupo y pasa al historial con su nombre.
+
+En Flota, la tarjeta del domiciliario muestra los que tiene («💳 Datáfono», «💵 Plata»), con enlace a Pendientes.
+
+**Aviso del datáfono.** Si un datáfono lleva 30 minutos afuera desde que se entregó su pedido (uno registrado sin pedido, desde que se registró), a la central le llega una alerta al celular, «Datáfono sin devolver · Donde Lucho». Los minutos se cambian en Pendientes (`settings.bot_config.datafonoAlertMinutes`). Solo avisa la demora: no cambia a quién se le asignan pedidos. La plata no tiene aviso, porque se puede pagar al final del día.
+
+**Para el algoritmo** un pendiente no existe: un domiciliario con pendientes sigue recibiendo pedidos, y ya no se supone que vuelve a recogida después de cada entrega. Planear cuándo vuelve, según el motivo y la demanda, es otra issue (#60).
+
+**Al desplegar** (migración `0020`), lo que estaba en «Volviendo» se dio por terminado sin crear pendientes, porque no se sabía por qué volvía; si un restaurante reclama, la central lo registra a mano.
 
 ## Aviso al restaurante
 
-Sale al marcar la entrega, con la hora real, aunque el domiciliario siga en camino de regreso. Reemplaza el «entregado» de hoy, así que no suma mensajes.
+Sale al marcar la entrega, con la hora real. Reemplaza el «entregado» de hoy, así que no suma mensajes.
 
 | Caso | Mensaje |
 |---|---|
@@ -89,8 +132,7 @@ Cada tarjeta de Viajes y cada domiciliario en Flota muestran una etiqueta con el
 | Sin leer | Asignado y WhatsApp no ha avisado que lo leyó | Asignación |
 | Leído | Lo leyó, pero no ha tocado «Voy en camino» | Aviso de lectura de WhatsApp |
 | Va a recoger | Tocó «Voy en camino» | Botón |
-| Llevando el pedido | Tocó «Recogí» | Botón |
-| Volviendo a recogida | Entregó y eligió «vuelvo» | Botón |
+| Llevando el pedido | Tocó «Recogí» (o uno de los botones del datáfono o la plata) | Botón |
 | Entregado | Entregó al cliente | Botón |
 | En portería | Lo dejó en portería | Botón |
 | Cancelado | Se canceló | Ya existe |
@@ -108,7 +150,7 @@ Solo salen si hacen falta, y cada uno se envía una vez por asignación. La aler
 | «Voy en camino» | Lo último entre 3 min desde la asignación y 10 min antes de que esté listo | Recordatorio citando el mensaje 1 |
 | «Voy en camino» | 3 min después del recordatorio | Alerta en rojo en el portal |
 | «Recogí» | 10 min después de la hora de listo | Alerta en el portal y un recordatorio: «El pedido B-12 ya está listo en…» |
-| «Ya volví» | 20 min de regreso (por confirmar con Williams) | Solo alerta en el portal |
+| Devolver el datáfono | 30 min desde que se entregó el pedido; se cambia en Pendientes | Alerta al celular de la central |
 | Marcar la entrega | 30 min después de «Recogí» (por confirmar con Williams) | Solo alerta en el portal |
 
 No se cuenta solo desde la asignación porque la cola asigna aunque la comida tarde 30 minutos, y eso daría alarmas falsas. Los tiempos son una propuesta y van en `settings.bot_config`.
@@ -131,7 +173,7 @@ Suman uno más cada uno de estos casos:
 - Pedir un dato que faltaba.
 - Avisar quién va, si no había moto libre.
 - Un recordatorio.
-- «Ya volví», si debe regresar.
+- Cerrar un pendiente de regreso, si declaró uno (le llega al entregar), y cada «Mandar ya» de la central.
 - Una consulta del restaurante.
 - Cada mensaje de Williams desde el portal.
 
@@ -200,7 +242,6 @@ El receptor (`/api/gps`), la detección de llegadas (`apps/bot/src/bot/gps.ts`) 
 | Salió de la recogida tras estar un rato, con la comida lista | Cuenta como «Recogí» y le llega el mensaje 2, si no lo había tocado |
 | Llegó a la entrega | Etiqueta «En punto de entrega», si la dirección tiene coordenadas |
 | Se fue sin marcar la entrega | Alerta a Williams |
-| Volvió a la recogida | Cierra el servicio solo y elimina «Ya volví» |
 
 **El botón de entrega se queda.** Llegar no prueba que se entregó, ni dice si quedó en portería. Los demás botones siguen de respaldo por si falla la señal.
 
@@ -238,7 +279,7 @@ Para probar en local, `npm run bot:gps` mueve motos de ejemplo y reporta por la 
 
 ### Probar en staging: el simulador
 
-Con `SIMULATOR_ENABLED=1`, staging tiene motos simuladas que el algoritmo asigna en modo `auto` y que se mueven solas, reportando por `/api/gps` como lo hará Traccar. Los estados por ubicación los marca `gps.ts` con esas posiciones; ni el simulador ni el mapa los calculan. Cada número de prueba de Flota recibe por WhatsApp los mensajes de una moto simulada y toca sus botones, que entran por el mismo código de `handleCourier`. Las motos sin número marcan solas la entrega, por el mismo camino, y una parte (configurable) deja en portería, vuelve a recogida o reporta un cliente que no contesta.
+Con `SIMULATOR_ENABLED=1`, staging tiene motos simuladas que el algoritmo asigna en modo `auto` y que se mueven solas, reportando por `/api/gps` como lo hará Traccar. Los estados por ubicación los marca `gps.ts` con esas posiciones; ni el simulador ni el mapa los calculan. Cada número de prueba de Flota recibe por WhatsApp los mensajes de una moto simulada y toca sus botones, que entran por el mismo código de `handleCourier`. Las motos sin número marcan solas la entrega, por el mismo camino, y una parte (configurable) deja en portería, reporta un cliente que no contesta o declara un pendiente de regreso (datáfono o plata), que cierra sola unos 10 minutos después de entregar.
 
 Cómo se enciende y se usa: [OPERACION.md](OPERACION.md), «Simulador».
 
@@ -254,9 +295,9 @@ La lista de entrega también trae «Cliente no contesta». El domiciliario esper
 
 ## Preguntas para Williams
 
-1. ¿Qué tan seguido vuelven al lugar de recogida? Define qué tanto importa «Ya volví».
+1. ¿Qué tan seguido vuelven al restaurante por el datáfono o la plata? ¿Le sirven los 30 minutos del aviso del datáfono?
 2. ¿Cuántos pedidos puede llevar a la vez una moto? El motor usa 3 en hora pico y 2 en valle, y el de valle sigue sin confirmar.
-3. ¿A los cuántos minutos alertar si no marca la entrega o no ha vuelto?
+3. ¿A los cuántos minutos alertar si no marca la entrega?
 4. ¿Los tiempos de los recordatorios le sirven?
 5. ¿El aviso de portería dice lo que el restaurante necesita?
 6. Si el cliente nunca contestó y el pedido se devuelve, ¿se le cobra el domicilio al restaurante? ¿Se le paga al domiciliario?

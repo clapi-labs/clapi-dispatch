@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { and, desc, eq, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
-import { db, listControls, openTripCondition, releaseControlOf, returnUnpickedTrips, schema, simulatorEnabled } from "@dispatch/shared/db";
+import { db, listControls, openReturnDebtCounts, openTripCondition, releaseControlOf, returnUnpickedTrips, schema, simulatorEnabled } from "@dispatch/shared/db";
 
 /** "300 123 4567" → "573001234567": el formato en que WhatsApp identifica el
  *  número, para que el bot reconozca al motorizado cuando escriba. */
@@ -25,11 +25,18 @@ const STATS_DAYS = 7;
 export type SimulatorRole = { role: "simulated" | "test" | "real"; partner: string | null };
 
 export async function listCouriers(): Promise<
-  (CourierRow & { seenStats: SeenStats | null; assignable: boolean; hasGps: boolean; simulator: SimulatorRole | null })[]
+  (CourierRow & {
+    seenStats: SeenStats | null;
+    assignable: boolean;
+    hasGps: boolean;
+    simulator: SimulatorRole | null;
+    /** Pendientes de regreso abiertos, por motivo. */
+    returnDebts: { datafono: number; plata: number } | null;
+  })[]
 > {
   const a = schema.assignments;
   const simulator = simulatorEnabled();
-  const [couriers, stats, controls, withGps] = await Promise.all([
+  const [couriers, stats, controls, withGps, debts] = await Promise.all([
     db.select().from(schema.couriers).where(eq(schema.couriers.active, true)).orderBy(desc(schema.couriers.createdAt)),
     db
       .select({
@@ -43,6 +50,7 @@ export async function listCouriers(): Promise<
       .groupBy(a.courierId),
     simulator ? listControls() : Promise.resolve([]),
     db.select({ id: schema.courierProfiles.courierId }).from(schema.courierProfiles).where(isNotNull(schema.courierProfiles.gpsDeviceId)),
+    openReturnDebtCounts(),
   ]);
   const gps = new Set(withGps.map((r) => r.id));
   const byCourier = new Map(stats.map((r) => [r.courierId, r]));
@@ -67,6 +75,7 @@ export async function listCouriers(): Promise<
       // para un viaje de prueba, a las reales con GPS (simulator-flag.ts).
       assignable: c.simulated === simulator || (simulator && gps.has(c.id)),
       simulator: simulator ? { role: role(c), partner: partnerOf(c) } : null,
+      returnDebts: debts.get(c.id) ?? null,
     };
   });
 }

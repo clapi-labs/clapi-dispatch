@@ -36,7 +36,7 @@ export default function FlotaPage() {
   }, []);
 
   // Estado, turno y última asignación cambian con la moto o con sus viajes.
-  useLive(refresh, ["couriers", "assignments", "trips"]);
+  useLive(refresh, ["couriers", "assignments", "trips", "return_debts"]);
 
   async function setStatus(id: number, status: Courier["status"]) {
     setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));

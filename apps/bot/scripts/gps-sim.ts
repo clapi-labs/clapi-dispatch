@@ -82,7 +82,7 @@ async function tick() {
       const mine = rows.filter((r) => r.assignment.courierId === c.id);
       const stops = orderStops(
         routes.find((r) => r.courierId === c.id)?.stops,
-        mine.map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r.assignment, status: r.trip.status }), false) })),
+        mine.map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r.assignment, status: r.trip.status })) })),
       );
 
       // A qué parada va: si ya estuvo lo suficiente en la recogida y la comida está

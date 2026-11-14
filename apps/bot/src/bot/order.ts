@@ -75,7 +75,7 @@ const TEMPLATE_LABEL: Record<OrderFieldKey, string> = {
   telefonoCliente: "Teléfono del cliente",
   detalleDireccion: "Detalle (torre, apto, local o casa, si aplica)",
   valorACobrar: "Valor a cobrar",
-  metodoPago: "Pago (efectivo o transferencia)",
+  metodoPago: "Pago (efectivo, transferencia o datáfono)",
   listoEnMinutos: "Tiempo en que está listo el pedido",
   notas: "Indicaciones",
 };

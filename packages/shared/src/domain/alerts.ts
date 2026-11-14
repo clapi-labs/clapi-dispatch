@@ -100,11 +100,23 @@ export function tripAssignedMessage(trip: {
   };
 }
 
+/** Un datáfono lleva demasiado afuera desde que se entregó su pedido
+ *  (pendientes de regreso). Solo avisa la demora: no cambia la asignación. */
+export function datafonoLateMessage(debt: { id: number; courierName: string; restaurant: string; tripCode: string | null; minutes: number; at: Date }): PushMessage {
+  return {
+    title: `Datáfono sin devolver · ${debt.restaurant}`,
+    body: clip(`${debt.courierName} lo tiene hace más de ${debt.minutes} min${debt.tripCode ? ` (${debt.tripCode})` : ""}.`),
+    url: "/pendientes",
+    tag: `datafono-${debt.id}`,
+    at: debt.at.getTime(),
+  };
+}
+
 /** El aviso de prueba que se manda desde el portal al activar las alertas. */
 export function testMessage(now = new Date()): PushMessage {
   return {
     title: "Alertas activas",
-    body: "Así te llegan los avisos del portal: chats que piden ayuda y motos asignadas.",
+    body: "Así te llegan los avisos del portal: chats que piden ayuda, motos asignadas y datáfonos sin devolver.",
     url: "/alertas",
     tag: "prueba",
     at: now.getTime(),
