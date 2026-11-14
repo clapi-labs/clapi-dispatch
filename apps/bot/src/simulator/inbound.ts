@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { controlledBy, controllerOf, db, schema, simulatorEnabled } from "@dispatch/shared/db";
+import { controlledBy, controllerOf, db, getReturnDebt, schema, simulatorEnabled } from "@dispatch/shared/db";
 
 import { parseCourierButton } from "@/bot/notify";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -18,7 +18,14 @@ export async function simulatedSender(sender: Courier, message: IncomingMessage)
   if (!simulatorEnabled() || sender.simulated || (sender.status !== "available" && sender.status !== "busy")) return null;
 
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
-  if (button) {
+  // Cerrar un pendiente de regreso: es de la moto que lo declaró.
+  if (button?.kind === "debt_done") {
+    const debt = await getReturnDebt(button.debtId);
+    if (debt) {
+      const [courier] = await db.select().from(schema.couriers).where(eq(schema.couriers.id, debt.courierId)).limit(1);
+      if (courier?.simulated && (await controllerOf(courier.id))?.id === sender.id) return courier;
+    }
+  } else if (button) {
     const [row] = await db
       .select({ courier: schema.couriers })
       .from(schema.assignments)

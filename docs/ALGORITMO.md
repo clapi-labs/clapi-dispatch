@@ -117,10 +117,10 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 | `pedido.cliente` | Geocodificación de la dirección; obligatorio |
 | `motos[].lat`, `lon`, `sin_senal` | Traccar (`couriers.lat`, `lng`, `locationUpdatedAt`) |
 | `motos[].cuota` | La lleva el bot: en cada entrega completada, cada moto activa suma 1/N; las pausadas o desconectadas no suman; se reinicia por turno |
-| `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogí» y `C` al marcar la entrega. Si vuelve a recogida queda `B` hasta «Ya volví» |
+| `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogí» y `C` al marcar la entrega |
 | `paradas[].listo_ts` | En `R`, cuándo está lista esa comida. En `W`, hasta cuándo se espera al cliente |
 
-Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` volver a recogida después de entregar. `B` no impide recibir otro pedido: la idea es mantener ocupadas las motos, pero su tiempo cuenta en la ruta. Como si tendrá que volver solo se sabe al entregar, el bot suma `B` después de cada entrega pendiente (`settings.engine_config.asumirRegreso`): es el peor caso.
+Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` volver a recogida después de entregar. Hoy el bot no envía `B`: el servicio termina al entregar, y lo que el domiciliario le debe a un restaurante (el datáfono, la plata) es un pendiente de regreso aparte que no lo deja ocupado ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Pendientes de regreso»). Ya no se supone el regreso después de cada entrega (`asumirRegreso` se quitó); planear cuándo vuelve, según el motivo y la demanda, es la issue #60.
 
 ### Respuesta
 
@@ -183,7 +183,7 @@ Implementado en `apps/bot/src/dispatch/engine.ts` y corriendo en cada tick del w
 
 - **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
 - **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
-- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4), `multipedido` (true) y `asumirRegreso` (true). Una moto sin reporte de GPS en los últimos 30 segundos va con `sin_senal` y no participa; ese límite es fijo (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`), el mismo con el que el portal la muestra «sin señal».
+- **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4) y `multipedido` (true). Una moto sin reporte de GPS en los últimos 30 segundos va con `sin_senal` y no participa; ese límite es fijo (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`), el mismo con el que el portal la muestra «sin señal».
 - **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
 
 Comparar con lo que pasó de verdad:

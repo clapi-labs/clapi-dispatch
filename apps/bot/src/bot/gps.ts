@@ -1,14 +1,14 @@
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 
-import { db, finishTrip, getBotConfig, openTripCondition, schema, type BotConfig } from "@dispatch/shared/db";
+import { db, getBotConfig, openTripCondition, schema, type BotConfig } from "@dispatch/shared/db";
 import { haversineKm, isBeforePickup, tripPhase } from "@dispatch/shared";
 
-import { notifyAssigned, notifyFinished, notifyPicked } from "@/bot/notify";
+import { notifyPicked } from "@/bot/notify";
 
 /**
  * Lo que dice la ubicación (docs/FLUJO-DOMICILIARIO.md, fase 5). Marca los estados
- * que se pueden saber con solo verlo moverse: que salió, que llegó, que se fue y
- * que volvió. La entrega no: llegar no prueba que se entregó, ni dice si quedó en
+ * que se pueden saber con solo verlo moverse: que salió, que llegó y que se fue.
+ * La entrega no: llegar no prueba que se entregó, ni dice si quedó en
  * portería. Por eso se queda el botón, y si se va sin marcarla sale la alerta.
  *
  * Cada marca es un UPDATE condicional: dos reportes seguidos no la repiten.
@@ -85,7 +85,9 @@ async function checkTrip(trip: Trip, a: Assignment, position: Point, at: Date, c
       const ready = !trip.readyAt || at.getTime() >= trip.readyAt.getTime() - READY_MARGIN_MS;
       if (stayed(a.atPickupAt) && ready) {
         const [marked] = await update(trip.id, { pickedUpAt: at }, isNull(schema.assignments.pickedUpAt));
-        if (marked) await notifyPicked(trip.id);
+        // No pudo tocar «Llevo datáfono» ni «Quedé debiendo»: el mensaje 2 le
+        // dice cómo declararlo por texto.
+        if (marked) await notifyPicked(trip.id, { byGps: true });
       } else {
         await update(trip.id, { atPickupAt: null });
       }
@@ -103,12 +105,5 @@ async function checkTrip(trip: Trip, a: Assignment, position: Point, at: Date, c
       else await update(trip.id, { atDeliveryAt: null });
     }
     return;
-  }
-
-  if (phase === "returning" && trip.pickupLocation && meters(position, trip.pickupLocation) <= arrived) {
-    const result = await finishTrip(trip.id);
-    if (!result) return;
-    await notifyFinished(trip.id, result.newlyAssigned);
-    for (const id of result.newlyAssigned) await notifyAssigned(id);
   }
 }

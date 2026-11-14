@@ -49,7 +49,7 @@ function SkeletonCard() {
 }
 
 export default function ViajesPage() {
-  const { trips, loaded, deliver, finish, assign } = useTrips();
+  const { trips, loaded, deliver, assign } = useTrips();
   // En el celular se ve una columna a la vez. Arranca en "Asignado": es lo
   // que el despachador vigila — lo pendiente se asigna solo.
   const [tab, setTab] = useState<ColumnKey>("route");
@@ -154,7 +154,7 @@ export default function ViajesPage() {
                   ) : (
                     <AnimatePresence mode="popLayout" initial={false}>
                       {groups[c.key].map((trip) => (
-                        <TripCard key={trip.id} trip={trip} focused={trip.id === focused} onDeliver={deliver} onFinish={finish} onAssign={assign} />
+                        <TripCard key={trip.id} trip={trip} focused={trip.id === focused} onDeliver={deliver} onAssign={assign} />
                       ))}
                     </AnimatePresence>
                   )}

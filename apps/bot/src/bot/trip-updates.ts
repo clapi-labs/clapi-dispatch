@@ -39,7 +39,8 @@ function describe(update: TripUpdate) {
   const parts: string[] = [];
   if (update.detalleDireccion) parts.push(`la entrega es en ${update.detalleDireccion}`);
   if (update.listoEnMinutos != null) parts.push(update.listoEnMinutos === 0 ? "la comida ya está lista" : `la comida está lista en ${update.listoEnMinutos} min`);
-  if (update.metodoPago) parts.push(update.metodoPago === "efectivo" ? "se cobra en efectivo" : "ya está pagado, no se cobra");
+  if (update.metodoPago)
+    parts.push(update.metodoPago === "efectivo" ? "se cobra en efectivo" : update.metodoPago === "datafono" ? "el cliente paga con tarjeta: pide el datáfono en el restaurante" : "ya está pagado, no se cobra");
   if (update.valorACobrar != null) parts.push(`valor a cobrar ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(update.valorACobrar)}`);
   if (update.telefonoCliente || update.nombreCliente) parts.push("datos del cliente actualizados");
   if (update.notas) parts.push(`nota: ${update.notas}`);

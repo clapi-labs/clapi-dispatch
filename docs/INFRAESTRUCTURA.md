@@ -256,11 +256,11 @@ stateDiagram-v2
     en_route --> pending: la central se lo quita a la moto antes de recoger
     en_route --> delivered: el motorizado marca la entrega (al cliente o en portería)
     en_route --> cancelled: el cliente no contestó y el pedido se devolvió
-    delivered --> [*]: terminó, o volvió a recogida con «Ya volví»
+    delivered --> [*]: terminó al entregar (un pendiente de regreso va aparte)
     cancelled --> [*]
 ```
 
-Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida, llevando, en la entrega, de regreso…) sale de las horas guardadas en `assignments` (`packages/shared/src/domain/phase.ts`). Detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md).
+Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida, llevando, en la entrega, devolviendo el pedido…) sale de las horas guardadas en `assignments` (`packages/shared/src/domain/phase.ts`). Detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md).
 
 - El paso a `en_route` y a `delivered` es un `UPDATE` condicional (solo si el estado es el esperado). Por eso dos procesos a la vez nunca asignan el mismo viaje ni lo cierran dos veces.
 - El **worker** no tiene lógica: solo llama a `/api/internal/tick` cada 5 s, con espera creciente si el bot falla. Así los pendientes se asignan aunque nadie tenga el portal abierto.

@@ -36,7 +36,9 @@ export type SnapshotCourier = {
 
 /** `porCalle` (settings.routing_config): los minutos de viaje con los km por
  *  calle de OSRM, los mismos con que se cotiza. Si no, línea recta × 1,3. */
-export type EngineSettings = { radioKm: number; multipedido: boolean; asumirRegreso: boolean; porCalle?: boolean };
+/** El algoritmo ya no supone que la moto vuelve a recogida después de entregar:
+ *  un pendiente de regreso no la deja ocupada (docs/FLUJO-DOMICILIARIO.md). */
+export type EngineSettings = { radioKm: number; multipedido: boolean; porCalle?: boolean };
 
 type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
 
@@ -62,12 +64,12 @@ export type EvaluarRequest = {
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const point = ({ lat, lng }: LatLng): [number, number] => [lat, lng];
 
-function paradasDe(c: SnapshotCourier, trips: SnapshotActiveTrip[], asumirRegreso: boolean): Parada[] {
+function paradasDe(c: SnapshotCourier, trips: SnapshotActiveTrip[]): Parada[] {
   // Sin ubicación no se puede ubicar en la ruta.
-  const located = trips.filter((t) => t.pickupLocation && (t.deliveryLocation || t.phase === "returning" || t.phase === "undelivered"));
+  const located = trips.filter((t) => t.pickupLocation && (t.deliveryLocation || t.phase === "undelivered"));
   const stops = orderStops(
     c.route,
-    located.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase, asumirRegreso) })),
+    located.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase) })),
   );
   return stops.map(({ tipo, pedido }) => {
     const t = located.find((x) => x.id === pedido)!;
@@ -122,7 +124,7 @@ export function buildEvaluarRequest(
           entregas: c.deliveriesThisShift,
           cuota,
           disponible_desde_ts: desde.length ? Math.max(...desde.map(seconds)) : seconds(now),
-          paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id), settings.asumirRegreso),
+          paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id)),
         };
       }),
       tiempos: settings.porCalle ? "osrm" : "haversine",

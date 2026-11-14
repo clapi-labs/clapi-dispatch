@@ -4,13 +4,17 @@ import { generateVAPIDKeys, sendNotification, WebPushError } from "web-push";
 import {
   ALERT_TTL_S,
   chatHelpMessage,
+  datafonoLateMessage,
   isFresh,
   pushTopic,
   TAKEOVER_REASON,
   tripAssignedMessage,
   type PushMessage,
 } from "../domain/alerts";
+import { datafonoLateAt } from "../domain/return-debts";
+import { getBotConfig } from "./bot-config";
 import { db } from "./client";
+import { openReturnDebts } from "./return-debts";
 import {
   assignments,
   conversations,
@@ -126,8 +130,25 @@ const tripAssigned: AlertSource<{
   message: (t) => tripAssignedMessage(t),
 };
 
+const datafonoLate: AlertSource<{ id: number; courierName: string; restaurant: string; tripCode: string | null; minutes: number; at: Date }> = {
+  kind: "datafono_late",
+  // Un datáfono que lleva más de `datafonoAlertMinutes` afuera desde que se
+  // entregó su pedido, y no se ha devuelto. Reemplaza la alerta de «Volviendo».
+  current: async () => {
+    const [debts, { datafonoAlertMinutes: minutes }] = await Promise.all([openReturnDebts(), getBotConfig()]);
+    const now = Date.now();
+    return debts.flatMap((d) => {
+      const at = datafonoLateAt(d, minutes);
+      return at && at.getTime() <= now ? [{ id: d.id, courierName: d.courierName, restaurant: d.restaurantName, tripCode: d.tripCode, minutes, at }] : [];
+    });
+  },
+  ref: (d) => d.id,
+  at: (d) => d.at,
+  message: (d) => datafonoLateMessage(d),
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ALERT_SOURCES: AlertSource<any>[] = [chatHelp, tripAssigned];
+const ALERT_SOURCES: AlertSource<any>[] = [chatHelp, tripAssigned, datafonoLate];
 
 /**
  * Marca como dentro de la condición `refs` y devuelve las que acaban de
