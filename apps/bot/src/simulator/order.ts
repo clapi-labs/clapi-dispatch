@@ -24,6 +24,8 @@ export async function createSimulatedOrder(input: { restaurantId: number; lat: n
 
   const delivery = { lat: input.lat, lng: input.lng };
   const quote = await quoteByDistance(restaurant.knownPickupLocation, delivery);
+  if (!quote.routable) return { error: "Ese punto queda fuera de las zonas de servicio o del mapa de calles: no se puede cotizar." } as const;
+  if (quote.price === null) return { error: "La tabla de tarifas por km está vacía: no se puede cotizar." } as const;
   const draft = {
     ...emptyDelivery(),
     direccionEntrega: `Punto del simulador (${input.lat.toFixed(5)}, ${input.lng.toFixed(5)})`,
@@ -33,13 +35,13 @@ export async function createSimulatedOrder(input: { restaurantId: number; lat: n
     listoEnMinutos: input.readyInMinutes,
     listoDesde: new Date().toISOString(),
     cotizacion: {
-      precio: quote.price ?? 0,
+      precio: quote.price,
       km: quote.km,
       fuente: quote.source,
       desglose: quote.breakdown ? { tabla: quote.breakdown.table, ajuste: quote.breakdown.adjustment, zona: quote.breakdown.zone?.name ?? null } : null,
     },
   };
-  const trip = await createTrip(null, { origenRestaurante: restaurant.name, mensajeOrigen: null }, draft, quote.price ?? 0, null, restaurant);
+  const trip = await createTrip(null, { origenRestaurante: restaurant.name, mensajeOrigen: null }, draft, quote.price, null, restaurant);
   await updateSimulatorConfig((c) => ({ trips: [...c.trips, trip.id] }));
 
   if (input.courierId != null) {

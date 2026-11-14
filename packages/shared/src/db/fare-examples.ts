@@ -16,6 +16,9 @@ export type FareExamples = {
   /** Cuántas medidas salieron en línea recta con el interruptor encendido
    *  (OSRM no respondió para ellas). */
   fallbacks: number;
+  /** Cuántas no se pudieron medir porque el punto queda fuera del mapa de
+   *  calles o no hay ruta: no entran en la tabla. */
+  unroutable: number;
   /** Las zonas, con su ajuste guardado, para el formulario. */
   zones: { id: number; name: string; fareAdjustment: number; restaurants: number }[];
   /** Restaurantes con ubicación que no quedan dentro de ninguna zona: no
@@ -52,13 +55,18 @@ export async function fareExampleDistances(opts: { previewStreet?: boolean } = {
   const jobs: { origin: number; destination: number; from: { lat: number; lng: number } }[] = [];
   for (const [origin, points] of byZone) for (const z of usable) for (const from of points) jobs.push({ origin, destination: z.id, from });
 
-  const km: number[] = new Array(jobs.length);
+  const km: (number | null)[] = new Array(jobs.length).fill(null);
   let fallbacks = 0;
+  let unroutable = 0;
   let next = 0;
   async function worker() {
     while (next < jobs.length) {
       const i = next++;
       const d = await deliveryDistance(jobs[i].from, centers.get(jobs[i].destination)!, config);
+      if (!d.routable) {
+        unroutable++;
+        continue;
+      }
       if (config.porCalle && d.source !== "calle") fallbacks++;
       km[i] = d.km;
     }
@@ -67,8 +75,10 @@ export async function fareExampleDistances(opts: { previewStreet?: boolean } = {
 
   const grouped = new Map<string, number[]>();
   jobs.forEach((job, i) => {
+    const value = km[i];
+    if (value === null) return;
     const key = `${job.origin}:${job.destination}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), km[i]]);
+    grouped.set(key, [...(grouped.get(key) ?? []), value]);
   });
   const rows: FareExample[] = [...grouped].map(([key, values]) => {
     const [originZoneId, destinationZoneId] = key.split(":").map(Number);
@@ -79,6 +89,7 @@ export async function fareExampleDistances(opts: { previewStreet?: boolean } = {
     porCalle: saved.porCalle,
     source: config.porCalle ? "calle" : "linea_recta",
     fallbacks,
+    unroutable,
     zones: usable.map((z) => ({ id: z.id, name: z.name, fareAdjustment: z.fareAdjustment, restaurants: byZone.get(z.id)?.length ?? 0 })),
     restaurantsOutside,
     rows,

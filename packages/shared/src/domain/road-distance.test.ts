@@ -32,7 +32,7 @@ describe("createRoadRouter: km por calle con respaldo", () => {
 
   it("sin URL de OSRM, la línea recta × 1,3 de siempre", async () => {
     const r = await createRoadRouter({ url: "", log: quiet }).distance(RESTAURANTE, CLIENTE);
-    assert.deepEqual(r, { km: straightRouteKm(RESTAURANTE, CLIENTE), source: "linea_recta" });
+    assert.deepEqual(r, { km: straightRouteKm(RESTAURANTE, CLIENTE), source: "linea_recta", routable: true });
   });
 
   it("si OSRM no responde: respaldo sin error, y la caída queda registrada una vez", async () => {
@@ -45,7 +45,7 @@ describe("createRoadRouter: km por calle con respaldo", () => {
       log: (m) => logs.push(m),
     });
     const r = await router.distance(RESTAURANTE, CLIENTE);
-    assert.deepEqual(r, { km: straightRouteKm(RESTAURANTE, CLIENTE), source: "linea_recta" });
+    assert.deepEqual(r, { km: straightRouteKm(RESTAURANTE, CLIENTE), source: "linea_recta", routable: true });
     await router.distance(RESTAURANTE, CLIENTE);
     assert.equal(logs.length, 1);
     assert.match(logs[0], /OSRM falló/);
@@ -100,20 +100,20 @@ describe("createRoadRouter: km por calle con respaldo", () => {
     assert.match(logs.at(-1)!, /volvió a responder/);
   });
 
-  it("un punto lejos de toda calle del mapa se mide en línea recta, sin dar a OSRM por caído", async () => {
+  it("un punto lejos de toda calle del mapa no se cotiza, sin dar a OSRM por caído", async () => {
     const far = osrm(1.55, 2_000);
     const router = createRoadRouter({ url: "http://osrm:5000", fetch: far.fetch, log: quiet });
-    assert.equal((await router.distance(RESTAURANTE, CLIENTE)).source, "linea_recta");
-    assert.equal((await router.distance(RESTAURANTE, CLIENTE)).source, "linea_recta");
+    assert.deepEqual(await router.distance(RESTAURANTE, CLIENTE), { km: 0, source: "linea_recta", routable: false });
+    assert.deepEqual(await router.distance(RESTAURANTE, CLIENTE), { km: 0, source: "linea_recta", routable: false });
     assert.equal(far.calls.length, 2);
   });
 
-  it("si no hay ruta (NoRoute), respaldo", async () => {
+  it("si no hay ruta (NoRoute), no se cotiza", async () => {
     const router = createRoadRouter({
       url: "http://osrm:5000",
       fetch: async () => ({ ok: false, status: 400, json: async () => ({ code: "NoRoute", message: "Impossible route" }) }),
       log: quiet,
     });
-    assert.equal((await router.distance(RESTAURANTE, CLIENTE)).source, "linea_recta");
+    assert.deepEqual(await router.distance(RESTAURANTE, CLIENTE), { km: 0, source: "linea_recta", routable: false });
   });
 });

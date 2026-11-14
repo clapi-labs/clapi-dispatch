@@ -4,6 +4,7 @@ import { createRoadRouter, straightRouteKm, type RoadDistance, type RoadRouter, 
 import type { GeoPoint } from "../domain/dispatch/types";
 import { db } from "./client";
 import { adjustmentZoneAt, fareBreakdown, type FareBreakdown, type PricedZone } from "../domain/fare";
+import { serviceVerdictAt } from "../domain/service-zones";
 import { getFareRanges } from "./fares";
 import { settings } from "./schema";
 import { listServiceZones } from "./service-zones";
@@ -32,15 +33,24 @@ export async function getRoutingConfig(): Promise<RoutingConfig> {
   return { porCalle: saved.porCalle === true };
 }
 
+/** Qué pasó con el punto de entrega: dentro, cerca del borde, fuera de las
+ *  zonas, o sin zonas marcadas (no se restringe). */
+export type QuoteCoverage = "ok" | "cerca" | "fuera" | "sin_zonas";
+
 export type Quote = {
-  /** Distancia por calles, con un decimal. */
+  /** Distancia por calles, con un decimal. 0 si `routable` es false. */
   km: number;
   /** De dónde salió `km`: OSRM, o línea recta × 1,3. */
   source: RoadSource;
+  /** `false`: el punto queda fuera de las zonas o del mapa de calles, o no
+   *  hay ruta hasta él. No se cotiza. */
+  routable: boolean;
+  /** Dónde cae la entrega respecto a las zonas de servicio. */
+  coverage: QuoteCoverage;
   /** Lo que se cobra: tabla por km más el ajuste de la zona de la entrega,
-   *  nunca menos de 0. `null` si la tabla está vacía: no hay con qué cobrar. */
+   *  nunca menos de 0. `null` si la tabla está vacía o si no se cotiza. */
   price: number | null;
-  /** De dónde sale `price` (tabla, ajuste, zona). `null` con la tabla vacía. */
+  /** De dónde sale `price` (tabla, ajuste, zona). `null` si no se cotiza. */
   breakdown: FareBreakdown | null;
 };
 
@@ -58,10 +68,10 @@ function roadRouter(): RoadRouter {
 }
 
 /** Los km del domicilio según el interruptor: por calle (con respaldo a línea
- *  recta si OSRM no responde) o en línea recta × 1,3. Nunca falla. */
+ *  recta si OSRM no responde) o en línea recta × 1,3. */
 export async function deliveryDistance(from: GeoPoint, to: GeoPoint, config?: RoutingConfig, measurer?: RoadRouter): Promise<RoadDistance> {
   const { porCalle } = config ?? (await getRoutingConfig());
-  if (!porCalle) return { km: routeKm(from, to), source: "linea_recta" };
+  if (!porCalle) return { km: routeKm(from, to), source: "linea_recta", routable: true };
   return (measurer ?? roadRouter()).distance(from, to);
 }
 
@@ -71,12 +81,24 @@ export async function deliveryDistance(from: GeoPoint, to: GeoPoint, config?: Ro
  * ajuste fijo de la zona de servicio donde queda la entrega. La tabla, las
  * zonas y el interruptor de km por calle se leen en cada cotización, así que un
  * cambio aplica desde la siguiente. Es lo mismo que usan la tabla de ejemplos
- * de Tarifas y «Probar un punto» de Zonas.
+ * de Tarifas y «Probar un punto» de Zonas. Fuera de las zonas de servicio o
+ * del mapa de calles no hay precio (`routable: false`).
  *
  * `zones`: las zonas de servicio, si quien llama ya las leyó.
  */
 export async function quoteByDistance(from: GeoPoint, to: GeoPoint, opts: { zones?: PricedZone[] } = {}): Promise<Quote> {
-  const [{ km, source }, ranges, zones] = await Promise.all([deliveryDistance(from, to), getFareRanges(), opts.zones ?? listServiceZones()]);
-  const breakdown = fareBreakdown(km, ranges, adjustmentZoneAt(to, zones));
-  return { km, source, price: breakdown?.total ?? null, breakdown };
+  const [ranges, zones] = await Promise.all([getFareRanges(), opts.zones ?? listServiceZones()]);
+  const verdict = serviceVerdictAt(to, zones);
+  const coverage: QuoteCoverage = verdict.kind === "dentro" ? "ok" : verdict.kind;
+
+  // Fuera de las zonas no hay servicio: ni siquiera se mide ni se cobra.
+  if (coverage === "fuera") return { km: 0, source: "linea_recta", routable: false, coverage, price: null, breakdown: null };
+
+  const distance = await deliveryDistance(from, to);
+  // OSRM respondió que no hay ruta o que el punto está fuera de su mapa:
+  // tampoco se cotiza (no se reemplaza por línea recta × 1,3).
+  if (!distance.routable) return { ...distance, coverage, price: null, breakdown: null };
+
+  const breakdown = fareBreakdown(distance.km, ranges, adjustmentZoneAt(to, zones));
+  return { ...distance, coverage, price: breakdown?.total ?? null, breakdown };
 }

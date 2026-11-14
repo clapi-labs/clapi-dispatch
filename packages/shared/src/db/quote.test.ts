@@ -30,7 +30,7 @@ describe("deliveryDistance: interruptor de km por calle", () => {
   it("apagado: línea recta × 1,3, como siempre, sin consultar OSRM", async () => {
     const { router, calls } = countingRouter();
     const r = await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: false }, router);
-    assert.deepEqual(r, { km: routeKm(RESTAURANTE, CLIENTE), source: "linea_recta" });
+    assert.deepEqual(r, { km: routeKm(RESTAURANTE, CLIENTE), source: "linea_recta", routable: true });
     assert.equal(r.km, Math.round(haversineKm(RESTAURANTE, CLIENTE) * 1.3 * 10) / 10);
     assert.equal(calls(), 0);
   });
@@ -51,6 +51,15 @@ describe("deliveryDistance: interruptor de km por calle", () => {
         throw new TypeError("fetch failed");
       },
     });
-    assert.deepEqual(await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: true }, router), { km: routeKm(RESTAURANTE, CLIENTE), source: "linea_recta" });
+    assert.deepEqual(await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: true }, router), { km: routeKm(RESTAURANTE, CLIENTE), source: "linea_recta", routable: true });
+  });
+
+  it("encendido con un punto fuera del mapa: no se cotiza", async () => {
+    const router = createRoadRouter({
+      url: "http://osrm:5000",
+      log: () => {},
+      fetch: async () => ({ ok: false, status: 400, json: async () => ({ code: "NoRoute", message: "Impossible route" }) }),
+    });
+    assert.deepEqual(await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: true }, router), { km: 0, source: "linea_recta", routable: false });
   });
 });

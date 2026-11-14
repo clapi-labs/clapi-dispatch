@@ -199,6 +199,8 @@ docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c   "insert into s
 - En los registros del bot y del engine, una línea `[calles] OSRM falló (…)` al empezar la caída y `[calles] OSRM volvió a responder` al terminar. Durante la caída no se le vuelve a preguntar en 30 s, para no esperar en cada cotización.
 - En cada viaje, `trips.route_source`: `calle` o `linea_recta`. Con el interruptor encendido, `linea_recta` quiere decir que ese viaje se cotizó con el respaldo.
 - En cada evaluación del engine, `engine_evaluations.response->'tiempos'`: `fuente` (`osrm`, `haversine` o `mixta`) y `respaldo` (por qué no se usó OSRM, o `null`).
+
+**Si OSRM responde que no hay ruta** o que un punto queda fuera de su mapa, el bot **no cotiza** esa entrega: no la reemplaza por línea recta × 1,3. La pasa a la central como consulta de dirección para que confirme el valor. Lo mismo si el punto queda fuera de las zonas de servicio.
 ```bash
 docker logs dispatch-bot-1 2>&1 | grep '\[calles\]'
 docker logs dispatch-engine-1 2>&1 | grep '\[calles\]'
