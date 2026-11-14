@@ -103,6 +103,8 @@ services:
       AUTH_DISABLED: ${AUTH_DISABLED:-}
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
       BOT_URL: http://bot:3001
+      # Km por calle para la vista previa de Tarifas y «Probar un punto».
+      OSRM_URL: http://osrm:5000
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:

@@ -66,9 +66,9 @@ input { font: inherit; width: 100%; border: 1px solid var(--line); border-radius
 select { font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--fg); }
 .money { display: flex; align-items: center; gap: 6px; }
 .money input { text-align: right; font-family: var(--font-mono); }
-.fare { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 4px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 13px; }
-.fare dt { color: var(--muted); }
-.fare dd { margin: 0; text-align: right; font-family: var(--font-mono); }
+.fare { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin: 4px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 13px; }
+.fare dt { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.fare dd { margin: 0; text-align: right; font-family: var(--font-mono); white-space: nowrap; }
 .fare .total { font-weight: 700; color: var(--fg); }
 .zone .tag.adj { color: var(--accent); }
 .zones { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -143,6 +143,12 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
   .mapwrap { order: 1; min-height: 68dvh; }
   .modebar { left: 56px; right: 8px; top: 8px; }
   .legend { bottom: 18px; right: 8px; }
+  /* En el celular el panel es angosto: etiqueta y valor uno debajo del otro,
+     para que el total y el ajuste no queden fuera de la pantalla. */
+  .fare { grid-template-columns: 1fr; gap: 0; }
+  .fare dt { margin-top: 6px; }
+  .fare dt:first-child { margin-top: 0; }
+  .fare dd { text-align: left; white-space: normal; padding-bottom: 2px; }
 }
 @media (prefers-reduced-motion: reduce) { .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; } }
 </style>
