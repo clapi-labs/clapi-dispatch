@@ -16,7 +16,7 @@ import { createServiceZone, listServiceZones, validateServiceZone } from "./serv
  */
 
 type Feature = {
-  properties?: { name?: unknown; barrioCode?: unknown };
+  properties?: { name?: unknown; barrioCode?: unknown; fareAdjustment?: unknown };
   geometry?: { type?: string; coordinates?: number[][][] };
 };
 
@@ -36,7 +36,7 @@ async function main() {
     const outer = f.geometry?.type === "Polygon" ? f.geometry.coordinates?.[0] : undefined;
     // GeoJSON repite el primer punto al final y va en [lng, lat].
     const ring = (outer ?? []).slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
-    const checked = validateServiceZone({ name: f.properties?.name, barrioCode: f.properties?.barrioCode, ring });
+    const checked = validateServiceZone({ name: f.properties?.name, barrioCode: f.properties?.barrioCode, fareAdjustment: f.properties?.fareAdjustment, ring });
     if ("error" in checked) throw new Error(`La zona ${i + 1} no sirve: ${checked.error}. No se cargó nada después de ella.`);
     if (existing.has(key(checked.zone.name, checked.zone.ring))) {
       skipped++;

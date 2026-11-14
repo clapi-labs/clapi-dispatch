@@ -199,7 +199,7 @@ export const trips = pgTable(
     customerName: text("customer_name"),
     valueToCollect: integer("value_to_collect"),
     /** Lo que cobra la agencia por el domicilio: su ganancia. Sale de la
-     *  tabla de tarifas (zona de recogida × zona de entrega) y se congela al
+     *  tabla por km más el ajuste de la zona de la entrega, y se congela al
      *  crear el viaje — cambiar la tarifa mañana no reescribe el arqueo de hoy. */
     deliveryFee: integer("delivery_fee").notNull().default(0),
     /** Los km con que se cotizó, congelados como el precio: el portal muestra
@@ -209,6 +209,13 @@ export const trips = pgTable(
     /** `calle` (OSRM) o `linea_recta` (interruptor apagado, o respaldo porque
      *  OSRM no respondió). */
     routeSource: text("route_source").$type<"calle" | "linea_recta">(),
+    /** El desglose del precio, congelado como él (docs/DIRECCIONES-Y-ZONAS.md,
+     *  «Precio del domicilio»): lo de la tabla por km, el ajuste de la zona de
+     *  la entrega y el nombre de esa zona. Nulos si el precio lo puso la
+     *  central, o en los viajes de antes de este dato. */
+    fareTablePrice: integer("fare_table_price"),
+    fareAdjustment: integer("fare_adjustment"),
+    fareZoneName: text("fare_zone_name"),
     pickupZone: text("pickup_zone"),
     deliveryZone: text("delivery_zone"),
     paymentMethod: text("payment_method").$type<PaymentMethod>(),
@@ -511,8 +518,8 @@ export const users = pgTable("users", {
  * Zonas de servicio (docs/DIRECCIONES-Y-ZONAS.md, «Zonas de servicio»): donde
  * sí hay domicilio. La central las marca en el mapa del portal (/zonas); lo
  * que queda por fuera no tiene servicio. Iguales para todos los restaurantes,
- * cuenta dónde se entrega y pueden cruzarse (`domain/service-zones.ts`). No
- * cambian el precio.
+ * cuenta dónde se entrega y pueden cruzarse (`domain/service-zones.ts`). Cada
+ * una tiene un ajuste fijo de precio (`fareAdjustment`, `domain/fare.ts`).
  *
  * Son datos de la central: ninguna migración ni despliegue las borra o las
  * cambia (lo revisa `db/service-zones-guard.test.ts`). Cada cambio queda en
@@ -525,6 +532,9 @@ export const serviceZones = pgTable("service_zones", {
   ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
   /** El barrio del que salió, si salió de uno (código de `barrios.json`). */
   barrioCode: text("barrio_code"),
+  /** Pesos que se suman (o restan, si es negativo) al precio de la tabla por
+   *  km cuando la entrega queda en esta zona. El total nunca baja de 0. */
+  fareAdjustment: integer("fare_adjustment").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -544,6 +554,8 @@ export const serviceZoneVersions = pgTable(
     name: text("name").notNull(),
     ring: jsonb("ring").$type<{ lat: number; lng: number }[]>().notNull(),
     barrioCode: text("barrio_code"),
+    /** El ajuste de precio de esa versión (nulo en las de antes de este dato). */
+    fareAdjustment: integer("fare_adjustment"),
     /** Quién lo hizo en el portal, si se sabe. */
     userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),

@@ -104,7 +104,9 @@ async function answerCoverage(conversation: ConversationRow, draft: ReturnType<t
     if (!d) continue;
     if (a.valida) {
       const item = query.cobertura?.find((c) => c.indice === i);
-      d.cotizacion = { precio: a.precio!, km: item?.km ?? null, fuente: item?.fuente };
+      // El desglose solo vale si la central dejó el precio que calculó el bot.
+      const desglose = item?.desglose && item.precio === a.precio ? item.desglose : null;
+      d.cotizacion = { precio: a.precio!, km: item?.km ?? null, fuente: item?.fuente, desglose };
     } else {
       refused.add(i);
     }

@@ -32,7 +32,12 @@ export async function createSimulatedOrder(input: { restaurantId: number; lat: n
     nombreCliente: "Cliente simulado",
     listoEnMinutos: input.readyInMinutes,
     listoDesde: new Date().toISOString(),
-    cotizacion: { precio: quote.price ?? 0, km: quote.km, fuente: quote.source },
+    cotizacion: {
+      precio: quote.price ?? 0,
+      km: quote.km,
+      fuente: quote.source,
+      desglose: quote.breakdown ? { tabla: quote.breakdown.table, ajuste: quote.breakdown.adjustment, zona: quote.breakdown.zone?.name ?? null } : null,
+    },
   };
   const trip = await createTrip(null, { origenRestaurante: restaurant.name, mensajeOrigen: null }, draft, quote.price ?? 0, null, restaurant);
   await updateSimulatorConfig((c) => ({ trips: [...c.trips, trip.id] }));

@@ -17,6 +17,13 @@ export type Trip = {
   requiresCashReturn: boolean;
   deliveryFee: number;
   distanceKm: number | null;
+  /** `calle` (OSRM) o `linea_recta`; nulo si no se midió. */
+  routeSource?: "calle" | "linea_recta" | null;
+  /** De dónde sale `deliveryFee`: tabla por km y ajuste de la zona de la
+   *  entrega. Nulos si el precio lo puso la central o es de antes del dato. */
+  fareTablePrice?: number | null;
+  fareAdjustment?: number | null;
+  fareZoneName?: string | null;
   createdAt: string;
   updatedAt: string;
   courierName: string | null;
@@ -115,7 +122,7 @@ export type Settlement = {
 };
 
 /** Un tramo de la tarifa por distancia; el último no tiene tope ("más de X km"). */
-export type FareRange = { upToKm: number | null; price: number };
+export type { FareRange } from "@dispatch/shared/domain/fare";
 
 export type DraftFields = {
   origenRestaurante: string | null;

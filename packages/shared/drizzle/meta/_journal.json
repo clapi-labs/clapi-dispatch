@@ -141,6 +141,13 @@
       "when": 1794444971846,
       "tag": "0019_distancia_por_calle",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794635436260,
+      "tag": "0020_tarifa_por_km_y_ajuste_por_zona",
+      "breakpoints": true
     }
   ]
 }

@@ -55,6 +55,11 @@ export async function createTrip(
       // Los km con que se cotizó, para que el portal muestre los mismos.
       routeKm: draft.cotizacion?.km ?? null,
       routeSource: draft.cotizacion?.km != null ? (draft.cotizacion.fuente ?? null) : null,
+      // De dónde sale el precio, para explicarlo desde Viajes. Solo si el
+      // precio es el que se calculó (la central pudo poner otro).
+      ...(draft.cotizacion?.desglose && price === Math.max(0, draft.cotizacion.desglose.tabla + draft.cotizacion.desglose.ajuste)
+        ? { fareTablePrice: draft.cotizacion.desglose.tabla, fareAdjustment: draft.cotizacion.desglose.ajuste, fareZoneName: draft.cotizacion.desglose.zona }
+        : {}),
     })
     .returning();
   return trip;
