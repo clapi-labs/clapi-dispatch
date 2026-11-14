@@ -337,6 +337,7 @@ async function handle(method: string, path: string, body: string | null): Promis
     return json({
       source: "calle",
       fallbacks: 0,
+      unroutable: 0,
       zones: fareZones,
       restaurantsOutside: 0,
       rows: fareExampleKm.map(([o, d, min, max]) => ({

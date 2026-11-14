@@ -72,12 +72,20 @@ El precio del domicilio: tabla por km más el ajuste de la zona de la entrega. L
 function quoteByDistance(from: GeoPoint, to: GeoPoint, opts?: { zones?: PricedZone[] }): Promise<Quote>;
 
 type GeoPoint = { lat: number; lng: number };
-type Quote = { km: number; source: "calle" | "linea_recta"; price: number | null; breakdown: FareBreakdown | null };
+type Quote = {
+  km: number;
+  source: "calle" | "linea_recta";
+  routable: boolean;
+  coverage: "ok" | "cerca" | "fuera" | "sin_zonas";
+  price: number | null;
+  breakdown: FareBreakdown | null;
+};
 type FareBreakdown = { km: number; table: number; adjustment: number; zone: { id: number; name: string } | null; total: number };
 ```
 
 - `km` es la distancia por calle del OSRM propio con `settings.routing_config.porCalle` encendido (`source: "calle"`); apagado, o si OSRM no responde, la línea recta (Haversine) por el factor de ruta (1,3, el mismo `FACTOR_RUTA` del engine; `source: "linea_recta"`). Ver [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Distancia por calle».
-- `price` es la tabla por kilómetro que se edita en el portal (`settings.fare_ranges`, con cargo por km adicional en el último rango) más el ajuste de la zona de servicio donde queda la entrega (`service_zones.fare_adjustment`), nunca menos de 0; `breakdown` dice de dónde sale. Si la tabla está vacía, `price` es `null`: no hay tarifa por defecto, y el bot pasa el pedido a la central. `zones`: las zonas, si quien llama ya las leyó. Ver [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Precio del domicilio».
+- `routable` es `false` si el punto queda fuera de las zonas de servicio o del mapa de calles, o no hay ruta: no se cotiza (`km` 0, `price` `null`). `coverage` dice dónde cayó la entrega. En ese caso el bot pasa la entrega a la central.
+- `price` es la tabla por kilómetro que se edita en el portal (`settings.fare_ranges`, con cargo por km adicional en el último rango) más el ajuste de la zona de servicio donde queda la entrega (`service_zones.fare_adjustment`), nunca menos de 0; `breakdown` dice de dónde sale. Si la tabla está vacía o `routable` es `false`, `price` es `null`: no hay tarifa por defecto, y el bot pasa el pedido a la central. `zones`: las zonas, si quien llama ya las leyó. Ver [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Precio del domicilio».
 - Si más adelante el engine ofrece una distancia mejor, cambia el interior de la función, no su forma.
 
 ## 3. Lo que el bot deja en la base para el engine

@@ -268,6 +268,7 @@ async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { l
     precio: quote.price,
     km: quote.km,
     fuente: quote.source,
+    routable: quote.routable,
     desglose: b ? { tabla: b.table, ajuste: b.adjustment, zona: b.zone?.name ?? null } : null,
     outOfRange: config.maxKm !== null && quote.km > config.maxKm,
   };
@@ -314,24 +315,30 @@ export function quoteMessage(
 export const ADVISOR_QUERY_REASON = "Consulta de dirección:";
 
 /**
- * El mapa no ubicó una o más direcciones (o no respondió): en vez de insistirle
- * al restaurante, el bot le pregunta a la central si la dirección es válida y
- * cuánto vale. El borrador se conserva; mientras el asesor responde en el
- * portal, el bot no contesta en ese chat. La respuesta la aplica `advisor.ts`.
+ * El mapa no ubicó una o más direcciones, no respondió, o no pudo medir el
+ * domicilio por calle: en vez de insistirle al restaurante, el bot le pregunta
+ * a la central si la dirección es válida y cuánto vale. El borrador se
+ * conserva; mientras el asesor responde en el portal, el bot no contesta en
+ * ese chat. La respuesta la aplica `advisor.ts`.
  */
-async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraft[], mapDown: boolean) {
+type AdvisorWhy = "down" | "not_found" | "no_route";
+
+async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraft[], why: AdvisorWhy) {
   draft.consultaAsesor = { entregas: pending.map((d) => draft.entregas.indexOf(d)), desde: new Date().toISOString() };
   const list = pending.map((d) => `«${fullAddress(d)}»`).join(" y ");
-  const why = mapDown ? "el mapa no respondió" : "no la encuentro en el mapa";
+  const reason = why === "down" ? "el mapa no respondió" : why === "no_route" ? "no puedo medirla por calle" : "no la encuentro en el mapa";
   await updateConversation(ctx.conversation.id, {
     botPaused: true,
-    escalationReason: `${ADVISOR_QUERY_REASON} ${why}. ¿Es válida ${list} y cuánto vale el domicilio?`,
+    escalationReason: `${ADVISOR_QUERY_REASON} ${reason}. ¿Es válida ${list} y cuánto vale el domicilio?`,
     draft,
     failedAttempts: 0,
   });
-  const text = mapDown
-    ? `No puedo ubicar direcciones en este momento 🙏 Ya le pregunto a la central cuánto vale el domicilio a ${list}. Te aviso en un momento.`
-    : `No logro ubicar ${list} en el mapa 🗺️ Ya le pregunto a la central si la dirección está bien y cuánto vale el domicilio. Te aviso en un momento 🙏`;
+  const text =
+    why === "down"
+      ? `No puedo ubicar direcciones en este momento 🙏 Ya le pregunto a la central cuánto vale el domicilio a ${list}. Te aviso en un momento.`
+      : why === "no_route"
+        ? `No puedo medir el domicilio a ${list} por calle 🙏 Ya le pregunto a la central cuánto vale. Te aviso en un momento.`
+        : `No logro ubicar ${list} en el mapa 🗺️ Ya le pregunto a la central si la dirección está bien y cuánto vale el domicilio. Te aviso en un momento 🙏`;
   await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
@@ -682,7 +689,7 @@ export async function handleRestaurant(ctx: Context) {
     d.cotizacion = null;
   }
   if (notFound.length) {
-    await askAdvisor(ctx, draft, notFound, mapDown);
+    await askAdvisor(ctx, draft, notFound, mapDown ? "down" : "not_found");
     return;
   }
 
@@ -693,6 +700,7 @@ export async function handleRestaurant(ctx: Context) {
   const zones = deliveries.some((d) => !d.cotizacion) ? await listServiceZones() : [];
   const outOfRange: { delivery: DeliveryDraft; km: number }[] = [];
   const noService: DeliveryDraft[] = [];
+  const noRoute: DeliveryDraft[] = [];
   const nearEdge: NearEdge[] = [];
   let newQuote = false;
   for (const d of deliveries) {
@@ -703,6 +711,10 @@ export async function handleRestaurant(ctx: Context) {
       continue;
     }
     const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config, zones);
+    if (!quote.routable) {
+      noRoute.push(d);
+      continue;
+    }
     if (quote.precio === null) {
       await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
       return;
@@ -717,6 +729,10 @@ export async function handleRestaurant(ctx: Context) {
     }
     d.cotizacion = { precio: quote.precio, km: quote.km, fuente: quote.fuente, desglose: quote.desglose };
     newQuote = true;
+  }
+  if (noRoute.length) {
+    await askAdvisor(ctx, draft, noRoute, "no_route");
+    return;
   }
   const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];
   if (dropped.length) draft.entregas = draft.entregas.filter((d) => !dropped.includes(d));

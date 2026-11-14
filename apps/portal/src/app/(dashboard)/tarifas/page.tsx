@@ -23,6 +23,7 @@ type Examples = {
   porCalle: boolean;
   source: "calle" | "linea_recta";
   fallbacks: number;
+  unroutable: number;
   zones: { id: number; name: string; fareAdjustment: number; restaurants: number }[];
   restaurantsOutside: number;
   rows: { originZoneId: number; destinationZoneId: number; restaurants: number; km: number; kmMin: number; kmMax: number }[];
@@ -409,6 +410,7 @@ export default function TarifasPage() {
           Km de los restaurantes de cada zona al centro de la zona de destino ({examples?.source === "calle" ? (examples.porCalle ? "por calle, como cobra el bot" : "por calle: vista previa, el bot todavía cobra en línea recta × 1,3") : "en línea recta × 1,3, como cobra hoy el bot"}): el
           típico es la mediana, y entre paréntesis el rango. Los precios salen de lo que está escrito arriba, aunque no esté guardado.
           {examples && examples.fallbacks > 0 && ` ${examples.fallbacks} medidas salieron en línea recta porque el mapa de calles no respondió.`}
+          {examples && examples.unroutable > 0 && ` ${examples.unroutable} no se pudieron medir porque el punto queda fuera del mapa de calles y no entran.`}
           {examples && examples.restaurantsOutside > 0 && ` ${examples.restaurantsOutside} restaurantes quedan fuera de las zonas y no entran.`}
           {rangeError && " La tabla por km tiene un error: los ejemplos usan la guardada."}
         </p>
@@ -416,7 +418,11 @@ export default function TarifasPage() {
           <p className="px-5 py-12 text-center text-sm text-ink-3">{examplesFailed ? "No se pudieron calcular los ejemplos." : "Midiendo distancias…"}</p>
         ) : exampleRows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-ink-3">
-            {examples.zones.length === 0 ? "Sin zonas de servicio no hay ejemplos." : "Ningún restaurante con ubicación queda dentro de una zona."}
+            {examples.zones.length === 0
+              ? "Sin zonas de servicio no hay ejemplos."
+              : examples.rows.length === 0 && examples.unroutable > 0
+                ? "No se pudo medir ningún trayecto: los puntos quedan fuera del mapa de calles."
+                : "Ningún restaurante con ubicación queda dentro de una zona."}
           </p>
         ) : (
           <div className="max-h-[32rem] overflow-auto">

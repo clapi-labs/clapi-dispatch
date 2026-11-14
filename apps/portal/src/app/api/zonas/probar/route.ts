@@ -24,8 +24,8 @@ const REASONS: Record<string, string> = {
  *
  * Con `restaurantId`, también la cotización real desde ese restaurante
  * (`quoteByDistance`, la misma del bot): km, precio de la tabla, ajuste de la
- * zona y total. Fuera de las zonas no hay precio: el bot no lo toma. No crea
- * pedidos ni manda mensajes.
+ * zona y total. Fuera de las zonas o del mapa de calles no hay precio: el bot
+ * no lo toma. No crea pedidos ni manda mensajes.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown; restaurantId?: unknown };
@@ -70,6 +70,7 @@ export async function POST(request: Request) {
       pickup,
       km: q.km,
       source: q.source,
+      routable: q.routable,
       table: q.breakdown?.table ?? null,
       adjustment: q.breakdown?.adjustment ?? 0,
       zone: q.breakdown?.zone ?? null,

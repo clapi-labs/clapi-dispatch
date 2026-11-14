@@ -13,8 +13,9 @@ import { updateConversation } from "@/db/queries/conversation";
  * bot retoma la conversación con el pedido como estaba.
  *
  * - Consulta de dirección (`askAdvisor` en order.ts): el mapa no ubicó la
- *   dirección y el asesor dice si es válida y cuánto vale. Sigue con el
- *   precio del asesor, o le pide al restaurante que corrija la dirección.
+ *   dirección o no pudo medirla por calle, y el asesor dice si es válida y
+ *   cuánto vale. Sigue con el precio del asesor, o le pide al restaurante que
+ *   corrija la dirección.
  * - Consulta de cobertura (`askCoverage`): la entrega quedó fuera de las zonas
  *   de servicio, cerca del borde, y el asesor dice si se hace. Si sí, sigue
  *   con el precio (el de la tabla por km, o el que ponga el asesor); si no, le

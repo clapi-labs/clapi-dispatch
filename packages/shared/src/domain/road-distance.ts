@@ -5,10 +5,11 @@ import type { GeoPoint } from "./dispatch/types";
  * Distancia por calle entre dos puntos, con el OSRM propio (docs/OPERACION.md,
  * «Mapa de calles (OSRM)»), y su respaldo: la línea recta × `ROUTE_FACTOR`.
  *
- * El respaldo no es un error para nadie: el pedido sigue, el restaurante no ve
- * nada distinto y la caída queda en el registro del contenedor
- * (`[calles] …`). Pura salvo por `fetch` y el reloj, que se pueden inyectar
- * para probarla.
+ * El respaldo por caída no es un error para nadie: el pedido sigue, el
+ * restaurante no ve nada distinto y la caída queda en el registro del
+ * contenedor (`[calles] …`). Si OSRM responde que no hay ruta, el punto no se
+ * cotiza (`routable: false`). Pura salvo por `fetch` y el reloj, que se pueden
+ * inyectar para probarla.
  */
 
 /** La ruta por calles es ~30 % más larga que la línea recta. Mismo valor que
@@ -32,11 +33,14 @@ export const MAX_SNAP_METERS = 500;
 export type RoadSource = "calle" | "linea_recta";
 
 export type RoadDistance = {
-  /** Kilómetros, con un decimal. */
+  /** Kilómetros, con un decimal. 0 si `routable` es false. */
   km: number;
   /** `calle`: lo midió OSRM. `linea_recta`: línea recta × 1,3 (interruptor
    *  apagado, o respaldo porque OSRM no respondió). */
   source: RoadSource;
+  /** `false`: OSRM respondió que no hay ruta o que un punto queda fuera del
+   *  mapa cargado. No es una caída: esa entrega no se cotiza. */
+  routable: boolean;
 };
 
 const oneDecimal = (km: number) => Math.round(km * 10) / 10;
@@ -59,7 +63,7 @@ export type RoadRouterOptions = {
 };
 
 /** OSRM respondió bien, pero esa ruta no sirve (sin ruta, punto fuera del
- *  mapa): se usa el respaldo para esa entrega, sin dar a OSRM por caído. */
+ *  mapa): no se cotiza, sin dar a OSRM por caído. */
 class UnusableRoute extends Error {}
 
 type OsrmRoute = {
@@ -103,25 +107,26 @@ export function createRoadRouter(options: RoadRouterOptions) {
   }
 
   return {
-    /** Kilómetros por calle de `from` a `to`. Nunca falla: si OSRM no
-     *  responde, devuelve la línea recta × 1,3 con `source: "linea_recta"`. */
+    /** Kilómetros por calle de `from` a `to`. Si OSRM no responde, devuelve
+     *  la línea recta × 1,3 (`routable: true`). Si OSRM dice que no hay ruta
+     *  o que el punto está fuera del mapa, `routable: false`: no se cotiza. */
     async distance(from: GeoPoint, to: GeoPoint): Promise<RoadDistance> {
-      const fallback: RoadDistance = { km: straightRouteKm(from, to), source: "linea_recta" };
+      const fallback: RoadDistance = { km: straightRouteKm(from, to), source: "linea_recta", routable: true };
       if (!base || now() < downUntil) return fallback;
       try {
         const km = await measure(from, to);
         if (down) log("[calles] OSRM volvió a responder: se cotiza otra vez por calle.");
         down = false;
-        return { km: oneDecimal(km), source: "calle" };
+        return { km: oneDecimal(km), source: "calle", routable: true };
       } catch (error) {
         const reason = error instanceof Error ? (error.name === "TimeoutError" ? `no respondió en ${timeoutMs} ms` : error.message) : String(error);
-        if (!(error instanceof UnusableRoute)) {
-          if (!down) log(`[calles] OSRM falló (${reason}): se usa línea recta × ${ROUTE_FACTOR} y se reintenta en ${retryAfterMs / 1000} s.`);
-          down = true;
-          downUntil = now() + retryAfterMs;
-        } else {
-          log(`[calles] ${reason}: esa entrega se mide en línea recta × ${ROUTE_FACTOR}.`);
+        if (error instanceof UnusableRoute) {
+          log(`[calles] ${reason}: esa entrega no se cotiza (fuera del mapa de calles).`);
+          return { km: 0, source: "linea_recta", routable: false };
         }
+        if (!down) log(`[calles] OSRM falló (${reason}): se usa línea recta × ${ROUTE_FACTOR} y se reintenta en ${retryAfterMs / 1000} s.`);
+        down = true;
+        downUntil = now() + retryAfterMs;
         return fallback;
       }
     },

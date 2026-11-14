@@ -742,6 +742,7 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
     if (!q) return el("p", { className: "status", style: "margin-top:8px", textContent: r.kind === "fuera" ? "Fuera de las zonas de servicio: el bot no toma este pedido, así que no hay precio." : "Sin cotización." });
     const box = el("div", { style: "margin-top:8px" });
     box.append(el("p", { className: "label", textContent: `Cotización desde ${q.restaurant}` }));
+    if (q.routable === false) { box.append(el("p", { className: "status err", textContent: "Ese punto queda fuera del mapa de calles o no tiene ruta: el bot no lo cotiza." })); return box; }
     if (q.total === null) { box.append(el("p", { className: "status err", textContent: "La tabla por km está vacía: el bot no puede cotizar. Llénala en Tarifas." })); return box; }
     const row = (dt, dd, cls) => [el("dt", { className: cls || "", textContent: dt }), el("dd", { className: cls || "", textContent: dd })];
     const dl = el("dl", { className: "fare" },
