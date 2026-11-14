@@ -68,17 +68,31 @@ export type DeliveryDraft = DeliveryFields & {
   direccionUbicada?: string | null;
   /** `km` null = el precio lo dio el asesor, sin distancia medida. `fuente`:
    *  de dónde salieron los km (`calle` = OSRM; `linea_recta` = línea recta ×
-   *  1,3). Vacía en los borradores de antes de este dato. */
-  cotizacion?: { precio: number; km: number | null; fuente?: "calle" | "linea_recta" } | null;
+   *  1,3). Vacía en los borradores de antes de este dato. `desglose`: de dónde
+   *  sale el precio (tabla por km y ajuste de la zona); vacío si lo puso la
+   *  central. */
+  cotizacion?: { precio: number; km: number | null; fuente?: "calle" | "linea_recta"; desglose?: FareSplit | null } | null;
   /** El mapa no la ubicó, pero el asesor dijo que es válida y cuánto vale:
    *  no se vuelve a buscar mientras no cambie la dirección. */
   validadaPorAsesor?: boolean;
 };
 
+/** De dónde sale un precio: lo de la tabla por km, el ajuste de la zona de la
+ *  entrega y el nombre de esa zona (null sin zona). */
+export type FareSplit = { tabla: number; ajuste: number; zona: string | null };
+
 /** Una entrega cerca del borde de una zona de servicio, para que la central
  *  decida si se hace: la zona más cercana, a cuántos metros y lo que vale
- *  por km (lo que se cobra si dice que sí y no lo cambia). */
-export type CoverageQueryItem = { indice: number; zona: string; metros: number; precio: number; km: number; fuente?: "calle" | "linea_recta" };
+ *  (lo que se cobra si dice que sí y no lo cambia). */
+export type CoverageQueryItem = {
+  indice: number;
+  zona: string;
+  metros: number;
+  precio: number;
+  km: number;
+  fuente?: "calle" | "linea_recta";
+  desglose?: FareSplit | null;
+};
 
 /** Lo que el bot le preguntó a la central. `motivo` vacío o "direccion": el
  *  mapa no ubicó la dirección (¿es válida y cuánto vale?). "cobertura": la

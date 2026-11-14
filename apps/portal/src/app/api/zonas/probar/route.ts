@@ -1,5 +1,6 @@
 import { NEAR_ZONE_M, serviceVerdictAt } from "@dispatch/shared";
-import { listServiceZones } from "@dispatch/shared/db";
+import { db, getBotConfig, listServiceZones, quoteByDistance, schema } from "@dispatch/shared/db";
+import { eq } from "drizzle-orm";
 
 import { askBot } from "@/lib/bot";
 
@@ -20,9 +21,25 @@ const REASONS: Record<string, string> = {
  * entrega ahí (`serviceVerdictAt`): dentro de una zona, cerca del borde (la
  * central decide), lejos (no hay servicio) o sin zonas marcadas (no se
  * restringe nada). Lee las zonas guardadas: es lo que usaría el bot.
+ *
+ * Con `restaurantId`, también la cotización real desde ese restaurante
+ * (`quoteByDistance`, la misma del bot): km, precio de la tabla, ajuste de la
+ * zona y total. Fuera de las zonas no hay precio: el bot no lo toma. No crea
+ * pedidos ni manda mensajes.
  */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown; restaurantId?: unknown };
+
+  let pickup: { lat: number; lng: number } | null = null;
+  let restaurantName: string | null = null;
+  if (body.restaurantId != null && body.restaurantId !== "") {
+    const id = Number(body.restaurantId);
+    const [restaurant] = Number.isInteger(id) ? await db.select().from(schema.restaurants).where(eq(schema.restaurants.id, id)).limit(1) : [];
+    if (!restaurant) return Response.json({ error: "Ese restaurante ya no existe" }, { status: 404 });
+    if (!restaurant.knownPickupLocation) return Response.json({ error: "Ese restaurante no tiene ubicación de recogida: ubícalo en Restaurantes." }, { status: 400 });
+    pickup = restaurant.knownPickupLocation;
+    restaurantName = restaurant.name;
+  }
 
   let point: { lat: number; lng: number };
   let neighborhood: string | null = null;
@@ -41,9 +58,28 @@ export async function POST(request: Request) {
     point = { lat, lng };
   }
 
-  const verdict = serviceVerdictAt(point, await listServiceZones());
+  const zones = await listServiceZones();
+  const verdict = serviceVerdictAt(point, zones);
   const zoneOf = (z: { id: number; name: string }) => ({ id: z.id, name: z.name });
+  // Lo mismo que hace el bot: fuera y lejos no se cotiza.
+  let quote = null;
+  if (pickup && verdict.kind !== "fuera") {
+    const [q, config] = await Promise.all([quoteByDistance(pickup, point, { zones }), getBotConfig()]);
+    quote = {
+      restaurant: restaurantName,
+      pickup,
+      km: q.km,
+      source: q.source,
+      table: q.breakdown?.table ?? null,
+      adjustment: q.breakdown?.adjustment ?? 0,
+      zone: q.breakdown?.zone ?? null,
+      total: q.price,
+      maxKm: config.maxKm,
+      overMaxKm: config.maxKm !== null && q.km > config.maxKm,
+    };
+  }
   return Response.json({
+    quote,
     point,
     neighborhood,
     nearM: NEAR_ZONE_M,

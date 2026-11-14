@@ -6,7 +6,7 @@
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
 - **Recogida:** la del restaurante registrado, sin volver a geocodificar. Si no está registrado, hoy se ubica lo que escribió como origen. **Decidido:** la recogida de un restaurante nuevo la verifica la central a mano, no Google ni Places; el flujo está por definir ([PLAN](PLAN.md) B-3).
 - **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.
-- **Se cobra solo por distancia** (tabla de rangos por km del portal, menú **Tarifas**): km por calle desde la recogida hasta la entrega, o línea recta × 1,3 con el interruptor apagado. Ver «Distancia por calle», abajo. Ninguna zona cambia el precio. Sin ubicación no hay precio.
+- **El precio** es la tabla por km del portal (menú **Tarifas**) más el ajuste fijo de la zona de servicio donde queda la entrega. Ver «Precio del domicilio» y «Distancia por calle», abajo. Sin ubicación no hay precio.
 - **Si Google no ubica la entrega, o no responde**, el bot le pregunta a la central si la dirección es válida y cuánto vale, y le dice al restaurante que ya le avisa. La central responde desde el panel de la conversación en el portal ([BOT.md](BOT.md), «La dirección»).
 - **Si Google falla al ubicar la recogida de un restaurante nuevo**, el bot responde «No puedo ubicar direcciones en este momento 🙏 Ya le paso tu pedido a la central» y la conversación queda en el portal con el pedido a medio armar.
 - **Ubicación simulada** para pruebas y demostraciones: `GEOCODE_SIMULADO=true` (la misma dirección siempre cae en el mismo punto de Cali). El chat de prueba la usa por defecto; `npm run bot:chat -- --google` usa Google de verdad. Nunca en producción.
@@ -19,6 +19,41 @@
 
 Idea para después (no decidida): un geocodificador propio con los datos de OpenStreetMap del mapa de zonas, y Google solo cuando el propio no encuentre.
 
+## Precio del domicilio
+
+El precio de un domicilio es **la tabla por km más el ajuste de la zona de la entrega** (`packages/shared/src/domain/fare.ts`, con sus pruebas en `fare.test.ts`). Los valores los pone la central desde el portal; ninguno va en el código.
+
+**La tabla por km** (menú **Tarifas**, guardada en `settings.fare_ranges`):
+
+- Rangos con tope: «hasta 1,5 km, 5.000; hasta 3 km, 6.000; hasta 4 km, 7.000». Cada tope incluye sus km: 4 km exactos cuestan 7.000.
+- El último no tiene tope: «más de 4 km, **precio base** más **N por cada km adicional**». El km adicional se cobra **por fracción**: 4,1 km ya paga uno. Con el ejemplo y +1.000 por km: 4,1 km cuesta 8.000 y 6,2 km cuesta 7.000 + 3 × 1.000 = 10.000. Así se calculó la propuesta que reproduce lo que cobra hoy el cliente.
+- Las tablas de antes, sin km adicional, siguen funcionando: el último rango es un precio fijo (`perKm` 0).
+
+**El ajuste por zona** (`service_zones.fare_adjustment`, en pesos, 0 por defecto):
+
+- Se edita en **Tarifas** (todas las zonas en una lista) o en el mapa de **Zonas** (al editar una zona). Puede ser negativo, para bajar una zona; tope de ±200.000.
+- Cuenta la zona **de la entrega**, nunca la del restaurante. Si la entrega cae en varias zonas, la más pequeña. Cerca del borde (≤ 300 m, la central decide), la zona más cercana. Fuera, o sin zonas marcadas, no hay ajuste.
+- **El total nunca baja de 0.**
+
+**Un solo cálculo:** `quoteByDistance` (`packages/shared/src/db/quote.ts`) mide los km (`deliveryDistance`), lee la tabla y las zonas y aplica `fareBreakdown`. Lo usan el bot, «Probar un punto» de Zonas y el simulador; la tabla de ejemplos de Tarifas aplica el mismo `fareBreakdown` a km medidos con el mismo `deliveryDistance`. Si se enciende la distancia por calle, las tres la usan.
+
+**Cuándo aplica un cambio:** desde la siguiente cotización. Los pedidos que ya tienen precio no cambian: el viaje guarda el total (`trips.delivery_fee`) y su desglose (`fare_table_price`, `fare_adjustment`, `fare_zone_name`), congelados.
+
+**La tabla nueva se enciende junto con la distancia por calle:** está calibrada con km por calle, y con la línea recta de hoy los precios saldrían mal. Primero se cargan la tabla y los ajustes que confirme el cliente, mirando la tabla de ejemplos, y en el mismo momento se enciende `porCalle` ([OPERACION](OPERACION.md), «Mapa de calles (OSRM)»).
+
+### Dónde se ve el desglose
+
+- **Viajes:** al abrir la tarjeta de un pedido sale la distancia (y si es por calle), lo de la tabla, el ajuste de la zona (con su nombre) y el total. Si el precio lo puso la central, o es de antes de este cambio, dice que no tiene desglose. El restaurante sigue viendo solo el total.
+- **Consulta de cobertura:** si la central dice «Sí, se hace» con el precio que calculó el bot, el viaje guarda el desglose; si pone otro precio, queda sin desglose.
+
+### Tabla de ejemplos
+
+Debajo de la tabla, en **Tarifas**: para cada zona de origen donde hay restaurantes y cada zona de destino, los **km típicos**, el precio de la tabla, el ajuste de la zona de destino y el total.
+
+- **Los km** (`fareExampleDistances` en `packages/shared/src/db/fare-examples.ts`, `GET /api/fares/ejemplos`): desde cada restaurante activo de la zona de origen (la más pequeña que lo contiene) hasta el centro de la zona de destino (`zoneCenter`: su centro de masa, o el punto de adentro más cercano a él si la zona tiene forma de L). El típico es la **mediana**, y entre paréntesis el rango (mínimo–máximo). Se miden como los mide el bot: por calle si está encendido; si OSRM no responde para alguna, lo dice. Con el interruptor apagado, la casilla **Medir por calle (como quedará al encender)** mide por calle solo para esta vista previa (`?medida=calle`): así se ve la tarifa nueva antes de encenderla, sin cambiar lo que cobra el bot.
+- **Los precios** se calculan en el navegador con lo que está escrito, **antes de guardar**: cambiar un precio, el km adicional o un ajuste cambia la tabla al momento. Al recargar sin guardar vuelve a lo guardado. Si la tabla por km tiene un error, los ejemplos usan la guardada.
+- Un selector «Desde» filtra por zona de origen. Los restaurantes fuera de toda zona no entran (se dice cuántos).
+
 ## Distancia por calle
 
 Con qué km se cobra el domicilio (`deliveryDistance` y `quoteByDistance` en `packages/shared/src/db/quote.ts`; el cliente de OSRM en `packages/shared/src/domain/road-distance.ts`, con sus pruebas).
@@ -27,7 +62,7 @@ Con qué km se cobra el domicilio (`deliveryDistance` y `quoteByDistance` en `pa
 
 **Cómo funciona:**
 
-- Con el interruptor `settings.routing_config.porCalle` **encendido**, el bot le pide a un **OSRM propio** (en el mismo servidor, con el mapa de OpenStreetMap de Cali) los km por calle desde la recogida hasta la entrega, con el perfil de carro. Esos km, con un decimal, buscan el precio en la tabla de Tarifas, igual que antes.
+- Con el interruptor `settings.routing_config.porCalle` **encendido**, el bot le pide a un **OSRM propio** (en el mismo servidor, con el mapa de OpenStreetMap de Cali) los km por calle desde la recogida hasta la entrega, con el perfil de carro. Esos km, con un decimal, buscan el precio en la tabla de Tarifas (más el ajuste de la zona), igual que antes.
 - **Apagado** (por defecto), todo funciona exactamente como antes: línea recta × 1,3, sin consultar OSRM. Se enciende **al mismo tiempo** que se carga la tabla de precios hecha para km por calle: con la tabla de hoy todos los precios subirían de golpe. Cómo encenderlo: [OPERACION](OPERACION.md), «Mapa de calles (OSRM)».
 - **Si OSRM no responde** en 800 ms, o falla: se usa la línea recta × 1,3, el pedido no se frena, el restaurante no ve ningún error y la caída queda en el registro (`[calles] …`). Tras una caída no se le pregunta durante 30 s, para que las cotizaciones no esperen. Si un punto queda a más de 500 m de toda calle del mapa (fuera del área cargada), esa entrega va en línea recta.
 - **Se guardan con el viaje** los km con que se cotizó (`trips.route_km`) y de dónde salieron (`trips.route_source`: `calle` o `linea_recta`), congelados como el precio. Las distancias no se guardan aparte: medir con el OSRM local tarda pocos milisegundos.
@@ -44,7 +79,7 @@ La central marca en el mapa **solo las zonas donde sí hay domicilio**. Lo que q
 
 **Las reglas** (`packages/shared/src/domain/service-zones.ts`, con sus pruebas):
 
-- Una zona es un **nombre y un área del mapa**. No tiene precio ni tipo.
+- Una zona es un **nombre, un área del mapa y un ajuste de precio** (0 por defecto, ver «Precio del domicilio»). No tiene tipo.
 - Cuenta **dónde se entrega**, no dónde está el restaurante, y las zonas son **las mismas para todos los restaurantes**.
 - **Pueden cruzarse:** la entrega está cubierta si cae en cualquiera.
 - Para una entrega hay cuatro casos (`serviceVerdictAt`):
@@ -57,17 +92,17 @@ La central marca en el mapa **solo las zonas donde sí hay domicilio**. Lo que q
 | **Sin zonas** | No hay ninguna zona marcada | Funciona como antes, sin restringir nada |
 
 - Las zonas son un **área del mapa**, no el nombre del barrio que devuelve Google. Por eso sale igual con **pin** o con **dirección escrita**.
-- **No cambian el precio:** el domicilio se cobra solo por km.
+- **Cambian el precio solo con su ajuste:** el domicilio es la tabla por km más el ajuste de la zona de la entrega.
 - Lo que hace el bot en cada caso, con los mensajes: «Zonas de servicio en el bot», abajo.
 
-**Dónde se guardan:** tabla `service_zones` (nombre, contorno en `ring` y, si salió de un barrio, su código en `barrio_code`). Cada creación, cambio y borrado deja una copia en `service_zone_versions` (con quién lo hizo): una zona borrada o cambiada sin querer se recupera de ahí.
+**Dónde se guardan:** tabla `service_zones` (nombre, contorno en `ring`, ajuste de precio en `fare_adjustment` y, si salió de un barrio, su código en `barrio_code`). Cada creación, cambio y borrado deja una copia en `service_zone_versions` (con quién lo hizo): una zona borrada o cambiada sin querer se recupera de ahí.
 
 ### Las zonas de la central no se pierden
 
 Desde que la central empieza a marcarlas, las zonas son datos suyos:
 
 - **Ninguna migración ni despliegue puede borrarlas ni cambiarlas.** `packages/shared/src/db/service-zones-guard.test.ts` falla si una migración posterior a la 0018 hace `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, renombra o cambia columnas de `service_zones` o `service_zone_versions` (agregar una columna sí se puede), o si algún código fuera de `db/service-zones.ts` (el seed, los scripts) las escribe.
-- **Copia:** en el mapa, **Descargar copia** baja todas las zonas en un archivo GeoJSON.
+- **Copia:** en el mapa, **Descargar copia** baja todas las zonas en un archivo GeoJSON, con su ajuste de precio (`fareAdjustment`), que `zonas:importar` también carga.
 - **Pasarlas a producción** (o recuperar una copia): con ese archivo, `npm run zonas:importar -- zonas-de-servicio-AAAA-MM-DD.geojson` (con `DATABASE_URL` de la base de destino). Solo agrega: nunca borra ni cambia una zona, y salta las que ya están con el mismo nombre y el mismo borde, así que se puede correr dos veces.
 
 ### El mapa de zonas
@@ -77,7 +112,7 @@ En el portal: menú **Zonas** (`/zonas`, que abre `apps/portal/public/zonas/mapa
 - **Crear:** **Nueva zona**, y después:
   - **Desde un barrio:** buscarlo por nombre (o tocarlo en el mapa). La zona sale con el borde del barrio y su nombre, que se puede cambiar.
   - **Dibujar a mano:** tocar cada esquina en el mapa; **Terminar borde** deja de agregar esquinas al tocar el mapa. Para lo que no es un barrio: Cañasgordas, Jamundí, una parte de un barrio.
-- **Nombre y Guardar.** Se puede guardar desde el panel o desde el botón **Guardar** sobre el mapa.
+- **Nombre, ajuste de precio y Guardar.** El ajuste se escribe en pesos (con un menos adelante para bajar). Se puede guardar desde el panel o desde el botón **Guardar** sobre el mapa. La lista muestra el ajuste de las zonas que tienen uno.
 - **Editar el borde** (también mientras se dibuja):
   - **Mover** una esquina: arrastrarla.
   - **Meter una esquina en cualquier tramo del borde**, no solo al final: tocar el punto pequeño que hay entre dos esquinas (o arrastrarlo), o **clic derecho en el mapa → Agregar punto aquí** (en el celular, mantener presionado): la esquina va al tramo del borde más cercano a ese punto. Así, si a un lado le faltó una esquina, se mete ahí sin que salga un triángulo.
@@ -87,6 +122,7 @@ En el portal: menú **Zonas** (`/zonas`, que abre `apps/portal/public/zonas/mapa
 - **Editar, renombrar o borrar una zona guardada:** tocarla, en el mapa o en la lista. **Borrar zona** pide confirmación. Cancelar con cambios sin guardar pide un segundo toque.
 - **Zoom:** se acerca hasta el nivel 21 (la escala marca unos 5 m: se ve la cuadra y, donde OpenStreetMap las tiene, las casas; de 19 en adelante se amplía la imagen) y se aleja hasta el 9. Se mueve sin límite, para marcar zonas en las afueras.
 - **Probar:** una dirección escrita como la mandaría el restaurante (el portal le pide la ubicación al bot, `POST /api/internal/geocode`, con el mismo Google) o **Probar un punto** con un clic. Responde **Hay servicio**, **Cerca del borde: decide la central** (con la distancia), **Sin servicio** (con la zona más cercana) o **Todavía no hay zonas** (`POST /api/zonas/probar`). Como la llave de Google solo funciona desde el servidor, en local la dirección cae en el punto simulado (`GEOCODE_SIMULADO=true`).
+- **Probar desde un restaurante:** se elige un restaurante (con ubicación) arriba de «Probar una dirección», y la prueba trae además la **cotización real**, la misma de `quoteByDistance`: km (y si son por calle), precio de la tabla, ajuste de la zona y total. Si el punto queda **fuera** de las zonas, dice que el bot no lo toma y no da precio; **cerca del borde**, da el precio y avisa que el bot se lo pregunta a la central; si pasa del tope de km de la agencia, también lo dice. No crea pedidos ni manda mensajes. Escribir una dirección gasta una consulta de geocodificación; tocar el mapa no.
 - Cada cambio se guarda al momento; la lista se vuelve a leer cada 20 s y al volver a la pestaña.
 - Los barrios **no dan ni quitan servicio** por sí solos: solo sirven para crear zonas.
 
@@ -132,7 +168,7 @@ En `order.ts`, con la entrega ubicada y antes de cotizar, cada entrega sin preci
 | Fuera | «Qué pena, pero hasta … no manejamos domicilio 🙏» | Esa entrega no se pide; si no queda ninguna, no se crea el pedido |
 | Sin zonas | Lo de siempre | Sigue normal |
 
-- **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda, los km de la cotización (por calle, si está encendido) y lo que vale por km, y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
+- **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda, los km de la cotización (por calle, si está encendido) y lo que vale (tabla por km más el ajuste de esa zona), y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
 - Con varias entregas, cada una por su lado: las de fuera se quitan con su aviso, las de cerca van juntas en una consulta y las de dentro esperan con su precio.
 - El tope de km por calles (`maxKm`) sigue aparte: se revisa después de las zonas.
 - **Sin coordenadas no hay revisión:** una dirección que el mapa no ubicó y la central validó a mano no tiene punto.

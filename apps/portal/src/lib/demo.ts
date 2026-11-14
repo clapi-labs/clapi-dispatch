@@ -85,7 +85,7 @@ const courierOf = (id: number) => {
 const trips: Trip[] = [
   // Por asignar: uno recién llegado y uno que ya pasa de 2 min (urgente).
   trip({ status: "pending", originRestaurantName: "Pizzería Napoli", deliveryAddress: "Cra 66 #10-45, El Limonar", createdAt: ago(0.6), valueToCollect: 52_000 }),
-  trip({ status: "pending", originRestaurantName: "Sushi Cali", deliveryAddress: "Calle 5 #38-20, Apto 502, Torre B", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(3.5), valueToCollect: 88_000, deliveryFee: 7_000 }),
+  trip({ status: "pending", originRestaurantName: "Sushi Cali", deliveryAddress: "Calle 5 #38-20, Apto 502, Torre B", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(3.5), valueToCollect: 88_000, deliveryFee: 7_000, fareTablePrice: 6_000, fareAdjustment: 1_000, fareZoneName: "Ciudad Jardín", routeSource: "calle" }),
   // En ruta: uno normal, uno que ya va largo (amarillo) y uno muy largo (rojo).
   trip({ status: "en_route", originRestaurantName: "Donde Lucho", deliveryAddress: "Calle 18 #122-35, Valle del Lili", createdAt: ago(20), assignedAt: ago(9), seenAt: ago(8), ...courierOf(1) }),
   trip({ status: "en_route", originRestaurantName: "La Brasa Roja", deliveryAddress: "Av. 6N #28-10, Granada", paymentMethod: "transferencia", requiresCashReturn: false, createdAt: ago(40), assignedAt: ago(28), seenAt: ago(26), pickedUpAt: ago(14), valueToCollect: 64_500, deliveryFee: 8_000, ...courierOf(4) }),
@@ -203,10 +203,28 @@ function pushMessage(conversationId: number, role: ChatMessage["role"], text: st
 // ---------------------------------------------------------------------------
 
 let fareRanges: FareRange[] = [
-  { upToKm: 2, price: 5_000 },
-  { upToKm: 4, price: 6_000 },
-  { upToKm: 7, price: 8_000 },
-  { upToKm: null, price: 11_000 },
+  { upToKm: 1.5, price: 5_000 },
+  { upToKm: 3, price: 6_000 },
+  { upToKm: 4, price: 7_000 },
+  { upToKm: null, price: 7_000, perKm: 1_000 },
+];
+
+/** Zonas y km de ejemplo para la tabla de Tarifas. */
+const fareZones = [
+  { id: 1, name: "Granada", fareAdjustment: 0, restaurants: 2 },
+  { id: 2, name: "San Fernando", fareAdjustment: 0, restaurants: 1 },
+  { id: 3, name: "Ciudad Jardín", fareAdjustment: 1_000, restaurants: 0 },
+  { id: 4, name: "Pance", fareAdjustment: 2_000, restaurants: 0 },
+];
+const fareExampleKm: [number, number, number, number][] = [
+  [1, 1, 0.8, 1.6],
+  [1, 2, 3.2, 4.1],
+  [1, 3, 9.4, 10.2],
+  [1, 4, 13.1, 14],
+  [2, 1, 3.4, 3.4],
+  [2, 2, 0.9, 0.9],
+  [2, 3, 6.2, 6.2],
+  [2, 4, 9.8, 9.8],
 ];
 
 // ---------------------------------------------------------------------------
@@ -315,6 +333,29 @@ async function handle(method: string, path: string, body: string | null): Promis
 
   if (path === "/api/settlement") return json(settlement());
 
+  if (path === "/api/fares/ejemplos") {
+    return json({
+      source: "calle",
+      fallbacks: 0,
+      zones: fareZones,
+      restaurantsOutside: 0,
+      rows: fareExampleKm.map(([o, d, min, max]) => ({
+        originZoneId: o,
+        destinationZoneId: d,
+        restaurants: fareZones.find((z) => z.id === o)!.restaurants,
+        km: Math.round(((min + max) / 2) * 10) / 10,
+        kmMin: min,
+        kmMax: max,
+      })),
+    });
+  }
+  if (path === "/api/fares/ajustes" && method === "PUT") {
+    for (const a of data.adjustments as { id: number; fareAdjustment: number }[]) {
+      const z = fareZones.find((x) => x.id === a.id);
+      if (z) z.fareAdjustment = a.fareAdjustment;
+    }
+    return json({ ok: true, missing: [] });
+  }
   if (path === "/api/fares/ranges") {
     if (method === "PUT") fareRanges = data.ranges;
     return json(method === "PUT" ? { ok: true } : fareRanges);

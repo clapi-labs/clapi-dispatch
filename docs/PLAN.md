@@ -240,7 +240,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - `docker stop dispatch-osrm-1`: el bot sigue cotizando y el engine asignando, y la caída queda en los registros.
 - `docker stats`: consumo real de `dispatch-osrm-1`.
 
-**Para encenderlo en producción:** la tabla de precios nueva del cliente, cargada en Tarifas al mismo tiempo (ver «Decisiones y pendientes del dueño»).
+**Para encenderlo en producción:** la tabla de precios nueva del cliente (tabla por km con km adicional, más el ajuste de cada zona; [DIRECCIONES-Y-ZONAS](DIRECCIONES-Y-ZONAS.md), «Precio del domicilio»), cargada en Tarifas al mismo tiempo (ver «Decisiones y pendientes del dueño»).
 
 **Dónde mirar:** `packages/shared/src/domain/road-distance.ts`, `packages/shared/src/db/quote.ts`, `apps/engine/calles.py`, `apps/osrm/Dockerfile`.
 
