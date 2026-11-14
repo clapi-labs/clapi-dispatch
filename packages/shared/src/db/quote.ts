@@ -3,8 +3,10 @@ import { eq } from "drizzle-orm";
 import { createRoadRouter, straightRouteKm, type RoadDistance, type RoadRouter, type RoadSource } from "../domain/road-distance";
 import type { GeoPoint } from "../domain/dispatch/types";
 import { db } from "./client";
-import { getFareRanges, priceForDistance } from "./fares";
+import { adjustmentZoneAt, fareBreakdown, type FareBreakdown, type PricedZone } from "../domain/fare";
+import { getFareRanges } from "./fares";
 import { settings } from "./schema";
+import { listServiceZones } from "./service-zones";
 
 export { ROUTE_FACTOR } from "../domain/road-distance";
 
@@ -35,9 +37,11 @@ export type Quote = {
   km: number;
   /** De dónde salió `km`: OSRM, o línea recta × 1,3. */
   source: RoadSource;
-  /** Lo que se cobra, según la tabla por km. `null` si la tabla está vacía:
-   *  no hay con qué cobrar. */
+  /** Lo que se cobra: tabla por km más el ajuste de la zona de la entrega,
+   *  nunca menos de 0. `null` si la tabla está vacía: no hay con qué cobrar. */
   price: number | null;
+  /** De dónde sale `price` (tabla, ajuste, zona). `null` con la tabla vacía. */
+  breakdown: FareBreakdown | null;
 };
 
 /** Distancia estimada por calles entre dos puntos: Haversine × factor de ruta.
@@ -63,12 +67,16 @@ export async function deliveryDistance(from: GeoPoint, to: GeoPoint, config?: Ro
 
 /**
  * `cotizar` del contrato con el despacho (docs/CONTRATO-BOT-DESPACHO.md): el
- * precio del domicilio por distancia, con la tabla de rangos que se edita en
- * el portal (Tarifas). Ninguna zona cambia el precio. La tabla y el
- * interruptor se leen en cada cotización, así que un cambio aplica desde la
- * siguiente.
+ * precio del domicilio (`domain/fare.ts`): la tabla por km de Tarifas más el
+ * ajuste fijo de la zona de servicio donde queda la entrega. La tabla, las
+ * zonas y el interruptor de km por calle se leen en cada cotización, así que un
+ * cambio aplica desde la siguiente. Es lo mismo que usan la tabla de ejemplos
+ * de Tarifas y «Probar un punto» de Zonas.
+ *
+ * `zones`: las zonas de servicio, si quien llama ya las leyó.
  */
-export async function quoteByDistance(from: GeoPoint, to: GeoPoint): Promise<Quote> {
-  const [{ km, source }, ranges] = await Promise.all([deliveryDistance(from, to), getFareRanges()]);
-  return { km, source, price: priceForDistance(km, ranges) };
+export async function quoteByDistance(from: GeoPoint, to: GeoPoint, opts: { zones?: PricedZone[] } = {}): Promise<Quote> {
+  const [{ km, source }, ranges, zones] = await Promise.all([deliveryDistance(from, to), getFareRanges(), opts.zones ?? listServiceZones()]);
+  const breakdown = fareBreakdown(km, ranges, adjustmentZoneAt(to, zones));
+  return { km, source, price: breakdown?.total ?? null, breakdown };
 }

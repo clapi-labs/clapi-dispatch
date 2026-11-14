@@ -18,6 +18,7 @@ import {
   type Interpretation,
   type OrderDraft,
   type OrderFieldKey,
+  type FareSplit,
   type RoadSource,
 } from "@dispatch/shared";
 import {
@@ -31,6 +32,7 @@ import {
   saveRestaurant,
   type BotConfig,
   type Restaurant,
+  type ServiceZone,
 } from "@dispatch/shared/db";
 
 import { coverageAt, coverageQueryReason, nearEdgeText, noServiceText } from "@/bot/coverage";
@@ -256,11 +258,19 @@ function summaryOf(quoted: DeliveryDraft[]) {
   return `${readBackAll(quoted, false)}\n${quoted.map((d) => d.cotizacion?.precio).join(",")}`;
 }
 
-/** Lo que cuesta una entrega, por distancia desde la recogida. `outOfRange`
- *  si pasa del tope de la agencia; `precio` null si la tabla por km está vacía. */
-async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig) {
-  const quote = await quoteByDistance(pickup, delivery);
-  return { precio: quote.price, km: quote.km, fuente: quote.source, outOfRange: config.maxKm !== null && quote.km > config.maxKm };
+/** Lo que cuesta una entrega: la tabla por km desde la recogida más el ajuste
+ *  de la zona de la entrega. `outOfRange` si pasa del tope de la agencia;
+ *  `precio` null si la tabla por km está vacía. */
+async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig, zones: ServiceZone[]) {
+  const quote = await quoteByDistance(pickup, delivery, { zones });
+  const b = quote.breakdown;
+  return {
+    precio: quote.price,
+    km: quote.km,
+    fuente: quote.source,
+    desglose: b ? { tabla: b.table, ajuste: b.adjustment, zona: b.zone?.name ?? null } : null,
+    outOfRange: config.maxKm !== null && quote.km > config.maxKm,
+  };
 }
 
 /**
@@ -325,7 +335,7 @@ async function askAdvisor(ctx: Context, draft: OrderDraft, pending: DeliveryDraf
   await say(ctx.conversation.id, ctx.message.phone, text, { replyTo: draft.mensajeOrigen });
 }
 
-type NearEdge = { delivery: DeliveryDraft; zone: string; meters: number; precio: number; km: number; fuente: RoadSource };
+type NearEdge = { delivery: DeliveryDraft; zone: string; meters: number; precio: number; km: number; fuente: RoadSource; desglose: FareSplit | null };
 
 /**
  * Entregas fuera de las zonas de servicio pero cerca del borde (docs/
@@ -340,7 +350,7 @@ async function askCoverage(ctx: Context, draft: OrderDraft, near: NearEdge[], no
     entregas: near.map((n) => draft.entregas.indexOf(n.delivery)),
     desde: new Date().toISOString(),
     motivo: "cobertura",
-    cobertura: near.map((n) => ({ indice: draft.entregas.indexOf(n.delivery), zona: n.zone, metros: n.meters, precio: n.precio, km: n.km, fuente: n.fuente })),
+    cobertura: near.map((n) => ({ indice: draft.entregas.indexOf(n.delivery), zona: n.zone, metros: n.meters, precio: n.precio, km: n.km, fuente: n.fuente, desglose: n.desglose })),
   };
   await updateConversation(ctx.conversation.id, {
     botPaused: true,
@@ -692,7 +702,7 @@ export async function handleRestaurant(ctx: Context) {
       noService.push(d);
       continue;
     }
-    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config);
+    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config, zones);
     if (quote.precio === null) {
       await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
       return;
@@ -702,10 +712,10 @@ export async function handleRestaurant(ctx: Context) {
       continue;
     }
     if (coverage.kind === "cerca") {
-      nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km, fuente: quote.fuente });
+      nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km, fuente: quote.fuente, desglose: quote.desglose });
       continue;
     }
-    d.cotizacion = { precio: quote.precio, km: quote.km, fuente: quote.fuente };
+    d.cotizacion = { precio: quote.precio, km: quote.km, fuente: quote.fuente, desglose: quote.desglose };
     newQuote = true;
   }
   const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];

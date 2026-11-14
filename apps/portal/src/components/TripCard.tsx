@@ -133,6 +133,46 @@ function DeliverDialog({ code, onChoose, onClose }: { code: string; onChoose: (o
  * medir y dibujar cada segundo por cada viaje en pantalla. `memo`: si el viaje
  * no cambió, una actualización del tablero tampoco la toca.
  */
+/** «+2.000» o «−1.000»: el signo siempre a la vista. */
+function signedCOP(n: number) {
+  return `${n < 0 ? "−" : "+"}${formatCOP(Math.abs(n))}`;
+}
+
+/**
+ * De dónde sale el precio, para explicárselo a un restaurante: los km, lo de
+ * la tabla por km y el ajuste de la zona de la entrega. Lo ve solo la
+ * central; el restaurante solo ve el total.
+ */
+function FareDetail({ trip }: { trip: Trip }) {
+  const km = trip.distanceKm != null ? `${trip.distanceKm.toLocaleString("es-CO", { maximumFractionDigits: 1 })} km${trip.routeSource === "calle" ? " por calle" : trip.routeSource === "linea_recta" ? " en línea recta" : ""}` : null;
+  const split = trip.fareTablePrice != null;
+  return (
+    <dl className="grid w-full grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded-xl bg-sunken px-3 py-2 text-xs tabular-nums">
+      {km && (
+        <>
+          <dt className="text-ink-3">Distancia</dt>
+          <dd className="text-right">{km}</dd>
+        </>
+      )}
+      {split ? (
+        <>
+          <dt className="text-ink-3">Tabla por km</dt>
+          <dd className="text-right">{formatCOP(trip.fareTablePrice!)}</dd>
+          <dt className="text-ink-3">{trip.fareZoneName ? `Zona ${trip.fareZoneName}` : "Ajuste de zona"}</dt>
+          <dd className="text-right">{trip.fareAdjustment ? signedCOP(trip.fareAdjustment) : "sin ajuste"}</dd>
+        </>
+      ) : (
+        <>
+          <dt className="text-ink-3">Precio</dt>
+          <dd className="text-right text-ink-3">sin desglose (lo puso la central o es de antes)</dd>
+        </>
+      )}
+      <dt className="font-semibold">Total</dt>
+      <dd className="text-right font-semibold">{formatCOP(trip.deliveryFee)}</dd>
+    </dl>
+  );
+}
+
 export const TripCard = memo(function TripCard({
   trip,
   focused = false,
@@ -221,11 +261,12 @@ export const TripCard = memo(function TripCard({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="flex flex-col items-start gap-2 pt-2.5">
+            {trip.deliveryFee > 0 && <FareDetail trip={trip} />}
             {/* Las indicaciones que el bot sacó del pedido: referencias del lugar, con cuánto paga, etc. */}
             {trip.notes && <p className="text-xs leading-snug text-ink">{trip.notes}</p>}
             {/* El cliente final no tiene chat con el bot: su número solo llama. */}
             {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
-            {!trip.notes && !trip.customerPhone && <span className="rounded-full bg-sunken px-2.5 py-0.5 text-xs text-ink-3">Sin información adicional</span>}
+            {!trip.notes && !trip.customerPhone && trip.deliveryFee <= 0 && <span className="rounded-full bg-sunken px-2.5 py-0.5 text-xs text-ink-3">Sin información adicional</span>}
             {/* Con el pedido en la mano ya no: eso lo arregla la central hablando con él. */}
             {trip.status === "en_route" && isBeforePickup(tripPhase(trip)) && (
               <button

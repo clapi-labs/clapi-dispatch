@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 
+import { validateFareAdjustment } from "../domain/fare";
 import { db } from "./client";
 import { serviceZones, serviceZoneVersions } from "./schema";
 
@@ -14,6 +15,8 @@ export type ServiceZoneInput = {
   name: string;
   ring: { lat: number; lng: number }[];
   barrioCode: string | null;
+  /** Pesos que se suman al precio de la tabla por km (negativo: se restan). */
+  fareAdjustment: number;
 };
 
 export const MAX_ZONE_VERTICES = 500;
@@ -32,15 +35,17 @@ export function validateRing(input: unknown): ServiceZoneInput["ring"] | null {
   return ring;
 }
 
-/** Lo que manda el mapa, validado: un nombre y el contorno. */
+/** Lo que manda el mapa, validado: un nombre, el contorno y el ajuste de precio. */
 export function validateServiceZone(input: unknown): { zone: ServiceZoneInput } | { error: string } {
-  const raw = (input ?? {}) as { name?: unknown; ring?: unknown; barrioCode?: unknown };
+  const raw = (input ?? {}) as { name?: unknown; ring?: unknown; barrioCode?: unknown; fareAdjustment?: unknown };
   const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 120) : "";
   if (!name) return { error: "Falta el nombre" };
   const ring = validateRing(raw.ring);
   if (!ring) return { error: `El borde debe tener de 3 a ${MAX_ZONE_VERTICES} esquinas` };
   const barrioCode = typeof raw.barrioCode === "string" && /^[\w-]{1,20}$/.test(raw.barrioCode) ? raw.barrioCode : null;
-  return { zone: { name, ring, barrioCode } };
+  const fareAdjustment = validateFareAdjustment(raw.fareAdjustment);
+  if (fareAdjustment === null) return { error: "El ajuste debe ser un número entero de pesos, de −200.000 a 200.000" };
+  return { zone: { name, ring, barrioCode, fareAdjustment } };
 }
 
 export function listServiceZones(): Promise<ServiceZone[]> {
@@ -58,6 +63,7 @@ async function saveVersion(zone: ServiceZone, action: Action, userId: number | n
     name: zone.name,
     ring: zone.ring,
     barrioCode: zone.barrioCode,
+    fareAdjustment: zone.fareAdjustment,
     userId,
   });
 }
@@ -68,7 +74,7 @@ export async function createServiceZone(zone: ServiceZoneInput, userId: number |
   return row;
 }
 
-/** Cambia el nombre o el borde. `null` si la zona ya no existe. */
+/** Cambia el nombre, el borde o el ajuste. `null` si la zona ya no existe. */
 export async function updateServiceZone(id: number, zone: ServiceZoneInput, userId: number | null = null): Promise<ServiceZone | null> {
   const [row] = await db
     .update(serviceZones)
@@ -77,6 +83,24 @@ export async function updateServiceZone(id: number, zone: ServiceZoneInput, user
     .returning();
   if (row) await saveVersion(row, "editada", userId);
   return row ?? null;
+}
+
+/**
+ * Cambia solo el ajuste de precio de varias zonas (lo guarda Tarifas). Cada
+ * zona que cambia deja su versión. Devuelve las que ya no existen.
+ */
+export async function setZoneAdjustments(changes: { id: number; fareAdjustment: number }[], userId: number | null = null): Promise<number[]> {
+  const missing: number[] = [];
+  for (const change of changes) {
+    const [row] = await db
+      .update(serviceZones)
+      .set({ fareAdjustment: change.fareAdjustment, updatedAt: new Date() })
+      .where(eq(serviceZones.id, change.id))
+      .returning();
+    if (row) await saveVersion(row, "editada", userId);
+    else missing.push(change.id);
+  }
+  return missing;
 }
 
 /** Borra la zona. Primero guarda su última versión en el historial. */

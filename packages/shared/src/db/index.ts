@@ -2,6 +2,7 @@ export { db, schema } from "./client";
 export * from "./schema";
 export * from "./dispatch-queue";
 export * from "./fares";
+export * from "./fare-examples";
 export * from "./restaurants";
 export * from "./quote";
 export * from "./bot-config";
