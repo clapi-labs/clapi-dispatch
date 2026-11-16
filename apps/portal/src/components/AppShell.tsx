@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Users, Wallet, type LucideIcon } from "lucide-react";
+import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/viajes", label: "Viajes", short: "Viajes", icon: LayoutGrid },
   { href: "/conversaciones", label: "Conversaciones", short: "Chats", icon: MessagesSquare },
   { href: "/flota", label: "Flota", short: "Flota", icon: Users },
+  { href: "/pendientes", label: "Pendientes", short: "Pendientes", icon: Undo2 },
   { href: "/arqueo", label: "Finanzas", short: "Finanzas", icon: Wallet },
   { href: "/tarifas", label: "Tarifas", short: "Tarifas", icon: Tags },
   { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },

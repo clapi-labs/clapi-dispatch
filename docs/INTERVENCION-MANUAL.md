@@ -35,11 +35,12 @@ En el portal, cada motorizado y cada pedido tienen un menú.
 |---|---|
 | Reasignar | Elige otro motorizado (ver abajo) y se le manda la ficha; al anterior se le avisa que ya no lo lleva |
 | Devolver a la cola | Lo toma el siguiente libre, automático |
-| Marcar entrega | Si el motorizado no pudo marcarla: dónde quedó y si debe volver |
-| Ya volvió | Termina el servicio de quien estaba de regreso |
+| Marcar entrega | Si el motorizado no pudo marcarla: dónde quedó. El servicio termina ahí |
 | Editar datos | Dirección, teléfono, notas; si hay moto, se le avisa citando su ficha |
 | Cancelar | Pide el motivo y qué se cobra (ver abajo) |
 | Tomar el chat del restaurante | Le escribe directamente |
+
+**Pendientes de regreso** (menú «Pendientes»): lo que un motorizado le debe a un restaurante, el datáfono o la plata de la comida. Normalmente lo declara él al recoger; la central puede registrar uno a mano cuando el restaurante reclama, tocar «Mandar ya» para que le llegue «Pasa por… a devolver el datáfono / a pagar», o marcarlo resuelto. Si un datáfono lleva más de 30 minutos afuera desde la entrega (se cambia ahí mismo), suena una alerta al celular. Detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Pendientes de regreso».
 
 **¿A quién reasignar?** Al tocar «Reasignar» sale la lista de motorizados ordenada: primero los libres con la distancia al punto de recogida, después los que van en ruta con cuántos pedidos llevan. Él escoge.
 
@@ -66,7 +67,7 @@ Ningún paso lo impone el sistema.
 
 ## Alertas al celular
 
-Las alertas del portal (un chat que pide ayuda a la central y una moto asignada) le llegan al celular como una notificación, igual que las de WhatsApp: suenan con el celular bloqueado y el portal cerrado. Al tocarla, el portal abre ese chat o ese pedido. No pasa por WhatsApp ni por Meta: no cuesta nada por aviso.
+Las alertas del portal (un chat que pide ayuda a la central, una moto asignada y un datáfono que no se ha devuelto) le llegan al celular como una notificación, igual que las de WhatsApp: suenan con el celular bloqueado y el portal cerrado. Al tocarla, el portal abre ese chat o ese pedido. No pasa por WhatsApp ni por Meta: no cuesta nada por aviso.
 
 Son las mismas alertas que suenan con el portal abierto, ni más ni menos. «Chat que pide ayuda» incluye las novedades de un motorizado y las consultas de dirección, porque el bot las pasa a la central. Con el portal abierto en el computador, todo sigue sonando como antes.
 

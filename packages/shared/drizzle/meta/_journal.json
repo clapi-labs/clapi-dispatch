@@ -148,6 +148,13 @@
       "when": 1794635436260,
       "tag": "0020_tarifa_por_km_y_ajuste_por_zona",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794699709574,
+      "tag": "0021_pendientes_de_regreso",
+      "breakpoints": true
     }
   ]
 }

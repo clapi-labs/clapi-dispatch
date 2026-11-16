@@ -72,6 +72,21 @@ export function CourierCard({
           <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>
             {current ? `${PHASE_LABEL[tripPhase(current)]} · ${current.code}${open.length > 1 ? ` · +${open.length - 1}` : ""}` : status.label}
           </span>
+          {/* Pendientes de regreso: lo que le debe a un restaurante. No lo deja ocupado. */}
+          {courier.returnDebts && (
+            <Link
+              href="/pendientes"
+              title="Pendientes de regreso"
+              className="ml-1.5 mt-0.5 inline-block rounded-md bg-gold-soft px-2 py-0.5 text-xs font-semibold text-gold-ink can-hover:hover:brightness-95"
+            >
+              {[
+                courier.returnDebts.datafono && `💳 ${courier.returnDebts.datafono > 1 ? `${courier.returnDebts.datafono} datáfonos` : "Datáfono"}`,
+                courier.returnDebts.plata && `💵 Debe ${courier.returnDebts.plata > 1 ? `${courier.returnDebts.plata} pedidos` : "plata"}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </Link>
+          )}
           {courier.simulator && (
             <span className="ml-1.5 mt-0.5 inline-block rounded-md bg-clapi-soft px-2 py-0.5 text-xs font-semibold text-clapi-ink">
               {courier.simulator.role === "simulated"

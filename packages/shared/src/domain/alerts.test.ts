@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   ALERT_FRESH_MS,
   chatHelpMessage,
+  datafonoLateMessage,
   deviceLabel,
   formatPhoneCO,
   isFresh,
@@ -112,5 +113,21 @@ describe("formatPhoneCO y testMessage", () => {
   it("formatean como el portal", () => {
     assert.equal(formatPhoneCO("+57 300-111-2233"), "+57 300 111 2233");
     assert.equal(testMessage(AT).url, "/alertas");
+  });
+});
+
+describe("datafonoLateMessage", () => {
+  it("dice quién tiene el datáfono, de qué restaurante y hace cuánto, y abre Pendientes", () => {
+    const m = datafonoLateMessage({ id: 7, courierName: "Carlos", restaurant: "Donde Lucho", tripCode: "A-12", minutes: 30, at: AT });
+    assert.equal(m.title, "Datáfono sin devolver · Donde Lucho");
+    assert.equal(m.body, "Carlos lo tiene hace más de 30 min (A-12).");
+    assert.equal(m.url, "/pendientes");
+    assert.equal(m.tag, "datafono-7");
+    assert.equal(m.at, AT.getTime());
+  });
+
+  it("sin pedido, sin código", () => {
+    const m = datafonoLateMessage({ id: 8, courierName: "Carlos", restaurant: "Donde Lucho", tripCode: null, minutes: 5, at: AT });
+    assert.equal(m.body, "Carlos lo tiene hace más de 5 min.");
   });
 });

@@ -1,4 +1,4 @@
-import { ambiguousAddress, buildExtractionPrompt, DOUBTFUL_FIELDS, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
+import { ambiguousAddress, buildExtractionPrompt, DOUBTFUL_FIELDS, fixPaymentMethod, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
 
 import { env } from "@/env";
 import type { DownloadedImage } from "@/services/whatsapp/client";
@@ -77,7 +77,7 @@ export function parseDelivery(raw: Record<string, unknown>): Interpretation["ent
     telefonoCliente: phone.phone,
     nombreCliente: text(raw.nombreCliente),
     valorACobrar: valor && valor > 0 ? valor : null,
-    metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" ? raw.metodoPago : null,
+    metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" || raw.metodoPago === "datafono" ? raw.metodoPago : null,
     listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
     notas: text(raw.notas),
     detalleDireccion: text(raw.detalleDireccion),
@@ -162,9 +162,11 @@ export async function interpretMessage(
     const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const raw = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
 
-    const entregas = Array.isArray(raw.entregas)
-      ? raw.entregas.filter((e: unknown): e is Record<string, unknown> => !!e && typeof e === "object").map(parseDelivery)
-      : [];
+    // «Tarjeta» o «datáfono» es pagar con datáfono al recibir, no «ya pagado».
+    const entregas = fixPaymentMethod<Interpretation["entregas"][number]>(
+      Array.isArray(raw.entregas) ? raw.entregas.filter((e: unknown): e is Record<string, unknown> => !!e && typeof e === "object").map(parseDelivery) : [],
+      messageText,
+    );
 
     for (const e of entregas) {
       const real = e.dudas?.filter((k: DoubtfulField) => e[k] != null) ?? [];

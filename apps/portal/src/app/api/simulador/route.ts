@@ -109,7 +109,7 @@ export async function GET() {
     const route = routes.find((r) => r.courierId === c.id)?.stops ?? null;
     const stops = orderStops(
       route,
-      mine.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase, false) })),
+      mine.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase) })),
     );
     const path = stops
       .map((s) => {

@@ -1,8 +1,20 @@
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 
-import { closeUndeliveredTrip, deliverTrip, db, finishTrip, openTripCondition, schema, simulatorEnabled } from "@dispatch/shared/db";
-import { isBeforePickup, tripPhase, type DeliveryPlace } from "@dispatch/shared";
+import {
+  closeUndeliveredTrip,
+  declareReturnDebt,
+  deliverTrip,
+  db,
+  getReturnDebt,
+  openReturnDebts,
+  openTripCondition,
+  resolveReturnDebtGroup,
+  schema,
+  simulatorEnabled,
+} from "@dispatch/shared/db";
+import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPhase, type DeliveryPlace, type ReturnDebtReason } from "@dispatch/shared";
 
+import { isAck, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
 import { notifyAssigned, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
@@ -34,45 +46,6 @@ async function activeTrips(courierId: number) {
   return rows.map((r) => ({ ...r, phase: tripPhase({ ...r.assignment, status: r.trip.status }) }));
 }
 
-/** «Ok», «voy», «ya lo vi», «recibido», 👍: un acuse corto, sin nada más. */
-const ACK = /^(ok[aiy]?|okey|listo|visto|ya lo vi|lo vi|ya vi|voy|ya voy|vamos|va|dale|de una|recibido|enterado|copiado|en camino|voy para all[aá]|s[ií])[\s!.,👍✅🛵🙏]*$|^[\s👍✅🛵🙏]+$/iu;
-
-export function isAck(text: string) {
-  return ACK.test(text.trim());
-}
-
-const END = "[\\s!.,👍✅🛵🙏]*$";
-const ALREADY = "^(?:ya\\s+)?(?:lo\\s+|el pedido\\s+)?";
-const AND_BACK = "(,?\\s*(?:y\\s+)?(?:vuelvo|regreso|me devuelvo|voy de vuelta)(?:\\s+al\\s+(?:restaurante|local))?)?";
-
-const PICKED = new RegExp(`${ALREADY}recog[ií](?:\\s+el pedido)?${END}|^(?:ya\\s+)?tengo el pedido${END}|^pedido recogido${END}`, "iu");
-const AT_GATE = new RegExp(`${ALREADY}(?:(?:dej[eé]|entregu[eé]|qued[oó]|entregad[oa])(?:\\s+el pedido)?\\s+)?en\\s+(?:la\\s+)?porter[ií]a${AND_BACK}${END}`, "iu");
-const DELIVERED = new RegExp(`${ALREADY}(?:entregu[eé]|entregad[oa])(?:\\s+el pedido)?${AND_BACK}${END}`, "iu");
-const BACK = new RegExp(`^(?:ya\\s+)?(?:volv[ií]|regres[eé]|estoy de vuelta|llegu[eé] al (?:restaurante|local))${END}`, "iu");
-
-const NO_ANSWER = new RegExp(`^(?:el\\s+)?cliente no (?:contesta|responde|sale|baja|abre)${END}`, "iu");
-const RETURNED = new RegExp(`^(?:ya\\s+)?(?:lo\\s+)?devolv[ií](?:\\s+el pedido)?${END}`, "iu");
-
-export type CourierText = { kind: "picked" } | { kind: "delivered"; place: DeliveryPlace; returning: boolean } | { kind: "back" } | { kind: "no_answer" } | { kind: "returned" };
-
-/**
- * Lo que escribe en vez de tocar el botón. Solo frases cortas y claras, sin
- * pasar por el modelo: «no lo entregué» o «lo dejé en portería pero…» no
- * coinciden y siguen a la clasificación, donde pueden ser una novedad.
- */
-export function parseCourierText(raw: string): CourierText | null {
-  const text = raw.trim();
-  if (PICKED.test(text)) return { kind: "picked" };
-  if (BACK.test(text)) return { kind: "back" };
-  if (NO_ANSWER.test(text)) return { kind: "no_answer" };
-  if (RETURNED.test(text)) return { kind: "returned" };
-  const gate = text.match(AT_GATE);
-  if (gate) return { kind: "delivered", place: "gate", returning: Boolean(gate[1]) };
-  const delivered = text.match(DELIVERED);
-  if (delivered) return { kind: "delivered", place: "customer", returning: Boolean(delivered[1]) };
-  return null;
-}
-
 /** Guarda la hora solo la primera vez y solo si el viaje sigue a su nombre. */
 async function mark(courierId: number, tripId: number, step: "going" | "picked") {
   const column = step === "going" ? schema.assignments.seenAt : schema.assignments.pickedUpAt;
@@ -99,8 +72,109 @@ async function markPicked(courierId: number, tripId: number) {
   if (await mark(courierId, tripId, "picked")) await notifyPicked(tripId);
 }
 
-async function markDelivered(tripId: number, place: DeliveryPlace, returning: boolean) {
-  const result = await deliverTrip(tripId, { place, returning });
+type TripRow = typeof schema.trips.$inferSelect;
+
+/**
+ * Declara un pendiente de regreso con ese pedido (docs/FLUJO-DOMICILIARIO.md,
+ * «Pendientes de regreso»). Si todavía no había recogido, cuenta como «Recogí» y
+ * le llega el mensaje 2. Si ya lo había recogido (lo marcó el GPS, o tocó
+ * «Recogí» antes), se le confirma; si el pedido ya se entregó, se le dice de una
+ * vez cómo cerrarlo.
+ */
+async function declareDebt(courier: Courier, conversation: Conversation, phone: string, trip: TripRow, reason: ReturnDebtReason, { byText = false } = {}) {
+  const { created } = await declareReturnDebt({
+    courierId: courier.id,
+    reason,
+    restaurantName: trip.originRestaurantName,
+    restaurantId: trip.restaurantId,
+    tripId: trip.id,
+    declaredBy: "courier",
+  });
+  if (await mark(courier.id, trip.id, "picked")) {
+    await notifyPicked(trip.id);
+    return;
+  }
+  if (!created) {
+    // Un doble toque no tiene respuesta; si lo escribió, se le confirma que ya estaba.
+    if (byText) await say(conversation.id, phone, reason === "datafono" ? `Ya estaba anotado 👍 El datáfono de ${trip.originRestaurantName} sigue pendiente.` : `Ya estaba anotado 👍 Lo que le debes a ${trip.originRestaurantName} sigue pendiente.`, { tripId: trip.id });
+    return;
+  }
+  if (trip.status === "delivered") {
+    await notifyFinished(trip.id, [], "terminado");
+    return;
+  }
+  const what = reason === "datafono" ? "que llevas el datáfono" : "que le quedaste debiendo";
+  await say(conversation.id, phone, `Anotado 👍 Quedó registrado ${what} de ${trip.originRestaurantName}. Al entregar te recuerdo.`, { tripId: trip.id });
+}
+
+/** Lo que tiene a su nombre y puede tener un pendiente: lo abierto y lo
+ *  entregado en las últimas 12 horas, el más reciente primero. */
+async function recentTrips(courierId: number) {
+  return db
+    .select({ trip: schema.trips, assignment: schema.assignments })
+    .from(schema.assignments)
+    .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+    .where(
+      and(
+        eq(schema.assignments.courierId, courierId),
+        ne(schema.trips.status, "cancelled"),
+        ne(schema.trips.status, "pending"),
+        gt(schema.assignments.assignedAt, new Date(Date.now() - 12 * 60 * 60_000)),
+      ),
+    )
+    .orderBy(desc(schema.assignments.assignedAt));
+}
+
+/**
+ * «Recogí, llevo datáfono», «quedé debiendo en Donde Lucho», «ya devolví el
+ * datáfono», «ya le pagué a Donde Lucho». El restaurante sale del nombre que
+ * escribió o, si no dijo ninguno, de que todo lo que lleva sea de uno solo.
+ * Con varios posibles no se adivina: se le pregunta cuál. `false` si el mensaje
+ * no era sobre un pendiente.
+ */
+async function handleDebtText(courier: Courier, conversation: Conversation, phone: string, text: string): Promise<boolean> {
+  const said = parseDebtText(text);
+  if (!said) return false;
+
+  if (said.kind === "close") {
+    const open = (await openReturnDebts(courier.id)).filter((d) => d.reason === said.reason);
+    const places = [...new Map(open.map((d) => [d.restaurantId ?? d.restaurantName.toLowerCase(), { name: d.restaurantName, debt: d }])).values()];
+    const pick = said.restaurant ? matchRestaurant(said.restaurant, places) : places.length === 1 ? places[0] : null;
+    if (!pick) {
+      if (!places.length) await say(conversation.id, phone, said.reason === "datafono" ? "No tienes datáfonos anotados por devolver 👍" : "No tienes nada anotado por pagar 👍");
+      else await say(conversation.id, phone, `¿En cuál? Escríbeme por ejemplo «${said.reason === "datafono" ? "devolví el datáfono en" : "le pagué a"} ${places[0].name}».`);
+      return true;
+    }
+    const closed = await resolveReturnDebtGroup(pick.debt.id, { kind: "courier" });
+    if (closed.length) await say(conversation.id, phone, debtClosedText(said.reason, pick.name));
+    else await say(conversation.id, phone, "Ese datáfono todavía va con un pedido sin entregar: al entregarlo te digo cómo cerrarlo.");
+    return true;
+  }
+
+  const rows = await recentTrips(courier.id);
+  const candidates = rows.map((r) => ({ name: r.trip.originRestaurantName, trip: r.trip, open: r.trip.status === "assigned" || r.trip.status === "en_route" }));
+  let target: (typeof candidates)[number] | null = null;
+  if (said.restaurant) {
+    // De ese restaurante, el más reciente (la lista va así).
+    const named = matchRestaurant(said.restaurant, candidates);
+    target = named ? (candidates.find((c) => c.name === named.name) ?? named) : null;
+  } else {
+    const open = candidates.filter((c) => c.open);
+    const pool = open.length ? open : candidates.slice(0, 1);
+    if (new Set(pool.map((c) => c.name.toLowerCase())).size === 1) target = pool[0];
+  }
+  if (!target) {
+    const names = [...new Set(candidates.map((c) => c.name))];
+    const how = said.reason === "datafono" ? "llevo datáfono de" : "quedé debiendo en";
+    await say(conversation.id, phone, names.length ? `¿De cuál restaurante? Escríbeme por ejemplo «${how} ${names[0]}».` : "No encuentro un pedido tuyo de hoy para anotarlo. Escríbele a la central 🙏");
+    return true;
+  }
+  await declareDebt(courier, conversation, phone, target.trip, said.reason, { byText: true });
+  return true;
+}
+
+async function markDelivered(tripId: number, place: DeliveryPlace) {
+  const result = await deliverTrip(tripId, { place });
   if (!result) return; // doble toque, o la central ya lo marcó
   await notifyDelivered(tripId, result.newlyAssigned);
   // La moto que se liberó puede haber tomado un pendiente en el acto.
@@ -121,13 +195,6 @@ async function markReturned(tripId: number) {
   if (await closeUndeliveredTrip(tripId)) await notifyFinished(tripId, [], "devuelto");
 }
 
-async function markBack(tripId: number) {
-  const result = await finishTrip(tripId);
-  if (!result) return;
-  await notifyFinished(tripId, result.newlyAssigned);
-  for (const id of result.newlyAssigned) await notifyAssigned(id);
-}
-
 /**
  * Lo normal es que el motorizado no escriba: recibe el mensaje y toca «Voy en
  * camino», «Recogí» y la entrega (docs/FLUJO-DOMICILIARIO.md). Por eso un mensaje
@@ -138,11 +205,24 @@ async function markBack(tripId: number) {
  *   central, que decide qué hacer (docs/INTERVENCION-MANUAL.md).
  * - Pide la ficha: se le reenvía la de la fase en que va.
  * - «Ok», «voy» con un pedido sin confirmar: cuenta como «Voy en camino».
- * - «Ya recogí», «lo dejé en portería», «el cliente no contesta», «ya volví»: lo
- *   mismo que el botón, si solo hay un pedido al que le aplique.
+ * - «Ya recogí», «lo dejé en portería», «el cliente no contesta»: lo mismo que
+ *   el botón, si solo hay un pedido al que le aplique.
+ * - «Llevo datáfono», «quedé debiendo en X», «ya devolví el datáfono», «ya le
+ *   pagué a X»: declara o cierra un pendiente de regreso.
  */
 export async function handleCourier(courier: Courier, conversation: Conversation, message: IncomingMessage) {
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
+  if (button?.kind === "debt_done") {
+    const debt = await getReturnDebt(button.debtId);
+    if (!debt || debt.courierId !== courier.id) return;
+    // Ya estaba cerrado (otro toque, o lo cerró la central): no hay nada que decir.
+    if (debt.resolvedAt) return;
+    const closed = await resolveReturnDebtGroup(debt.id, { kind: "courier" });
+    if (closed.length) await say(conversation.id, message.phone, debtClosedText(debt.reason, debt.restaurantName), { tripId: debt.tripId });
+    return;
+  }
+  // «Ya volví» de antes de los pendientes: el servicio ya terminó al entregar.
+  if (button?.kind === "back") return;
   if (button) {
     if (!(await isMine(courier.id, button.tripId))) {
       await say(conversation.id, message.phone, "Ese servicio ya no está a tu nombre 🙏", { tripId: button.tripId });
@@ -151,15 +231,18 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     if (button.kind === "going") {
       if (await mark(courier.id, button.tripId, "going")) await notifyGoing(button.tripId, { old: button.old });
     } else if (button.kind === "picked") {
-      await markPicked(courier.id, button.tripId);
+      if (button.debt) {
+        const [trip] = await db.select().from(schema.trips).where(eq(schema.trips.id, button.tripId)).limit(1);
+        if (trip) await declareDebt(courier, conversation, message.phone, trip, button.debt);
+      } else {
+        await markPicked(courier.id, button.tripId);
+      }
     } else if (button.kind === "delivered") {
-      await markDelivered(button.tripId, button.place, button.returning);
+      await markDelivered(button.tripId, button.place);
     } else if (button.kind === "no_answer") {
       await markNoAnswer(courier.id, button.tripId);
     } else if (button.kind === "returned") {
       await markReturned(button.tripId);
-    } else {
-      await markBack(button.tripId);
     }
     return;
   }
@@ -178,23 +261,25 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     return;
   }
 
+  // Un pendiente de regreso, por texto: en cualquier momento, también después
+  // de entregar.
+  if (message.kind === "text" && (await handleDebtText(courier, conversation, message.phone, message.text))) return;
+
   const written = message.kind === "text" ? parseCourierText(message.text) : null;
   if (written) {
     const applies = trips.filter((t) => {
-      if (written.kind === "back") return t.phase === "returning";
       if (written.kind === "returned") return t.phase === "undelivered";
       if (written.kind === "picked") return isBeforePickup(t.phase);
       if (written.kind === "no_answer") return t.phase === "carrying" || t.phase === "at_delivery";
-      return t.phase !== "returning" && t.phase !== "undelivered";
+      return t.phase !== "undelivered";
     });
     // Con varios no se adivina cuál es: que la central lo vea en su chat.
     if (applies.length === 1) {
       const tripId = applies[0].trip.id;
       if (written.kind === "picked") await markPicked(courier.id, tripId);
-      else if (written.kind === "back") await markBack(tripId);
       else if (written.kind === "returned") await markReturned(tripId);
       else if (written.kind === "no_answer") await markNoAnswer(courier.id, tripId);
-      else await markDelivered(tripId, written.place, written.returning);
+      else await markDelivered(tripId, written.place);
       return;
     }
   }

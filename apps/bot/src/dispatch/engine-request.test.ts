@@ -11,7 +11,7 @@ import { buildEvaluarRequest, type SnapshotCourier, type SnapshotTrip } from "./
 
 const now = new Date("2026-11-10T15:00:00Z");
 const ago = (ms: number) => new Date(now.getTime() - ms);
-const settings = { radioKm: 4, multipedido: true, asumirRegreso: true };
+const settings = { radioKm: 4, multipedido: true };
 
 const trip: SnapshotTrip = {
   id: 1,
@@ -78,5 +78,27 @@ describe("buildEvaluarRequest: interruptor de km por calle", () => {
     assert.ok(off.ok && on.ok);
     assert.equal(on.request.tiempos, "osrm");
     assert.deepEqual({ ...on.request, tiempos: "haversine" }, off.request);
+  });
+});
+
+describe("buildEvaluarRequest: sin regreso supuesto", () => {
+  it("una moto que lleva un pedido solo tiene que entregarlo: no se le suma volver a recogida", () => {
+    const llevando = { ...moto(1, ago(0)), activeTrips: [{ ...trip, id: 7, phase: "carrying" as const, customerWaitEndsAt: null }] };
+    const built = buildEvaluarRequest(trip, [llevando], now, settings);
+    assert.ok(built.ok);
+    assert.deepEqual(
+      built.request.motos[0].paradas.map((p) => `${p.tipo}${p.pedido}`),
+      ["C7"],
+    );
+  });
+
+  it("por recoger: recoger y entregar, sin regreso", () => {
+    const porRecoger = { ...moto(1, ago(0)), activeTrips: [{ ...trip, id: 8, phase: "going" as const, customerWaitEndsAt: null }] };
+    const built = buildEvaluarRequest(trip, [porRecoger], now, settings);
+    assert.ok(built.ok);
+    assert.deepEqual(
+      built.request.motos[0].paradas.map((p) => p.tipo),
+      ["R", "C"],
+    );
   });
 });

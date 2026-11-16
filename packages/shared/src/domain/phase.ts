@@ -17,7 +17,6 @@ export type TripPhase =
   | "at_delivery"
   | "waiting_customer"
   | "undelivered"
-  | "returning"
   | "delivered"
   | "gate"
   | "cancelled";
@@ -33,7 +32,6 @@ export const PHASE_LABEL: Record<TripPhase, string> = {
   at_delivery: "En punto de entrega",
   waiting_customer: "Cliente no contesta",
   undelivered: "Devolviendo el pedido",
-  returning: "Volviendo a recogida",
   delivered: "Entregado",
   gate: "En portería",
   cancelled: "Cancelado",
@@ -54,8 +52,6 @@ export type PhaseInput = {
   undeliveredAt?: Time;
   deliveredAt?: Time;
   deliveryPlace?: DeliveryPlace | null;
-  returnStartedAt?: Time;
-  finishedAt?: Time;
 };
 
 /** Los pasos se pueden saltar: marcar la entrega cuenta como recogido y «Recogí»
@@ -63,10 +59,9 @@ export type PhaseInput = {
 export function tripPhase(t: PhaseInput): TripPhase {
   if (t.status === "cancelled") return "cancelled";
   if (t.status === "pending") return "pending";
-  if (t.status === "delivered") {
-    if (t.returnStartedAt && !t.finishedAt) return "returning";
-    return t.deliveryPlace === "gate" ? "gate" : "delivered";
-  }
+  // El servicio termina al entregar. Si tiene que volver al restaurante (el
+  // datáfono, la plata), eso es un pendiente aparte (domain/return-debts.ts).
+  if (t.status === "delivered") return t.deliveryPlace === "gate" ? "gate" : "delivered";
   if (t.undeliveredAt) return "undelivered";
   if (t.customerWaitAt) return "waiting_customer";
   if (t.pickedUpAt) return t.atDeliveryAt && !t.leftDeliveryAt ? "at_delivery" : "carrying";
@@ -76,8 +71,8 @@ export function tripPhase(t: PhaseInput): TripPhase {
 }
 
 /** Con un viaje así, el motorizado sigue ocupado. */
-export function isTripOpen(t: PhaseInput) {
-  return t.status === "assigned" || t.status === "en_route" || tripPhase(t) === "returning";
+export function isTripOpen(t: Pick<PhaseInput, "status">) {
+  return t.status === "assigned" || t.status === "en_route";
 }
 
 /** Todavía no tiene el pedido en la mano. */
@@ -100,7 +95,6 @@ export function phaseSince(t: PhaseInput): Date | null {
     at_delivery: t.atDeliveryAt,
     waiting_customer: t.customerWaitAt,
     undelivered: t.undeliveredAt,
-    returning: t.returnStartedAt,
     delivered: t.deliveredAt,
     gate: t.deliveredAt,
   };
@@ -165,8 +159,6 @@ export function phaseAlertAt(t: PhaseInput & { readyAt?: Time }, c: PhaseTimes, 
       return customerWaitEndsAt({ customerWaitAt: t.customerWaitAt }, c);
     case "undelivered":
       return new Date((ms(t.undeliveredAt) ?? 0) + c.returnAlertMinutes * MINUTE);
-    case "returning":
-      return new Date((ms(t.returnStartedAt) ?? 0) + c.returnAlertMinutes * MINUTE);
     default:
       return null;
   }
@@ -174,32 +166,29 @@ export function phaseAlertAt(t: PhaseInput & { readyAt?: Time }, c: PhaseTimes, 
 
 /**
  * Las paradas: `R` recoger, `C` entregar, `W` esperar a un cliente que no
- * contesta, `V` devolver un pedido no entregado, `B` volver a recogida después
- * de entregar. Se guarda solo el orden (`courier_routes`): qué le falta de cada
- * viaje sale de su fase.
+ * contesta, `V` devolver un pedido no entregado. `B` (volver a recogida después
+ * de entregar) ya no se produce: el algoritmo dejó de suponer el regreso, y
+ * cuándo volver por un pendiente lo planeará otra issue. Se guarda solo el
+ * orden (`courier_routes`): qué le falta de cada viaje sale de su fase.
  */
 export type StopKind = "R" | "C" | "W" | "V" | "B";
 export type RouteStop = { tipo: StopKind; pedido: number };
 
-/** Lo que le falta de un viaje. Si tendrá que volver solo se sabe al entregar:
- *  con `assumeReturn` se cuenta el peor caso. */
-export function stopsForPhase(phase: TripPhase, assumeReturn: boolean): StopKind[] {
-  const after: StopKind[] = assumeReturn ? ["C", "B"] : ["C"];
+/** Lo que le falta de un viaje. */
+export function stopsForPhase(phase: TripPhase): StopKind[] {
   switch (phase) {
-    case "returning":
-      return ["B"];
     case "undelivered":
       return ["V"];
     case "waiting_customer":
       return ["W", "V"];
     case "carrying":
     case "at_delivery":
-      return after;
+      return ["C"];
     case "unread":
     case "read":
     case "going":
     case "at_pickup":
-      return ["R", ...after];
+      return ["R", "C"];
     default:
       return [];
   }

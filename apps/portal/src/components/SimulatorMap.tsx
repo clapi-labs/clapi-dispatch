@@ -394,7 +394,7 @@ export function SimulatorMap() {
           <NumberField label="Radio (km)" value={state?.config.radiusKm} step={0.5} onSave={(v) => run({ action: "radius", value: v })} />
           <div className="grid grid-cols-3 gap-2">
             <NumberField label="Portería %" value={state?.config.gatePercent} onSave={(v) => run({ action: "outcomes", gatePercent: v, returnPercent: state!.config.returnPercent, noAnswerPercent: state!.config.noAnswerPercent })} />
-            <NumberField label="Vuelve %" value={state?.config.returnPercent} onSave={(v) => run({ action: "outcomes", gatePercent: state!.config.gatePercent, returnPercent: v, noAnswerPercent: state!.config.noAnswerPercent })} />
+            <NumberField label="Pendiente %" value={state?.config.returnPercent} onSave={(v) => run({ action: "outcomes", gatePercent: state!.config.gatePercent, returnPercent: v, noAnswerPercent: state!.config.noAnswerPercent })} />
             <NumberField label="No contesta %" value={state?.config.noAnswerPercent} onSave={(v) => run({ action: "outcomes", gatePercent: state!.config.gatePercent, returnPercent: state!.config.returnPercent, noAnswerPercent: v })} />
           </div>
           <div className="flex flex-wrap gap-2">
