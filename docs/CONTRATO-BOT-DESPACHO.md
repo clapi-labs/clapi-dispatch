@@ -100,7 +100,7 @@ El engine no guarda nada: todo lo que necesita lo lee el despacho de la base. El
 | Recogido | `assignments.picked_up_at` | Cuando el motorizado toca «Recogí» |
 | Entregado | `assignments.delivered_at` y `delivery_place` | Cuando el motorizado marca la entrega |
 | Terminado | `assignments.finished_at` | Al marcar la entrega (el servicio termina ahí) o al devolver un pedido no entregado |
-| Pendientes de regreso | `return_debts` | Cuando declara que lleva el datáfono o quedó debiendo. No lo dejan ocupado ni cambian su ruta: el despacho no los lee todavía (#60) |
+| Pendientes de regreso | `return_debts` | Cuando declara que lleva el datáfono o quedó debiendo. No lo dejan ocupado, pero son paradas de su ruta según el motivo y la demanda (`routed_at` marca la plata que entró); el engine los recibe como paradas `B` ([ALGORITMO.md](ALGORITMO.md), «Regresos al restaurante») |
 | Conexión del motorizado | `couriers.status` y la hora | Cuando escribe para conectarse |
 
 El despacho se encarga del resto: la `cuota`, el `plan` de cada asignación y `disponible_desde_ts`.

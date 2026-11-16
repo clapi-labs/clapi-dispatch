@@ -1,0 +1,58 @@
+{
+  "nombre": "Sin regresos inventados",
+  "descripcion": "Ana lleva un pedido casi entregado, sin datáfono ni deudas, y un restaurante nuevo le queda de camino. Antes se suponía que volvía a recogida después de entregar y ganaba Beto; ahora solo cuentan los regresos reales.",
+  "config": {
+    "modo": "valle"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3604,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.33,
+            -76.524
+          ],
+          "cliente": [
+            3.364,
+            -76.521
+          ],
+          "recogido": true
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.371,
+      "lon": -76.523,
+      "entregas": 3,
+      "min_sin_pedido": 0
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante cercano, de otro lugar",
+      "restaurante": [
+        3.366,
+        -76.522
+      ],
+      "cliente": [
+        3.375,
+        -76.52
+      ],
+      "listo_en": 5
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "orden": "C R C",
+      "por": "Sin regreso supuesto su desvío es de 0.8 min (52.9 vs 50.0)"
+    }
+  ]
+}

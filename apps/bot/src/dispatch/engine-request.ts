@@ -1,4 +1,14 @@
-import { hasSignal, orderStops, stopsForPhase, type RouteStop, type StopKind, type TripPhase } from "@dispatch/shared";
+import {
+  hasSignal,
+  modeForDemand,
+  orderRoute,
+  stopsForPhase,
+  type DemandLevel,
+  type ReturnDebtReason,
+  type RouteStop,
+  type StopKind,
+  type TripPhase,
+} from "@dispatch/shared";
 
 /**
  * Arma la petición a `POST /evaluar` (contrato en docs/ALGORITMO.md) con lo
@@ -12,6 +22,7 @@ type LatLng = { lat: number; lng: number };
 
 export type SnapshotTrip = {
   id: number;
+  restaurantId?: number | null;
   pickupLocation: LatLng | null;
   deliveryLocation: LatLng | null;
   readyAt: Date | null;
@@ -32,22 +43,47 @@ export type SnapshotCourier = {
   activeTrips: SnapshotActiveTrip[];
   /** El orden que dejó su última asignación. */
   route: RouteStop[] | null;
+  /** Sus regresos al restaurante (pendientes abiertos, por grupo). */
+  returns?: SnapshotReturn[];
+};
+
+/** Un regreso por un pendiente (domain/route.ts). Sin ubicación no se manda. */
+export type SnapshotReturn = {
+  id: number;
+  reason: ReturnDebtReason;
+  restaurantId: number | null;
+  inRoute: boolean;
+  location: LatLng | null;
 };
 
 /** `porCalle` (settings.routing_config): los minutos de viaje con los km por
- *  calle de OSRM, los mismos con que se cotiza. Si no, línea recta × 1,3. */
-/** El algoritmo ya no supone que la moto vuelve a recogida después de entregar:
- *  un pendiente de regreso no la deja ocupada (docs/FLUJO-DOMICILIARIO.md). */
-export type EngineSettings = { radioKm: number; multipedido: boolean; porCalle?: boolean };
+ *  calle de OSRM, los mismos con que se cotiza. Si no, línea recta × 1,3.
+ *  `demanda`: alta o baja (domain/route.ts); decide el modo y cuándo se vuelve
+ *  al restaurante. El algoritmo no supone regresos: solo cuentan los
+ *  pendientes que existen (docs/ALGORITMO.md, «Regresos al restaurante»). */
+export type EngineSettings = { radioKm: number; multipedido: boolean; porCalle?: boolean; demanda: DemandLevel };
 
-type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
+type Parada = {
+  tipo: StopKind;
+  punto: [number, number];
+  /** El viaje; en un regreso (`B`), el pendiente. */
+  pedido: number;
+  listo_ts?: number;
+  motivo?: ReturnDebtReason;
+  restaurante_id?: number;
+};
+
+/** Un pendiente que no va en la ruta (la plata con demanda alta): solo sirve
+ *  para la ventaja del mismo restaurante. */
+type Pendiente = { pedido: number; motivo: ReturnDebtReason; punto: [number, number]; restaurante_id?: number };
 
 export type EvaluarRequest = {
   ahora: number;
-  modo: null;
+  modo: "pico" | "valle";
+  demanda: DemandLevel;
   multipedido: boolean;
   radio_km: number;
-  pedido: { id: number; restaurante: [number, number]; cliente: [number, number]; listo_ts: number };
+  pedido: { id: number; restaurante: [number, number]; cliente: [number, number]; listo_ts: number; restaurante_id?: number };
   motos: {
     id: string;
     lat: number;
@@ -57,6 +93,7 @@ export type EvaluarRequest = {
     cuota: number;
     disponible_desde_ts: number;
     paradas: Parada[];
+    pendientes: Pendiente[];
   }[];
   tiempos: "haversine" | "osrm";
 };
@@ -64,20 +101,36 @@ export type EvaluarRequest = {
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const point = ({ lat, lng }: LatLng): [number, number] => [lat, lng];
 
-function paradasDe(c: SnapshotCourier, trips: SnapshotActiveTrip[]): Parada[] {
+const restaurantField = (id: number | null | undefined) => (id == null ? {} : { restaurante_id: id });
+
+function paradasDe(c: SnapshotCourier, trips: SnapshotActiveTrip[], level: DemandLevel): Parada[] {
   // Sin ubicación no se puede ubicar en la ruta.
   const located = trips.filter((t) => t.pickupLocation && (t.deliveryLocation || t.phase === "undelivered"));
-  const stops = orderStops(
+  const returns = (c.returns ?? []).filter((r) => r.location);
+  const stops = orderRoute(
     c.route,
     located.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase) })),
+    returns,
+    level,
   );
-  return stops.map(({ tipo, pedido }) => {
+  return stops.map(({ tipo, pedido }): Parada => {
+    if (tipo === "B") {
+      const r = returns.find((x) => x.id === pedido)!;
+      return { tipo, punto: point(r.location!), pedido, motivo: r.reason, ...restaurantField(r.restaurantId) };
+    }
     const t = located.find((x) => x.id === pedido)!;
     const punto = point(tipo === "C" || tipo === "W" ? t.deliveryLocation! : t.pickupLocation!);
-    if (tipo === "R" && t.readyAt) return { tipo, punto, pedido, listo_ts: seconds(t.readyAt) };
+    if (tipo === "R") return { tipo, punto, pedido, ...restaurantField(t.restaurantId), ...(t.readyAt ? { listo_ts: seconds(t.readyAt) } : {}) };
     if (tipo === "W" && t.customerWaitEndsAt) return { tipo, punto, pedido, listo_ts: seconds(t.customerWaitEndsAt) };
     return { tipo, punto, pedido };
   });
+}
+
+/** Los regresos que no van en su ruta: el engine los mete si el pedido sale de ese restaurante. */
+function pendientesDe(c: SnapshotCourier): Pendiente[] {
+  return (c.returns ?? [])
+    .filter((r) => !r.inRoute && r.location)
+    .map((r) => ({ pedido: r.id, motivo: r.reason, punto: point(r.location!), ...restaurantField(r.restaurantId) }));
 }
 
 /**
@@ -109,10 +162,18 @@ export function buildEvaluarRequest(
     ok: true,
     request: {
       ahora: seconds(now),
-      modo: null, // el engine lo saca de la hora de Cali
+      // Mientras no se mida (#59), la demanda sale del horario: pico = alta.
+      modo: modeForDemand(settings.demanda),
+      demanda: settings.demanda,
       multipedido: settings.multipedido,
       radio_km: settings.radioKm,
-      pedido: { id: trip.id, restaurante: point(trip.pickupLocation), cliente: point(trip.deliveryLocation), listo_ts: seconds(trip.readyAt) },
+      pedido: {
+        id: trip.id,
+        restaurante: point(trip.pickupLocation),
+        cliente: point(trip.deliveryLocation),
+        listo_ts: seconds(trip.readyAt),
+        ...restaurantField(trip.restaurantId),
+      },
       motos: couriers.map((c) => {
         const desde = [c.lastDeliveredAt, c.shiftStartedAt].filter((d): d is Date => d !== null);
         return {
@@ -124,7 +185,8 @@ export function buildEvaluarRequest(
           entregas: c.deliveriesThisShift,
           cuota,
           disponible_desde_ts: desde.length ? Math.max(...desde.map(seconds)) : seconds(now),
-          paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id)),
+          paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id), settings.demanda),
+          pendientes: pendientesDe(c),
         };
       }),
       tiempos: settings.porCalle ? "osrm" : "haversine",

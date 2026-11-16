@@ -1,0 +1,52 @@
+{
+  "nombre": "Datáfono con demanda baja: el regreso va antes del pedido nuevo",
+  "descripcion": "La situación del caso 20, sin Beto. Ana recibe el pedido, pero su ruta es entrega → devuelve el datáfono → recoge el nuevo.",
+  "config": {
+    "modo": "valle"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3604,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pedidos_en_curso": [
+        {
+          "restaurante": [
+            3.33,
+            -76.524
+          ],
+          "cliente": [
+            3.364,
+            -76.521
+          ],
+          "recogido": true,
+          "pendiente": "datafono"
+        }
+      ]
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Restaurante cercano, de otro lugar",
+      "restaurante": [
+        3.366,
+        -76.522
+      ],
+      "cliente": [
+        3.375,
+        -76.52
+      ],
+      "listo_en": 5
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "orden": "C B R C",
+      "por": "Con demanda baja el datáfono no se aplaza"
+    }
+  ]
+}

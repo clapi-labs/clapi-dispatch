@@ -128,6 +128,11 @@ async function tick() {
       lastAct.set(c.act, now);
       tasks.push(internal("POST", { action: "act", courierId: c.id, tripId: c.act }));
     }
+    // Llegó al restaurante de un regreso: devuelve el datáfono o paga.
+    if (c.actDebt && now - (lastAct.get(`debt:${c.actDebt}`) ?? 0) >= ACT_RETRY_MS) {
+      lastAct.set(`debt:${c.actDebt}`, now);
+      tasks.push(internal("POST", { action: "debt", courierId: c.id, debtId: c.actDebt }));
+    }
   }
 
   const results = await Promise.allSettled(tasks);

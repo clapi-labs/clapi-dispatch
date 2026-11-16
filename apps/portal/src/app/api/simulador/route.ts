@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
 
 import {
+  courierRoutesFor,
   createSimulatedCourier,
   db,
   getBotConfig,
@@ -17,7 +18,7 @@ import {
   simulatorHome,
   updateSimulatorConfig,
 } from "@dispatch/shared/db";
-import { orderStops, PHASE_LABEL, phaseSince, stopsForPhase, tripPhase } from "@dispatch/shared";
+import { PHASE_LABEL, phaseSince, tripPhase } from "@dispatch/shared";
 
 import { updateCourierStatus } from "@/db/queries/couriers";
 import { callBot, notifyBot } from "@/lib/bot";
@@ -63,8 +64,8 @@ export async function GET() {
     .leftJoin(schema.engineEvaluations, eq(schema.engineEvaluations.tripId, schema.trips.id))
     .where(and(gt(schema.trips.createdAt, since), or(eq(schema.trips.status, "pending"), openTripCondition())))
     .orderBy(desc(schema.trips.createdAt));
-  const ids = couriers.map((c) => c.id);
-  const routes = ids.length ? await db.select().from(schema.courierRoutes).where(inArray(schema.courierRoutes.courierId, ids)) : [];
+  // La ruta de cada moto con sus regresos (domain/route.ts): la misma que le llega por WhatsApp.
+  const routes = await courierRoutesFor(couriers.map((c) => c.id));
 
   const trips = rows.map(({ trip, assignment, evaluation }) => {
     const input = { ...(assignment ?? {}), status: trip.status };
@@ -106,17 +107,7 @@ export async function GET() {
   const courierView = couriers.map((c) => {
     const mine = trips.filter((t) => t.courierId === c.id && t.status !== "pending");
     const position = c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng } : null;
-    const route = routes.find((r) => r.courierId === c.id)?.stops ?? null;
-    const stops = orderStops(
-      route,
-      mine.map((t) => ({ id: t.id, stops: stopsForPhase(t.phase) })),
-    );
-    const path = stops
-      .map((s) => {
-        const t = mine.find((x) => x.id === s.pedido);
-        return s.tipo === "C" || s.tipo === "W" ? t?.delivery : t?.pickup;
-      })
-      .filter((p): p is Point => !!p);
+    const path = (routes.get(c.id) ?? []).map((s) => s.point).filter((p): p is Point => !!p);
     return {
       id: c.id,
       name: c.name,

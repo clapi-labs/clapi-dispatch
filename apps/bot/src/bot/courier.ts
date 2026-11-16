@@ -16,7 +16,7 @@ import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPha
 
 import { isAck, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
-import { notifyAssigned, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
+import { courierSay, notifyAssigned, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { classifyCourierMessage } from "@/services/openai/courier";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -104,7 +104,7 @@ async function declareDebt(courier: Courier, conversation: Conversation, phone: 
     return;
   }
   const what = reason === "datafono" ? "que llevas el datáfono" : "que le quedaste debiendo";
-  await say(conversation.id, phone, `Anotado 👍 Quedó registrado ${what} de ${trip.originRestaurantName}. Al entregar te recuerdo.`, { tripId: trip.id });
+  await courierSay(courier.id, phone, `Anotado 👍 Quedó registrado ${what} de ${trip.originRestaurantName}. Al entregar te recuerdo.`, { tripId: trip.id });
 }
 
 /** Lo que tiene a su nombre y puede tener un pendiente: lo abierto y lo
@@ -146,7 +146,7 @@ async function handleDebtText(courier: Courier, conversation: Conversation, phon
       return true;
     }
     const closed = await resolveReturnDebtGroup(pick.debt.id, { kind: "courier" });
-    if (closed.length) await say(conversation.id, phone, debtClosedText(said.reason, pick.name));
+    if (closed.length) await courierSay(courier.id, phone, debtClosedText(said.reason, pick.name));
     else await say(conversation.id, phone, "Ese datáfono todavía va con un pedido sin entregar: al entregarlo te digo cómo cerrarlo.");
     return true;
   }
@@ -218,7 +218,7 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     // Ya estaba cerrado (otro toque, o lo cerró la central): no hay nada que decir.
     if (debt.resolvedAt) return;
     const closed = await resolveReturnDebtGroup(debt.id, { kind: "courier" });
-    if (closed.length) await say(conversation.id, message.phone, debtClosedText(debt.reason, debt.restaurantName), { tripId: debt.tripId });
+    if (closed.length) await courierSay(courier.id, message.phone, debtClosedText(debt.reason, debt.restaurantName), { tripId: debt.tripId });
     return;
   }
   // «Ya volví» de antes de los pendientes: el servicio ya terminó al entregar.

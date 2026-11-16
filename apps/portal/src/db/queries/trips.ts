@@ -1,7 +1,7 @@
 import { desc, eq, gte, or, sql } from "drizzle-orm";
 
-import { db, getBotConfig, getEngineConfig, openTripCondition, routeKm, schema } from "@dispatch/shared/db";
-import { isTripOpen, orderStops, phaseAlertAt, stopsForPhase, tripPhase, type DeliveryPlace, type RouteStop } from "@dispatch/shared";
+import { courierRoutesFor, db, getBotConfig, getEngineConfig, openTripCondition, routeKm, schema } from "@dispatch/shared/db";
+import { isTripOpen, phaseAlertAt, type DeliveryPlace } from "@dispatch/shared";
 
 export type TripRow = typeof schema.trips.$inferSelect;
 export type AssignmentRow = typeof schema.assignments.$inferSelect;
@@ -52,7 +52,7 @@ export type TripWithAssignment = TripRow & {
  *  porque un viaje recién creado todavía no tiene fila en `assignments`. El
  *  teléfono sale de `couriers`: la asignación solo guarda el nombre. */
 export async function listTrips(): Promise<TripWithAssignment[]> {
-  const [config, { mode }, routes] = await Promise.all([getBotConfig(), getEngineConfig(), db.select().from(schema.courierRoutes)]);
+  const [config, { mode }] = await Promise.all([getBotConfig(), getEngineConfig()]);
   const rows = await db
     .select({
       trip: schema.trips,
@@ -90,17 +90,12 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     )
     .orderBy(desc(schema.trips.createdAt));
 
-  // La primera parada de cada moto: si un pedido no es el que sigue, no ir a
-  // recogerlo todavía no es una demora.
-  const plans = new Map<number, RouteStop[]>(routes.map((r) => [r.courierId, r.stops]));
-  const next = new Map<number, number | undefined>();
+  // La primera parada de cada moto, regresos incluidos: si un pedido no es el
+  // que sigue, no ir a recogerlo todavía no es una demora.
   const open = rows.filter((r) => r.courierId !== null && isTripOpen({ ...r, status: r.trip.status }));
-  for (const courierId of new Set(open.map((r) => r.courierId!))) {
-    const mine = open
-      .filter((r) => r.courierId === courierId)
-      .map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r, status: r.trip.status })) }));
-    next.set(courierId, orderStops(plans.get(courierId), mine)[0]?.pedido);
-  }
+  const routes = await courierRoutesFor([...new Set(open.map((r) => r.courierId!))]);
+  const next = new Map<number, number | undefined>();
+  for (const [courierId, stops] of routes) next.set(courierId, stops[0]?.tipo === "B" ? undefined : stops[0]?.pedido);
 
   return rows.map((r) => ({
     ...r.trip,

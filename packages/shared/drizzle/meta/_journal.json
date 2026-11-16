@@ -155,6 +155,13 @@
       "when": 1794699709574,
       "tag": "0021_pendientes_de_regreso",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794800476888,
+      "tag": "0022_regreso_de_la_plata_en_la_ruta",
+      "breakpoints": true
     }
   ]
 }

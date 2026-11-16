@@ -11,7 +11,7 @@ import { buildEvaluarRequest, type SnapshotCourier, type SnapshotTrip } from "./
 
 const now = new Date("2026-11-10T15:00:00Z");
 const ago = (ms: number) => new Date(now.getTime() - ms);
-const settings = { radioKm: 4, multipedido: true };
+const settings = { radioKm: 4, multipedido: true, demanda: "baja" as const };
 
 const trip: SnapshotTrip = {
   id: 1,
@@ -100,5 +100,58 @@ describe("buildEvaluarRequest: sin regreso supuesto", () => {
       built.request.motos[0].paradas.map((p) => p.tipo),
       ["R", "C"],
     );
+  });
+});
+
+describe("buildEvaluarRequest: regresos al restaurante", () => {
+  const lejos = { lat: 3.42, lng: -76.54 };
+  const llevando = { ...trip, id: 7, restaurantId: 3, phase: "carrying" as const, customerWaitEndsAt: null };
+  const datafono = { id: 40, reason: "datafono" as const, restaurantId: 3, inRoute: true, location: lejos };
+  const plata = { id: 41, reason: "plata" as const, restaurantId: 5, inRoute: false, location: lejos };
+
+  const paradas = (c: SnapshotCourier, demanda: "alta" | "baja") => {
+    const built = buildEvaluarRequest(trip, [c], now, { ...settings, demanda });
+    assert.ok(built.ok);
+    return built.request.motos[0];
+  };
+
+  it("la demanda decide el modo y viaja en la petición", () => {
+    for (const [demanda, modo] of [["alta", "pico"], ["baja", "valle"]] as const) {
+      const built = buildEvaluarRequest(trip, [moto(1, ago(0))], now, { ...settings, demanda });
+      assert.ok(built.ok);
+      assert.equal(built.request.modo, modo);
+      assert.equal(built.request.demanda, demanda);
+    }
+  });
+
+  it("el datáfono va en la ruta, después de entregar lo que lleva, con su motivo y su restaurante", () => {
+    const m = paradas({ ...moto(1, ago(0)), activeTrips: [llevando], returns: [datafono] }, "baja");
+    assert.deepEqual(m.paradas.map((p) => `${p.tipo}${p.pedido}`), ["C7", "B40"]);
+    assert.deepEqual(m.paradas[1], { tipo: "B", punto: [lejos.lat, lejos.lng], pedido: 40, motivo: "datafono", restaurante_id: 3 });
+  });
+
+  it("con demanda baja, el datáfono va antes de la siguiente recogida; con alta, al final", () => {
+    const porRecoger = { ...trip, id: 8, phase: "going" as const, customerWaitEndsAt: null };
+    const c = { ...moto(1, ago(0)), activeTrips: [llevando, porRecoger], returns: [datafono] };
+    assert.deepEqual(paradas(c, "baja").paradas.map((p) => `${p.tipo}${p.pedido}`), ["C7", "B40", "R8", "C8"]);
+    assert.deepEqual(paradas(c, "alta").paradas.map((p) => `${p.tipo}${p.pedido}`), ["C7", "R8", "C8", "B40"]);
+  });
+
+  it("la plata que no está en la ruta va aparte, solo para la ventaja del mismo restaurante", () => {
+    const m = paradas({ ...moto(1, ago(0)), returns: [plata] }, "alta");
+    assert.deepEqual(m.paradas, []);
+    assert.deepEqual(m.pendientes, [{ pedido: 41, motivo: "plata", punto: [lejos.lat, lejos.lng], restaurante_id: 5 }]);
+  });
+
+  it("un regreso sin ubicación no se manda", () => {
+    const m = paradas({ ...moto(1, ago(0)), returns: [{ ...datafono, location: null }, { ...plata, location: null }] }, "baja");
+    assert.deepEqual(m.paradas, []);
+    assert.deepEqual(m.pendientes, []);
+  });
+
+  it("el pedido y sus recogidas llevan el id del restaurante", () => {
+    const built = buildEvaluarRequest({ ...trip, restaurantId: 9 }, [moto(1, ago(0))], now, settings);
+    assert.ok(built.ok);
+    assert.equal(built.request.pedido.restaurante_id, 9);
   });
 });

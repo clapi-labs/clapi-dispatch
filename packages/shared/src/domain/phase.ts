@@ -166,10 +166,11 @@ export function phaseAlertAt(t: PhaseInput & { readyAt?: Time }, c: PhaseTimes, 
 
 /**
  * Las paradas: `R` recoger, `C` entregar, `W` esperar a un cliente que no
- * contesta, `V` devolver un pedido no entregado. `B` (volver a recogida después
- * de entregar) ya no se produce: el algoritmo dejó de suponer el regreso, y
- * cuándo volver por un pendiente lo planeará otra issue. Se guarda solo el
- * orden (`courier_routes`): qué le falta de cada viaje sale de su fase.
+ * contesta, `V` devolver un pedido no entregado y `B` regresar al restaurante
+ * por un pendiente (devolver el datáfono, pagar la comida). En `B`, `pedido` es
+ * el id del pendiente más viejo de su grupo, no el de un viaje (domain/route.ts).
+ * Se guarda solo el orden (`courier_routes`): qué le falta de cada viaje sale
+ * de su fase, y qué regresos tiene, de sus pendientes abiertos.
  */
 export type StopKind = "R" | "C" | "W" | "V" | "B";
 export type RouteStop = { tipo: StopKind; pedido: number };

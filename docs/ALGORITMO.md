@@ -85,14 +85,16 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 ```jsonc
 {
   "ahora": 1790000000,
-  "modo": null,                    // pico | valle | null = según la hora de Cali
+  "modo": "pico",                  // pico | valle | null = según la hora de Cali
+  "demanda": "alta",               // alta | baja | null = la del modo (pico = alta)
   "multipedido": true,             // de settings
   "radio_km": 4,                   // de settings
   "pedido": {
     "id": 205,
     "restaurante": [3.4516, -76.5320],
     "cliente": [3.4372, -76.5225], // obligatorio: el bot no evalúa sin ubicación
-    "listo_ts": 1790001200         // hora en que la comida está lista
+    "listo_ts": 1790001200,        // hora en que la comida está lista
+    "restaurante_id": 12           // opcional: para reconocer el mismo restaurante
   },
   "motos": [{
     "id": "17",
@@ -102,8 +104,12 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
     "cuota": 3.6,                  // cuota justa acumulada (sección 4.A)
     "disponible_desde_ts": 1789998000,
     "paradas": [                   // pendientes, en el orden en que las hará
-      { "tipo": "R", "punto": [3.44, -76.52], "pedido": 101, "listo_ts": 1790000300 },
-      { "tipo": "C", "punto": [3.43, -76.51], "pedido": 101 }
+      { "tipo": "R", "punto": [3.44, -76.52], "pedido": 101, "listo_ts": 1790000300, "restaurante_id": 4 },
+      { "tipo": "C", "punto": [3.43, -76.51], "pedido": 101 },
+      { "tipo": "B", "punto": [3.44, -76.52], "pedido": 31, "motivo": "datafono", "restaurante_id": 4 }
+    ],
+    "pendientes": [                // regresos que no van en la ruta (la plata con demanda alta)
+      { "pedido": 32, "motivo": "plata", "punto": [3.45, -76.53], "restaurante_id": 9 }
     ]
   }],
   "tiempos": "haversine",          // haversine | osrm (km por calle); google, pendiente
@@ -119,8 +125,10 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 | `motos[].cuota` | La lleva el bot: en cada entrega completada, cada moto activa suma 1/N; las pausadas o desconectadas no suman; se reinicia por turno |
 | `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogí» y `C` al marcar la entrega |
 | `paradas[].listo_ts` | En `R`, cuándo está lista esa comida. En `W`, hasta cuándo se espera al cliente |
+| `demanda` | Alta o baja. Mientras el sistema no la mida (#59), sale del mismo horario que el modo: `demandLevel` en `packages/shared/src/domain/route.ts`. El bot manda los dos, `modo` y `demanda` |
+| `paradas[]` tipo `B`, `pendientes[]` | Los pendientes de regreso abiertos (`return_debts`), uno por grupo de restaurante y motivo; `pedido` es el id del pendiente más viejo del grupo. Ver «Regresos al restaurante» |
 
-Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` volver a recogida después de entregar. Hoy el bot no envía `B`: el servicio termina al entregar, y lo que el domiciliario le debe a un restaurante (el datáfono, la plata) es un pendiente de regreso aparte que no lo deja ocupado ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Pendientes de regreso»). Ya no se supone el regreso después de cada entrega (`asumirRegreso` se quitó); planear cuándo vuelve, según el motivo y la demanda, es la issue #60.
+Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` regresar al restaurante por un pendiente: devolver el datáfono (`motivo: "datafono"`) o pagar la comida (`"plata"`). Un `B` no ocupa lugar en la moto, pero su tiempo cuenta en la ruta.
 
 ### Respuesta
 
@@ -128,6 +136,7 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 {
   "engine_version": "2026.11.2",
   "modo": "pico",
+  "demanda": "alta",
   "pesos": [0.70, 0.20, 0.10],
   "despacho": {
     "listo_ts": 1790001200,
@@ -146,6 +155,9 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
     "distancia_km": 1.2, "score": 82.4,
     "f_tiempo": 91.0, "f_ruta": 70.7, "f_equidad": 55.1, "f_carga": 54.0, "f_espera": 60.0,
     "t_a_min": 6.1, "g_min": -1.9, "desvio_min": 2.0, "min_sin_pedido": 0.0,
+    "aprovecha": [],               // pendientes que hace en la misma vuelta: [{ "pendiente": 32, "motivo": "plata" }]
+    "ventaja_pendiente": 0.0,      // los puntos que eso le sumó
+    "regreso_aplazado": [],        // datáfonos que quedan después del pedido nuevo por demanda alta
     "secuencia": "Recoge nuevo → Recoge #101 → Entrega #101 → Entrega nuevo",
     "ruta_puntos": [[3.45, -76.53], [3.4516, -76.5320]]
   }],
@@ -155,6 +167,39 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 ```
 
 Códigos de `motivo`: `sin_senal`, `fuera_radio`, `cliente_no_contesta`, `ocupada_sin_multipedido`, `capacidad`, `retraso`.
+
+Si pesó un pendiente, la `explicacion` lo dice al final: «…; recoge donde tiene un pendiente y paga en la misma vuelta (+8)» o «…; el regreso del datáfono se aplaza por demanda alta». Se ve en el mapa del simulador y queda en `engine_evaluations.response`.
+
+### Regresos al restaurante
+
+Issue #60. Lo que el domiciliario le debe a un restaurante después de entregar es un **pendiente de regreso** ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Pendientes de regreso»). El algoritmo ya no supone que la moto vuelve después de cada entrega: solo cuenta los regresos que existen.
+
+**Cuándo entra en la ruta** (`orderRoute`, `packages/shared/src/domain/route.ts`):
+
+| Motivo | Demanda baja | Demanda alta |
+|---|---|---|
+| Datáfono | Siempre en la ruta, apenas entregue lo que lleva y antes de recoger en otro restaurante | Siempre en la ruta, pero se puede aplazar: los pedidos nuevos pueden ir antes |
+| Plata | Entra cuando la moto queda libre: le llega «💵 Aprovecha: pasa por X a pagar». Si luego le asignan un pedido, la parada sigue | Nunca genera un regreso |
+
+La plata también entra en la ruta con «Mandar ya» desde Pendientes, y cuando recoge un pedido en ese mismo restaurante. Un regreso que el último plan todavía no conocía se ubica así: con demanda baja, en el primer punto de la ruta en que no lleva comida de nadie; con demanda alta, al final. Lo que el plan ya tiene se queda donde el engine lo puso.
+
+**Reglas al insertar el pedido nuevo** (`mejor_insercion`):
+
+1. **Nunca con comida de otro cliente encima.** Ninguna opción hace un regreso entre la recogida y la entrega de un pedido, ni con uno ya recogido a bordo, salvo que el regreso sea al mismo restaurante donde va a recoger (es la misma parada).
+2. **Con demanda baja, el datáfono va primero:** la recogida nueva no puede ir antes de un datáfono por devolver, salvo que sea en ese mismo restaurante.
+3. **Con demanda alta,** la recogida nueva puede ir antes del regreso. El engine elige la posición con la que la ruta completa termina antes, regreso incluido: va **donde menos retrase**, no siempre al final. Si eso deja el datáfono después del pedido nuevo, la moto lo marca en `regreso_aplazado`. No hay un tope: la central se entera por el aviso de los 30 minutos.
+
+**Mismo restaurante.** Si el pedido nuevo sale de un restaurante donde la moto tiene un pendiente (en la ruta o en `pendientes`), el regreso se hace pegado a la recogida, sin costo de viaje, y la moto suma `VENTAJA_MISMO_RESTAURANTE` = **8 puntos** de Score. El mensaje 1 se lo dice: «♻️ Aprovecha y devuelve el datáfono en X» o «Aprovecha y paga en X».
+
+Por qué 8: con la comida lista, `F_tiempo` baja unos 9,5 puntos por el primer minuto de retraso. Pesado por el modo, 8 puntos equivalen a que la comida espere **~1,2 min más en pico** (peso 0,7) y **~3 min en valle** (peso 0,3). Es lo que se acepta a cambio de ahorrar un viaje de regreso que, si no, se hace aparte y suele costar 10 min o más. En pico, donde cada minuto de la comida pesa más, la ventaja alcanza para menos. Los casos:
+
+| Caso | Situación | Resultado |
+|---|---|---|
+| 17 | Dos motos libres a la misma distancia; una debe plata en el restaurante del pedido (pico) | Gana la del pendiente, 80,4 contra 72,4: sin él empataban |
+| 18 | La del pendiente está a 1,7 km y la otra a 100 m (pico) | Gana la otra, 81,9 contra 63,9: la comida esperaría casi 5 min más |
+| 26 | Como el 17, con un datáfono y demanda baja | Gana la del pendiente, 62,9 contra 49,9 (también sube su `F_ruta`, porque ya iba para allá) |
+
+Se cambia en el campo `config` de la petición, como las demás constantes.
 
 ### Qué hace el bot con la respuesta
 

@@ -28,7 +28,7 @@ def peticion(motos, listo_en=0, **extra):
 class Respuesta(unittest.TestCase):
     def test_campos(self):
         r = algoritmo.evaluar_peticion(peticion([moto("Ana")]))
-        self.assertEqual(set(r), {"engine_version", "modo", "pesos", "despacho", "ganador", "plan", "motos",
+        self.assertEqual(set(r), {"engine_version", "modo", "demanda", "pesos", "despacho", "ganador", "plan", "motos",
                                   "explicacion", "tiempos"})
         self.assertEqual(r["tiempos"], {"pedido": "haversine", "fuente": "haversine", "respaldo": None})
         self.assertEqual(r["engine_version"], algoritmo.ENGINE_VERSION)
@@ -93,6 +93,73 @@ class Modo(unittest.TestCase):
         self.assertEqual(r["modo"], "valle")
         r = algoritmo.evaluar_peticion(dict(peticion([moto("Ana")]), modo=None, ahora=AHORA + 4.5 * 3600))
         self.assertEqual(r["modo"], "pico")
+
+
+class Regresos(unittest.TestCase):
+    """Paradas B: los pendientes de regreso (docs/ALGORITMO.md, «Regresos al restaurante»)."""
+
+    LEJOS = [3.3300, -76.5240]
+
+    def regreso(self, motivo="datafono", punto=None, pedido=201, **extra):
+        return {"tipo": "B", "punto": punto or self.LEJOS, "pedido": pedido, "motivo": motivo, **extra}
+
+    def test_demanda_sale_del_modo_o_se_fija(self):
+        self.assertEqual(algoritmo.evaluar_peticion(peticion([moto("Ana")]))["demanda"], "alta")
+        self.assertEqual(algoritmo.evaluar_peticion(peticion([moto("Ana")], modo="valle"))["demanda"], "baja")
+        self.assertEqual(algoritmo.evaluar_peticion(peticion([moto("Ana")], demanda="baja"))["demanda"], "baja")
+        with self.assertRaises(ValueError):
+            algoritmo.evaluar_peticion(peticion([moto("Ana")], demanda="media"))
+
+    def test_el_plan_conserva_el_regreso_con_su_motivo(self):
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=[self.regreso(restaurante_id=9)])]))
+        b = [p for p in r["plan"] if p["tipo"] == "B"]
+        self.assertEqual(b, [{"tipo": "B", "punto": self.LEJOS, "pedido": 201, "motivo": "datafono", "restaurante_id": 9}])
+
+    def test_el_regreso_no_ocupa_lugar(self):
+        lleno = [{"tipo": "C", "punto": CLIENTE, "pedido": n} for n in (101, 102)] + [self.regreso()]
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=lleno)]))
+        self.assertEqual(r["ganador"], "Ana")  # 2 pedidos + un regreso, con capacidad 3 en pico
+
+    def test_solo_regreso_no_cuenta_como_ocupada_sin_multipedido(self):
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=[self.regreso()])], multipedido=False))
+        self.assertEqual(r["ganador"], "Ana")
+
+    def test_demanda_baja_el_datafono_va_antes(self):
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=[self.regreso()])], demanda="baja"))
+        self.assertEqual([p["tipo"] for p in r["plan"]], ["B", "R", "C"])
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=[self.regreso()])], demanda="alta"))
+        self.assertEqual([p["tipo"] for p in r["plan"]], ["R", "C", "B"])
+        self.assertEqual(r["motos"][0]["regreso_aplazado"], [201])
+        self.assertIn("se aplaza por demanda alta", r["explicacion"])
+
+    def test_la_plata_no_apura_ni_con_demanda_baja(self):
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", paradas=[self.regreso("plata")])], demanda="baja"))
+        self.assertEqual([p["tipo"] for p in r["plan"]], ["R", "C", "B"])
+
+    def test_pendiente_del_mismo_restaurante_por_id(self):
+        p = peticion([moto("Ana", pendientes=[{"pedido": 202, "motivo": "plata", "punto": self.LEJOS, "restaurante_id": 7}])])
+        p["pedido"]["restaurante_id"] = 7  # mismo id aunque las coordenadas no coincidan
+        r = algoritmo.evaluar_peticion(p)
+        self.assertEqual([x["tipo"] for x in r["plan"]], ["R", "B", "C"])
+        self.assertEqual(r["motos"][0]["aprovecha"], [{"pendiente": 202, "motivo": "plata"}])
+        self.assertEqual(r["motos"][0]["ventaja_pendiente"], algoritmo.DEFAULTS["VENTAJA_MISMO_RESTAURANTE"])
+        self.assertIn("paga en la misma vuelta", r["explicacion"])
+
+    def test_pendiente_de_otro_restaurante_no_entra(self):
+        r = algoritmo.evaluar_peticion(peticion([moto("Ana", pendientes=[{"pedido": 202, "motivo": "plata", "punto": self.LEJOS}])]))
+        self.assertEqual([x["tipo"] for x in r["plan"]], ["R", "C"])
+        self.assertEqual(r["motos"][0]["aprovecha"], [])
+
+    def test_nunca_con_comida_a_bordo(self):
+        # Lleva un pedido ya recogido y el regreso queda en el camino: igual va después de entregar.
+        en_curso = [{"tipo": "C", "punto": [3.3420, -76.5240], "pedido": 101}]
+        base = en_curso + [self.regreso(punto=[3.3500, -76.5240])]
+        secuencia = [en_curso[0], base[1]]
+        self.assertEqual(algoritmo.regresos_con_comida(secuencia), 0)
+        self.assertEqual(algoritmo.regresos_con_comida([base[1], en_curso[0]]), 1)
+        # En el mismo restaurante donde recoge sí se puede.
+        r_mismo = {"tipo": "R", "punto": [3.3500, -76.5240], "pedido": 102}
+        self.assertEqual(algoritmo.regresos_con_comida([r_mismo, base[1], en_curso[0]]), 0)
 
 
 class Equidad(unittest.TestCase):

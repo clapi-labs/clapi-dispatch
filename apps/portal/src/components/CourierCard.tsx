@@ -159,6 +159,24 @@ export function CourierCard({
         </a>
       </div>
 
+      {/* Su ruta, la misma que le llega por WhatsApp: los regresos al restaurante van como paradas. */}
+      {courier.route && courier.route.length > 0 && (
+        <div className="rounded-xl bg-sunken px-3 py-2 text-xs">
+          <p className="mb-1 text-ink-3">Ruta</p>
+          <ol className="flex flex-col gap-0.5">
+            {courier.route.map((stop, i) => (
+              <li key={i} className={`flex gap-1.5 ${i === 0 ? "font-semibold text-ink" : "text-ink-2"}`}>
+                <span className="w-4 shrink-0 tabular-nums text-ink-3">{i + 1}.</span>
+                <span className={stop.kind === "B" ? "text-gold-ink" : undefined}>
+                  {stop.kind === "B" ? "↩ " : ""}
+                  {stop.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {/* Cómo responde al mensaje: para exigirle al que siempre se demora en salir. */}
       {courier.seenStats && (
         <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-3" title="Últimos 7 días">

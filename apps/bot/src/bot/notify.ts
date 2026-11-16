@@ -2,27 +2,35 @@ import { and, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 
 import {
   claimControl,
+  courierRoute,
+  courierRouteText,
   db,
   getBotConfig,
   getReturnDebt,
   markReturnDebtsReminded,
   openGroupOf,
   openReturnDebtsOfTrip,
+  openReturnStops,
   openTripCondition,
+  returnGroupDebtIds,
+  routeReturnDebts,
   schema,
   type ReturnDebtView,
+  type ReturnStopView,
 } from "@dispatch/shared/db";
 import {
   customerWaitEndsAt,
   debtCloseText,
+  demandLevel,
   goingReminderAt,
+  idlePayText,
   isBeforePickup,
-  orderStops,
+  joinCodes,
   pickupLateAt,
-  stopsForPhase,
+  sameRestaurant,
+  sameTripReturnText,
   tripPhase,
   type PhaseInput,
-  type RouteStop,
 } from "@dispatch/shared";
 
 import { debtButton, deliveryButtons, goingButton, pickedButton, pickupButtons, returnedButton } from "@/bot/courier-buttons";
@@ -44,6 +52,9 @@ import type { SendResult } from "@/services/whatsapp/client";
  * Si tiene que volver al restaurante (se llevó el datáfono, quedó debiendo la
  * comida) lo declara al recoger, y al entregar se le dice cómo cerrarlo
  * (pendientes de regreso, `return_debts`).
+ *
+ * Con dos o más paradas pendientes, regresos incluidos, cada mensaje empieza
+ * con su ruta numerada (`courierSay`). Ningún mensaje sale solo para eso.
  */
 
 type Trip = typeof schema.trips.$inferSelect;
@@ -75,6 +86,22 @@ async function loadTrip(tripId: number) {
 /** El hilo del motorizado; se crea si nunca ha escrito, para que su ficha
  *  quede guardada y los avisos posteriores la puedan citar. */
 const conversationOf = conversationForOutbound;
+
+type SayOptions = Parameters<typeof say>[3];
+
+/** Un mensaje al domiciliario, con su ruta arriba si tiene dos o más paradas
+ *  (docs/FLUJO-DOMICILIARIO.md, «La ruta en los mensajes»). */
+export async function courierSay(courierId: number | null | undefined, phone: string, text: string, opts?: SayOptions): Promise<SendResult> {
+  const conversation = await conversationOf(phone);
+  const route = courierId ? await courierRouteText(courierId) : null;
+  return say(conversation.id, phone, route ? `${route}\n\n${text}` : text, opts);
+}
+
+/** Lo que tiene pendiente en el restaurante donde recoge este pedido. */
+async function returnsAt(courierId: number, trip: Trip): Promise<ReturnStopView[]> {
+  const here = { restaurantId: trip.restaurantId, restaurantName: trip.originRestaurantName };
+  return ((await openReturnStops([courierId])).get(courierId) ?? []).filter((r) => sameRestaurant(r, here));
+}
 
 async function restaurantConversation(conversationId: number | null) {
   if (!conversationId) return null;
@@ -112,7 +139,7 @@ const addressParts = (address: string) => address.split(" · ");
 
 /** Mensaje 1: solo para ir a recoger. El cobro va aquí porque tiene que saber
  *  antes de salir si necesita base o datáfono. */
-export function pickupTicket(trip: Trip, courierName?: string | null, { routeLine = null as string | null } = {}) {
+export function pickupTicket(trip: Trip, courierName?: string | null, { sameTrip = null as string | null } = {}) {
   const first = firstName(courierName);
   const pickup = trip.pickupAddress ? `${trip.originRestaurantName} · ${trip.pickupAddress}` : trip.originRestaurantName;
   return paragraphs([
@@ -123,7 +150,7 @@ export function pickupTicket(trip: Trip, courierName?: string | null, { routeLin
     moneyLine(trip),
     trip.paymentMethod === "datafono" && "*Pide el datáfono en el restaurante.*",
     trip.notes && `*Indicaciones:* ${trip.notes}`,
-    routeLine && `*Tu orden:* ${routeLine}`,
+    sameTrip,
     `*Ruta en Waze:* ${wazeLink(trip.pickupLocation ?? null, trip.pickupAddress ?? trip.originRestaurantName)}`,
     "Toca «Recogí» cuando tengas el pedido: ahí te mando a dónde va. Si te llevas el datáfono del restaurante o quedas debiendo la comida, toca ese botón en vez de «Recogí».",
   ]);
@@ -174,44 +201,15 @@ export async function sendCourierTicket(
   courierName: string | null | undefined,
   assignment: Omit<PhaseInput, "status"> & { courierId?: number | null },
 ): Promise<SendResult> {
-  const conversation = await conversationOf(phone);
+  const courierId = assignment.courierId ?? null;
   const phase = tripPhase({ ...assignment, status: trip.status });
-  if (phase === "undelivered") return say(conversation.id, phone, undeliveredText(trip), { tripId: trip.id, buttons: [returnedButton(trip.id)] });
-  if (!isBeforePickup(phase)) return say(conversation.id, phone, deliveryTicket(trip), { tripId: trip.id, buttons: deliveryButtons(trip.id, { waiting: phase === "waiting_customer" }) });
-  return say(conversation.id, phone, pickupTicket(trip, courierName, { routeLine: await routeLineFor(trip.id, assignment.courierId ?? null) }), {
+  if (phase === "undelivered") return courierSay(courierId, phone, undeliveredText(trip), { tripId: trip.id, buttons: [returnedButton(trip.id)] });
+  if (!isBeforePickup(phase)) return courierSay(courierId, phone, deliveryTicket(trip), { tripId: trip.id, buttons: deliveryButtons(trip.id, { waiting: phase === "waiting_customer" }) });
+  const here = courierId ? await returnsAt(courierId, trip) : [];
+  return courierSay(courierId, phone, pickupTicket(trip, courierName, { sameTrip: sameTripReturnText(here.map((r) => r.reason), trip.originRestaurantName) }), {
     tripId: trip.id,
     buttons: pickupButtons(trip.id),
   });
-}
-
-/** Las paradas pendientes de la moto, en orden, con el código de cada viaje. */
-async function courierStops(courierId: number): Promise<(RouteStop & { code: string })[]> {
-  const [[saved], rows] = await Promise.all([
-    db.select({ stops: schema.courierRoutes.stops }).from(schema.courierRoutes).where(eq(schema.courierRoutes.courierId, courierId)).limit(1),
-    db
-      .select({ trip: schema.trips, assignment: schema.assignments })
-      .from(schema.assignments)
-      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
-      .where(and(eq(schema.assignments.courierId, courierId), openTripCondition()))
-      .orderBy(schema.assignments.assignedAt),
-  ]);
-  const codes = new Map(rows.map((r) => [r.trip.id, r.trip.code]));
-  const stops = orderStops(
-    saved?.stops,
-    rows.map((r) => ({ id: r.trip.id, stops: stopsForPhase(tripPhase({ ...r.assignment, status: r.trip.status })) })),
-  );
-  return stops.map((s) => ({ ...s, code: codes.get(s.pedido) ?? "" }));
-}
-
-const STOP_VERB = { R: "Recoge", C: "Entrega", V: "Devuelve" } as const;
-
-/** Con varios pedidos, en qué orden hacerlos: «Entrega A-07 → Recoge A-08 →
- *  Entrega A-08». */
-async function routeLineFor(tripId: number, courierId: number | null) {
-  if (!courierId) return null;
-  const stops = (await courierStops(courierId)).filter((s) => s.tipo === "R" || s.tipo === "C" || s.tipo === "V");
-  if (new Set(stops.map((s) => s.pedido)).size < 2) return null;
-  return stops.map((s) => `${STOP_VERB[s.tipo as keyof typeof STOP_VERB]} ${s.code}`).join(" → ");
 }
 
 /** Moto asignada: mensaje 1 al motorizado + aviso al restaurante, citando el
@@ -225,6 +223,9 @@ export async function notifyAssigned(tripId: number, opts: { atConfirmation?: bo
   // Simulador: si la moto es simulada y no tiene número, la toma el número de
   // prueba libre que lleva más tiempo esperando.
   const control = row.courier.simulated ? await claimControl(row.courier.id) : null;
+  // Recoge donde quedó debiendo: paga en la misma vuelta, así que la plata
+  // entra en su ruta aunque la demanda esté alta (el datáfono ya estaba).
+  for (const r of await returnsAt(row.courier.id, row.trip)) if (!r.inRoute) await routeReturnDebts(r.debtIds);
   await sendCourierTicket(row.courier.phone, row.trip, row.courier.name, row.assignment);
   // Lo tomó ahora: le llega también lo que la moto ya llevaba, en la fase en que va.
   if (control?.taken) {
@@ -258,8 +259,7 @@ export async function notifyAssigned(tripId: number, opts: { atConfirmation?: bo
 export async function notifyPicked(tripId: number, { byGps = false } = {}) {
   const row = await loadTrip(tripId);
   if (!row?.courier) return;
-  const conversation = await conversationOf(row.courier.phone);
-  await say(conversation.id, row.courier.phone, deliveryTicket(row.trip, { byGps }), {
+  await courierSay(row.courier.id, row.courier.phone, deliveryTicket(row.trip, { byGps }), {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
     buttons: deliveryButtons(tripId),
@@ -277,8 +277,7 @@ export async function notifyGoing(tripId: number, opts: { old?: boolean } = {}) 
   if (!opts.old && !pickupButtonAfterGoing) return;
   const row = await loadTrip(tripId);
   if (!row?.courier) return;
-  const conversation = await conversationOf(row.courier.phone);
-  await say(conversation.id, row.courier.phone, `Listo 👍 Toca «Recogí» cuando tengas el pedido ${row.trip.code}.`, {
+  await courierSay(row.courier.id, row.courier.phone, `Listo 👍 Toca «Recogí» cuando tengas el pedido ${row.trip.code}.`, {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
     buttons: pickupButtons(tripId),
@@ -295,7 +294,7 @@ export async function notifyGoing(tripId: number, opts: { old?: boolean } = {}) 
 export async function remindCouriers(): Promise<number[]> {
   const config = await getBotConfig();
   const now = Date.now();
-  const firstStops = new Map<number, RouteStop | undefined>();
+  const firstStops = new Map<number, { tipo: string; pedido: number } | undefined>();
   const candidates = await db
     .select({ trip: schema.trips, assignment: schema.assignments, courier: schema.couriers })
     .from(schema.assignments)
@@ -306,8 +305,9 @@ export async function remindCouriers(): Promise<number[]> {
   const reminded: number[] = [];
   for (const { trip, assignment, courier } of candidates) {
     // Tiene otras paradas antes de esta recogida: no ir todavía no es demora.
-    if (!firstStops.has(courier.id)) firstStops.set(courier.id, (await courierStops(courier.id))[0]);
-    if (firstStops.get(courier.id)?.pedido !== trip.id) continue;
+    if (!firstStops.has(courier.id)) firstStops.set(courier.id, (await courierRoute(courier.id))[0]);
+    const first = firstStops.get(courier.id);
+    if (first?.tipo === "B" || first?.pedido !== trip.id) continue;
 
     const times = { assignedAt: assignment.assignedAt, readyAt: trip.readyAt };
     const going = !assignment.seenAt && !assignment.atPickupAt && !assignment.seenReminderAt && now >= goingReminderAt(times, config).getTime();
@@ -321,8 +321,7 @@ export async function remindCouriers(): Promise<number[]> {
       .returning({ tripId: schema.assignments.tripId });
     if (!claimed) continue;
 
-    const conversation = await conversationOf(courier.phone);
-    await say(conversation.id, courier.phone, going ? goingReminderText(trip, courier.name) : pickupReminderText(trip, courier.name), {
+    await courierSay(courier.id, courier.phone, going ? goingReminderText(trip, courier.name) : pickupReminderText(trip, courier.name), {
       replyTo: await lastBotMessageAbout(trip.id, courier.phone),
       tripId: trip.id,
       buttons: going ? [goingButton(trip.id), pickedButton(trip.id)] : pickupButtons(trip.id),
@@ -357,8 +356,7 @@ export async function closeCustomerWaits(): Promise<number[]> {
 
     const row = await loadTrip(tripId);
     if (!row?.courier) continue;
-    const conversation = await conversationOf(row.courier.phone);
-    await say(conversation.id, row.courier.phone, undeliveredText(row.trip), {
+    await courierSay(row.courier.id, row.courier.phone, undeliveredText(row.trip), {
       replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
       tripId,
       buttons: [returnedButton(tripId)],
@@ -380,8 +378,7 @@ export async function closeCustomerWaits(): Promise<number[]> {
 export async function notifyCustomerNoAnswer(tripId: number) {
   const [row, config] = await Promise.all([loadTrip(tripId), getBotConfig()]);
   if (!row?.courier) return;
-  const conversation = await conversationOf(row.courier.phone);
-  await say(conversation.id, row.courier.phone, `Listo 👍 Ya le avisamos al restaurante. Espera hasta ${config.customerWaitMinutes} minutos y, si el cliente sale, marca la entrega.`, {
+  await courierSay(row.courier.id, row.courier.phone, `Listo 👍 Ya le avisamos al restaurante. Espera hasta ${config.customerWaitMinutes} minutos y, si el cliente sale, marca la entrega.`, {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
     buttons: deliveryButtons(tripId, { waiting: true }),
@@ -405,8 +402,7 @@ export async function notifyUnassigned(tripId: number, courierId: number) {
     db.select().from(schema.trips).where(eq(schema.trips.id, tripId)).limit(1),
   ]);
   if (!courier || !trip) return;
-  const conversation = await conversationOf(courier.phone);
-  await say(conversation.id, courier.phone, `📢 El pedido ${trip.code} ya no está a tu nombre, no vayas a recogerlo 🙏`, {
+  await courierSay(courier.id, courier.phone, `📢 El pedido ${trip.code} ya no está a tu nombre, no vayas a recogerlo 🙏`, {
     replyTo: await lastBotMessageAbout(tripId, courier.phone),
     tripId,
   });
@@ -467,19 +463,71 @@ export async function notifyFinished(tripId: number, newlyAssigned: number[] = [
   const debts = word === "terminado" ? await openReturnDebtsOfTrip(tripId) : [];
   if (!confirm && !debts.length) return;
 
-  const conversation = await conversationOf(row.courier.phone);
   const replyTo = await lastBotMessageAbout(tripId, row.courier.phone);
   const done = `✅ ${row.trip.code} ${word}.`;
   if (!debts.length) {
-    await say(conversation.id, row.courier.phone, done, { replyTo, tripId });
+    await courierSay(row.courier.id, row.courier.phone, done, { replyTo, tripId });
     return;
   }
+  // Con demanda baja y libre, la plata no se anota y ya: que aproveche y pase
+  // a pagar (entra en su ruta). Así no le llegan dos mensajes seguidos.
+  const idle = demandLevel(new Date()) === "baja" && !(await hasOpenTrips(row.courier.id));
   for (const [i, debt] of debts.entries()) {
-    const text = await debtReminder(debt);
+    const text = idle && debt.reason === "plata" ? await idlePayReminder(debt) : await debtReminder(debt);
     if (!text) continue;
-    await say(conversation.id, row.courier.phone, i === 0 && confirm ? `${done}\n\n${text.text}` : text.text, { replyTo, tripId, buttons: [debtButton(debt.id, debt.reason)] });
+    await courierSay(row.courier.id, row.courier.phone, i === 0 && confirm ? `${done}\n\n${text.text}` : text.text, { replyTo, tripId, buttons: [debtButton(debt.id, debt.reason)] });
     await markReturnDebtsReminded(text.ids);
   }
+}
+
+async function hasOpenTrips(courierId: number) {
+  const [row] = await db
+    .select({ id: schema.trips.id })
+    .from(schema.assignments)
+    .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+    .where(and(eq(schema.assignments.courierId, courierId), openTripCondition()))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** «Aprovecha: pasa por X a pagar»: la plata de ese grupo entra en su ruta.
+ *  `null` si ya estaba (otro tick se adelantó) o ya no hay nada abierto. */
+async function idlePayReminder(debt: ReturnDebtView) {
+  const group = await openGroupOf(debt);
+  if (!group) return null;
+  const routed = await routeReturnDebts(group.debts.map((d) => d.id));
+  if (!routed.length) return null;
+  return { text: idlePayText(group.restaurantName, joinCodes(group.debts.map((d) => d.tripCode))), ids: group.debts.map((d) => d.id) };
+}
+
+
+/**
+ * Lo corre el tick. Con demanda baja, al domiciliario que quedó libre y debe
+ * plata se le dice una vez «Aprovecha: pasa por X a pagar», y la parada entra
+ * en su ruta: si mientras va le asignan un pedido, no se pierde. Con demanda
+ * alta la plata nunca genera un regreso. Devuelve los pendientes que avisó.
+ */
+export async function nudgeIdlePayments(now = new Date()): Promise<number[]> {
+  if (demandLevel(now) !== "baja") return [];
+  const idle = await db
+    .select({ id: schema.couriers.id, phone: schema.couriers.phone })
+    .from(schema.couriers)
+    .where(and(eq(schema.couriers.active, true), eq(schema.couriers.status, "available")));
+  if (!idle.length) return [];
+  const stops = await openReturnStops(idle.map((c) => c.id));
+  const nudged: number[] = [];
+  for (const courier of idle) {
+    for (const stop of (stops.get(courier.id) ?? []).filter((r) => r.reason === "plata" && !r.inRoute)) {
+      if (await hasOpenTrips(courier.id)) break;
+      const debt = await getReturnDebt(stop.id);
+      const text = debt && (await idlePayReminder(debt));
+      if (!debt || !text) continue;
+      await courierSay(courier.id, courier.phone, text.text, { tripId: debt.tripId, buttons: [debtButton(debt.id, debt.reason)] });
+      await markReturnDebtsReminded(text.ids);
+      nudged.push(...text.ids);
+    }
+  }
+  return nudged;
 }
 
 /** Lo que se le dice para cerrar el grupo de un pendiente: los de ese
@@ -503,8 +551,9 @@ export async function notifyDebtNudge(debtId: number): Promise<boolean> {
   if (!debt || debt.resolvedAt) return false;
   const reminder = await debtReminder(debt, { nudge: true });
   if (!reminder) return false;
-  const conversation = await conversationOf(debt.courierPhone);
-  await say(conversation.id, debt.courierPhone, reminder.text, { tripId: debt.tripId, buttons: [debtButton(debt.id, debt.reason)] });
+  // La central pidió que vaya: la plata entra en su ruta.
+  if (debt.reason === "plata") await routeReturnDebts(await returnGroupDebtIds(debt.id));
+  await courierSay(debt.courierId, debt.courierPhone, reminder.text, { tripId: debt.tripId, buttons: [debtButton(debt.id, debt.reason)] });
   await markReturnDebtsReminded(reminder.ids);
   return true;
 }
@@ -527,8 +576,7 @@ async function lastBotMessageAbout(tripId: number, phone: string) {
 export async function notifyTripUpdated(tripId: number, change: string) {
   const row = await loadTrip(tripId);
   if (!row?.courier) return;
-  const conversation = await conversationOf(row.courier.phone);
-  await say(conversation.id, row.courier.phone, `📢 ${row.trip.code}: ${change}`, {
+  await courierSay(row.courier.id, row.courier.phone, `📢 ${row.trip.code}: ${change}`, {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
   });

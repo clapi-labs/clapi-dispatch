@@ -1,0 +1,48 @@
+{
+  "nombre": "Plata con demanda baja: la parada no se pierde",
+  "descripcion": "Ana quedó libre con demanda baja y le llegó «Aprovecha: pasa por X a pagar»: el regreso está en su ruta. Mientras va, le asignan un pedido; la parada sigue en la ruta.",
+  "config": {
+    "modo": "valle"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3604,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pendientes": [
+        {
+          "motivo": "plata",
+          "restaurante": [
+            3.352,
+            -76.524
+          ],
+          "en_ruta": true
+        }
+      ]
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Pedido cercano",
+      "restaurante": [
+        3.362,
+        -76.523
+      ],
+      "cliente": [
+        3.368,
+        -76.52
+      ],
+      "listo_en": 5
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "orden": "B R C",
+      "por": "El pago sigue en la ruta; va primero porque la comida tarda 5 min"
+    }
+  ]
+}
