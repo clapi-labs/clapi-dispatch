@@ -23,6 +23,15 @@ El viaje está «en ruta» desde que se asigna hasta el final. Solo se guarda «
 
 ## El flujo nuevo
 
+### Conectar y terminar el turno
+
+- **Conectarse:** al escribir «hola» (o cualquier mensaje cuando está desconectado y sin pedidos), pasa a disponible en Flota y recibe el saludo con el recordatorio «Para desconectarte escribe desactivado.».
+- **Terminar el turno:** al escribir «desactivado» (sin importar mayúsculas, tildes ni signos, o variantes directas como «desactivar» o «me desactivo»):
+  - Si no tiene pedidos abiertos, pasa a desconectado en Flota al instante, deja de recibir pedidos y recibe «Quedaste desconectado. Para volver escribe hola.». El GPS no se apaga ni cambia.
+  - Si todavía tiene pedidos abiertos (asignados, en camino o encima), sigue conectado y recibe «Termina primero lo que llevas y vuelve a escribir desactivado.». Si tiene una urgencia, escribe la novedad como siempre y la central resuelve.
+  - Si ya estaba desconectado, sigue desconectado y recibe «Ya estabas desconectado. Para volver escribe hola.».
+  - La central conserva la opción de desconectar una moto desde Flota en cualquier momento.
+
 ### Mensaje 1: al asignar
 
 Lleva solo lo necesario para ir a recoger:
