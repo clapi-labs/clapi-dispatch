@@ -176,6 +176,13 @@
       "when": 1794881663441,
       "tag": "0024_reclamos_de_pendientes",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794889151847,
+      "tag": "0025_gps_en_movimiento",
+      "breakpoints": true
     }
   ]
 }

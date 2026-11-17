@@ -82,6 +82,11 @@ export const env = {
     return optional("GEOCODE_SIMULADO", "false") === "true";
   },
 
+  /** Host público del bot para armar la URL del receptor de GPS (`https://<host>/api/gps`). */
+  get botHost() {
+    return optional("BOT_HOST").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  },
+
   get internalSecret() {
     return required("INTERNAL_SECRET");
   },

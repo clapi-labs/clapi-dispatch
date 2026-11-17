@@ -44,6 +44,7 @@ import {
   pickupLateAt,
   sameRestaurant,
   sameTripReturnText,
+  traccarConfigMessage,
   tripPhase,
   type ClaimGroupCandidate,
   type DebtClaim,
@@ -54,6 +55,7 @@ import { debtButton, deliveryButtons, goingButton, pickedButton, pickupButtons, 
 import { say } from "@/bot/messaging";
 import { confirmedText, courierAssignedText, estimatePickup } from "@/bot/status";
 import { conversationForOutbound } from "@/db/queries/conversation";
+import { env } from "@/env";
 import type { SendResult } from "@/services/whatsapp/client";
 
 /**
@@ -753,4 +755,41 @@ export async function notifyTripUpdated(tripId: number, change: string) {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
   });
+}
+
+const WA_WINDOW_MS = 24 * 60 * 60_000;
+
+/**
+ * Envía al domiciliario la configuración de Traccar Client por WhatsApp (#53):
+ * identificador, URL del servidor y ajustes en líneas separadas.
+ * WhatsApp solo deja escribir a quien nos escribió en las últimas 24 horas: si
+ * no lo ha hecho, devuelve `outside_window` para que el portal lo avise.
+ */
+export async function notifyCourierGpsConfig(
+  courierId: number,
+  gpsUrl?: string,
+): Promise<{ ok: true } | { ok: false; reason: "not_found" | "no_gps_id" | "no_url" | "outside_window" | "send_failed" }> {
+  const [row] = await db
+    .select({ courier: schema.couriers, gpsDeviceId: schema.courierProfiles.gpsDeviceId })
+    .from(schema.couriers)
+    .leftJoin(schema.courierProfiles, eq(schema.courierProfiles.courierId, schema.couriers.id))
+    .where(eq(schema.couriers.id, courierId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not_found" };
+  if (!row.gpsDeviceId) return { ok: false, reason: "no_gps_id" };
+
+  const serverUrl = gpsUrl?.trim() || (env.botHost ? `https://${env.botHost}/api/gps` : "");
+  if (!serverUrl) return { ok: false, reason: "no_url" };
+
+  const conversation = await conversationOf(row.courier.phone);
+  const inWindow = conversation.lastInboundAt !== null && Date.now() - conversation.lastInboundAt.getTime() < WA_WINDOW_MS;
+  if (!env.whatsappSimulated && !inWindow) return { ok: false, reason: "outside_window" };
+
+  const res = await say(conversation.id, row.courier.phone, traccarConfigMessage(row.gpsDeviceId, serverUrl));
+  if (res.ok) return { ok: true };
+  if (res.reason === "http_error") {
+    const code = (res.body as { error?: { code?: number } } | null)?.error?.code;
+    if (code === 131047) return { ok: false, reason: "outside_window" };
+  }
+  return { ok: false, reason: "send_failed" };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { signalState } from "@dispatch/shared/domain/gps";
+import { hasSignal, signalState } from "@dispatch/shared/domain/gps";
 import { isTripOpen } from "@dispatch/shared/domain/phase";
 import { useEffect, useState } from "react";
 
@@ -50,7 +50,7 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
         courier: c,
         signal,
         carrying: trips.filter((t) => t.courierId === c.id && isTripOpen(t)).length,
-        distance: signal === "live" && trip.pickupLocation ? km({ lat: c.lat!, lng: c.lng! }, trip.pickupLocation) : null,
+        distance: hasSignal(c, now) && trip.pickupLocation ? km({ lat: c.lat!, lng: c.lng! }, trip.pickupLocation) : null,
       };
     })
     .sort((a, b) => a.carrying - b.carrying || (a.distance ?? Infinity) - (b.distance ?? Infinity));

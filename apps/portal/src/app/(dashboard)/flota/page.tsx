@@ -1,6 +1,6 @@
 "use client";
 
-import { signalState } from "@dispatch/shared/domain/gps";
+import { hasSignal, signalState } from "@dispatch/shared/domain/gps";
 import { List, Map as MapIcon, Search } from "lucide-react";
 import { useCallback, useState } from "react";
 
@@ -78,10 +78,12 @@ export default function FlotaPage() {
     setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, photo } : c)));
   }
 
-  // Señal de las conectadas: las desconectadas no reportan ni se esperan.
+  // Señal de GPS por separado del turno (#53).
   const connected = couriers.filter((c) => c.status !== "offline");
-  const live = connected.filter((c) => signalState(c, now) === "live").length;
+  const live = connected.filter((c) => hasSignal(c, now)).length;
+  const offlineLive = couriers.filter((c) => c.status === "offline" && hasSignal(c, now)).length;
   const lost = connected.filter((c) => signalState(c, now) === "lost").length;
+  const unconfigured = couriers.filter((c) => signalState(c, now) === "none").length;
 
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, couriers.filter((c) => c.status === f.key).length])) as Record<Filter, number>;
   const needle = query.trim().toLowerCase();
@@ -137,18 +139,23 @@ export default function FlotaPage() {
         </div>
       </div>
 
-      {/* Señal de GPS de las conectadas, y lista o mapa. */}
+      {/* Señal de GPS y lista o mapa. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-ok" /> <strong className="tabular-nums">{live}</strong> en vivo
           </span>
+          {offlineLive > 0 && (
+            <span className="flex items-center gap-1.5 text-ink-3">
+              <span className="h-2 w-2 rounded-full border border-ok bg-ink-3/30" /> <strong className="tabular-nums">{offlineLive}</strong> fuera de turno con GPS
+            </span>
+          )}
           <span className={`flex items-center gap-1.5 ${lost ? "text-warn" : ""}`}>
             <span className={`h-2 w-2 rounded-full ${lost ? "bg-warn" : "bg-ink-3"}`} /> <strong className="tabular-nums">{lost}</strong> sin señal
           </span>
-          {connected.length - live - lost > 0 && (
+          {unconfigured > 0 && (
             <span className="text-ink-3">
-              <strong className="tabular-nums">{connected.length - live - lost}</strong> conectadas sin ubicación
+              <strong className="tabular-nums">{unconfigured}</strong> GPS sin configurar
             </span>
           )}
         </p>

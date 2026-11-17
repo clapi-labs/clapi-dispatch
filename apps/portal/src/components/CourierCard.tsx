@@ -104,41 +104,41 @@ export function CourierCard({
           <p className="text-ink-3">Viajes hoy</p>
           <p className="text-base font-bold tabular-nums">{courier.deliveriesThisShift}</p>
         </div>
-        {/* Dónde está ahora: en vivo o sin señal, y su última posición en el mapa. */}
+        {/* GPS por separado del turno (#53): siempre visible, esté o no conectado. */}
         <a
-          href={located ? `https://www.google.com/maps?q=${courier.lat},${courier.lng}` : undefined}
+          href={located && signal !== "none" ? `https://www.google.com/maps?q=${courier.lat},${courier.lng}` : undefined}
           target="_blank"
           rel="noreferrer"
-          aria-disabled={!located}
-          title={located ? "Abrir su última ubicación en el mapa" : undefined}
+          aria-disabled={!located || signal === "none"}
+          title={located && signal !== "none" ? "Abrir su última ubicación en el mapa" : undefined}
           className={`ease-ui flex flex-col justify-center rounded-xl px-3 py-2 ${
-            !located
+            signal === "none"
               ? "pointer-events-none bg-sunken text-ink-3"
-              : signal === "live" && !off
+              : signal === "live" || signal === "still"
                 ? "bg-ok-soft text-ok can-hover:hover:bg-ok can-hover:hover:text-white"
-                : signal === "lost" && !off
-                  ? "bg-warn-soft text-warn can-hover:hover:bg-warn can-hover:hover:text-white"
-                  : "bg-sunken text-ink-2 can-hover:hover:bg-clapi-soft can-hover:hover:text-clapi-ink"
+                : "bg-warn-soft text-warn can-hover:hover:bg-warn can-hover:hover:text-white"
           }`}
         >
-          {!located ? (
+          {signal === "none" ? (
             <>
               <span className="flex items-center gap-1 text-sm font-semibold">
-                <LocateFixed size={14} /> Sin ubicación
+                <LocateFixed size={14} /> GPS sin configurar
               </span>
-              <span className="text-[11px] opacity-80">{courier.hasGps ? "Su celular no ha reportado" : "GPS sin configurar"}</span>
-            </>
-          ) : off ? (
-            <>
-              <span className="flex items-center gap-1 text-sm font-semibold">
-                <LocateFixed size={14} /> Última ubicación
-              </span>
-              {courier.locationUpdatedAt && <span className="text-[11px] opacity-80">{timeOfDay(courier.locationUpdatedAt)}</span>}
+              <span className="text-[11px] opacity-80">{courier.hasGps ? "Su celular no ha reportado" : "Sin identificador"}</span>
             </>
           ) : signal === "live" ? (
             <>
               <span className="flex items-center gap-1.5 text-sm font-semibold">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-ok" /> En vivo
+              </span>
+              {courier.locationUpdatedAt && (
+                <span className="text-[11px] opacity-80">hace {elapsedLabel(new Date(courier.locationUpdatedAt), new Date(now))}</span>
+              )}
+            </>
+          ) : signal === "still" ? (
+            <>
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <span className="h-2 w-2 rounded-full bg-ok" /> Quieto
               </span>
               {courier.locationUpdatedAt && (
                 <span className="text-[11px] opacity-80">hace {elapsedLabel(new Date(courier.locationUpdatedAt), new Date(now))}</span>

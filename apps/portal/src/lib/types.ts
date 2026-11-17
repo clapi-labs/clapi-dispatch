@@ -70,6 +70,7 @@ export type Courier = {
   lat: number | null;
   lng: number | null;
   locationUpdatedAt: string | null;
+  locationMoving?: boolean | null;
   deliveriesThisShift: number;
   lastAssignedAt: string | null;
   active: boolean;

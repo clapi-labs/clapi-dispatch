@@ -271,6 +271,9 @@ export const couriers = pgTable("couriers", {
   lat: real("lat"),
   lng: real("lng"),
   locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
+  /** `true` si el último reporte vino en movimiento, `false` si estaba quieto
+   *  (`is_moving: false` / `activity: still` / velocidad ~0), `null` sin dato. */
+  locationMoving: boolean("location_moving"),
 
   /** Se reinicia al cerrar turno (`SettlementView`); es el insumo del
    *  factor de equidad. */

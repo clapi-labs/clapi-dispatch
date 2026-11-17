@@ -41,7 +41,13 @@ export async function measureDemand(config: DemandConfig, now = new Date()): Pro
 
   const [connected, pending, [arrived]] = await Promise.all([
     db
-      .select({ id: couriers.id, lat: couriers.lat, lng: couriers.lng, locationUpdatedAt: couriers.locationUpdatedAt })
+      .select({
+        id: couriers.id,
+        lat: couriers.lat,
+        lng: couriers.lng,
+        locationUpdatedAt: couriers.locationUpdatedAt,
+        locationMoving: couriers.locationMoving,
+      })
       .from(couriers)
       .where(and(eq(couriers.active, true), dispatchableCourier(), inArray(couriers.status, ["available", "busy"]))),
     db.select({ readyAt: trips.readyAt }).from(trips).where(eq(trips.status, "pending")),

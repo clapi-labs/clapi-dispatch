@@ -20,11 +20,17 @@ const trip: SnapshotTrip = {
   readyAt: new Date(now.getTime() + 10 * 60_000),
 };
 
-const moto = (id: number, locationUpdatedAt: Date | null, position = true): SnapshotCourier => ({
+const moto = (
+  id: number,
+  locationUpdatedAt: Date | null,
+  position = true,
+  locationMoving: boolean | null = null,
+): SnapshotCourier => ({
   id,
   lat: position ? 3.44 : null,
   lng: position ? -76.52 : null,
   locationUpdatedAt,
+  locationMoving,
   deliveriesThisShift: 2,
   shiftStartedAt: ago(60 * 60_000),
   lastDeliveredAt: null,
@@ -45,6 +51,17 @@ describe("buildEvaluarRequest: señal de GPS", () => {
 
   it("a los 30 segundos sin reporte queda sin señal y el engine no la elige", () => {
     assert.deepEqual(sinSenal([moto(1, ago(30_000)), moto(2, ago(31_000)), moto(3, ago(2 * 60_000))]), { 1: true, 2: true, 3: true });
+  });
+
+  it("moto quieta (locationMoving = false) sigue participando hasta los 3 minutos y sale si se apaga después", () => {
+    assert.deepEqual(
+      sinSenal([
+        moto(1, ago(105_000), true, false),
+        moto(2, ago(179_000), true, false),
+        moto(3, ago(180_000), true, false),
+      ]),
+      { 1: false, 2: false, 3: true },
+    );
   });
 
   it("sin posición, o sin hora de la posición, queda sin señal", () => {

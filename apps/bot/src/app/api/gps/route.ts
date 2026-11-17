@@ -1,7 +1,7 @@
 import { positionTime } from "@dispatch/shared";
 
 import { courierForDevice, recordPosition } from "@/bot/gps";
-import { readReport } from "@/bot/gps-report";
+import { readReport, reportIsMoving } from "@/bot/gps-report";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,8 @@ async function handle(request: Request) {
     // Hora del servidor si el reloj del celular está cerca: un celular atrasado
     // no puede contar como sin señal, ni uno adelantado dejar la moto «en vivo».
     const at = positionTime(report.at, new Date());
-    await recordPosition(courier.id, { lat: report.lat, lng: report.lng }, at);
+    const moving = reportIsMoving(report, courier);
+    await recordPosition(courier.id, { lat: report.lat, lng: report.lng }, at, moving);
   }
   return new Response("OK", { status: 200 });
 }

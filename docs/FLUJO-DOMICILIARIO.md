@@ -301,25 +301,26 @@ Requisitos:
 
 Cómo se configura cada celular, con [Traccar Client](https://www.traccar.org/client/):
 
-1. En Flota, «Ver más», generar el identificador GPS del domiciliario.
+1. En Flota, «Ver más», generar el identificador GPS del domiciliario y usar **Enviar por WhatsApp** para pasarle el ID y la URL en líneas separadas (si lleva más de 24 h sin escribir, pide que mande «hola» primero).
 2. En la app: ese identificador y, como URL del servidor, `https://<host del bot>/api/gps`.
-3. Precisión alta y reportar cada 10 segundos, también con la moto quieta, con la pantalla apagada y la app en segundo plano.
+3. Precisión alta y reportar cada 10 segundos en movimiento, sin restricciones de batería para que reporte con pantalla apagada y en segundo plano.
 
 El receptor acepta los tres formatos de Traccar Client: los datos en la URL, en el cuerpo del POST (la versión nueva de la app) o en JSON (`apps/bot/src/bot/gps-report.ts`). Un reporte que no se puede leer, o de un identificador desconocido, se responde con 200 y se descarta: la app muestra «Upload response 200» aunque no se haya guardado nada, así que la prueba de que llegó es verlo «En vivo» en Flota.
 
 Paso a paso para conectar a un domiciliario: [OPERACION.md](OPERACION.md), «Conectar a un domiciliario al GPS». La guía corta y el video para que cada domiciliario instale la app solo, en Android y en iPhone, salen de la prueba con los celulares reales (issue #42, segunda parte).
 
-**En vivo y sin señal.** Una sola regla para todo el sistema (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`):
+**En vivo, quieto y sin señal.** El turno y la señal GPS se muestran por separado en Flota (issue #53). Una sola regla para todo el sistema (`NO_SIGNAL_MS` y `STILL_NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`):
 
 | Estado | Cuándo | Qué pasa |
 |---|---|---|
-| En vivo | Reportó hace menos de 30 s | Se ve con el color de su estado en Flota y en el mapa; el algoritmo la puede elegir |
-| Sin señal | Tiene posición, pero sin reporte hace 30 s o más | Flota y el mapa la muestran gris con la hora de su última ubicación; el algoritmo la excluye («sin GPS»). Vuelve sola a «en vivo» con el siguiente reporte |
-| Sin ubicación | Nunca reportó, o su posición ya se borró | «GPS sin configurar» si no tiene identificador; si lo tiene, «su celular no ha reportado» |
+| En vivo | Reportó en movimiento hace menos de 30 s (o sin dato de quietud) | Se ve verde/azul/rojo en Flota y en el mapa; el algoritmo la puede elegir |
+| Quieto | El último reporte marcó que la moto está detenida (`locationMoving = false`) y reportó hace menos de 3 min | Sigue disponible para el algoritmo; en la tarjeta muestra «Quieto» con la hora del último reporte para aguantar el latido en reposo (~60–105 s) sin falsos «Sin señal» |
+| Sin señal | Tiene posición, pero venció su ventana (30 s en movimiento / 3 min quieto) | Flota y el mapa la muestran gris con la hora de su última ubicación; el algoritmo la excluye («sin GPS»). Vuelve sola con el siguiente reporte |
+| Sin ubicación | Nunca reportó, o su posición ya se borró | «GPS sin configurar» si no tiene identificador; si lo tiene, «Su celular no ha reportado» |
 
 - Perder la señal no cambia nada en la base: el portal lo calcula con su propio reloj, y lo ve en unos segundos.
 - Si el reloj del celular está a menos de un minuto del del servidor, la posición se guarda con la hora del servidor: un celular unos segundos atrasado no parpadea entre «en vivo» y «sin señal». Un reporte que el celular guardó sin conexión y envía tarde conserva su hora: esa posición ya es vieja.
-- En Flota, **Mapa** muestra las motos conectadas con ubicación, en producción y en staging; las desconectadas no se ven. Arriba, cuántas están en vivo y cuántas sin señal.
+- En Flota, **Mapa** muestra todas las motos que están reportando señal (incluso las desconectadas si dejaron la app prendida, en gris con borde verde «fuera de turno») y las que están en turno aunque hayan quedado sin señal; las desconectadas sin señal no salen en el mapa. Arriba de Flota se muestran por separado las conectadas y el estado de GPS (`en vivo` / `quieto`, `fuera de turno con GPS`, `sin señal`, `sin configurar`).
 - **No se guarda el recorrido.** Solo la última posición de cada moto, y se borra a las 24 horas sin reportar; a las evaluaciones del algoritmo de más de un día se les quitan las posiciones de las motos. Las horas de cada servicio (llegó, recogió, entregó) se guardan con el pedido, como siempre.
 
 **En staging, motos reales y simuladas a la vez.** Una moto con número real e identificador de GPS es una moto real («📡»): no controla motos simuladas y no recibe pedidos del simulador ni del algoritmo, que en staging solo asigna a las simuladas. Se le da un viaje de prueba desde el mapa del simulador, o a mano desde Viajes ([OPERACION.md](OPERACION.md), «Simulador»). En producción no hay simulador: todas son reales.

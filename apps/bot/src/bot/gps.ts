@@ -36,10 +36,10 @@ export async function courierForDevice(deviceId: string) {
 
 /** Guarda la posición y revisa qué cambió en lo que lleva. Un reporte más viejo
  *  que el último (el celular estuvo sin señal y se pone al día) solo se ignora. */
-export async function recordPosition(courierId: number, position: Point, at: Date) {
+export async function recordPosition(courierId: number, position: Point, at: Date, moving: boolean | null = null) {
   const [updated] = await db
     .update(schema.couriers)
-    .set({ lat: position.lat, lng: position.lng, locationUpdatedAt: at })
+    .set({ lat: position.lat, lng: position.lng, locationUpdatedAt: at, locationMoving: moving })
     .where(and(eq(schema.couriers.id, courierId), or(isNull(schema.couriers.locationUpdatedAt), lt(schema.couriers.locationUpdatedAt, at))))
     .returning({ id: schema.couriers.id });
   if (!updated) return;

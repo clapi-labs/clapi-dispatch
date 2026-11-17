@@ -4,7 +4,6 @@ import { UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Modal } from "@/components/Modal";
-import { CITY_CENTER } from "@/lib/geo";
 
 export function AddCourierForm({ collapsed, onCreated }: { collapsed: boolean; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -16,12 +15,11 @@ export function AddCourierForm({ collapsed, onCreated }: { collapsed: boolean; o
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return;
     setBusy(true);
-    // Posición aproximada de arranque; la real la reporta su app.
-    const jitter = () => (Math.random() - 0.5) * 0.06;
+    // Sin ubicación al crearse: la real la reporta Traccar Client desde su celular (#53).
     await fetch("/api/couriers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, phone, lat: CITY_CENTER.lat + jitter(), lng: CITY_CENTER.lng + jitter() }),
+      body: JSON.stringify({ name, phone }),
     });
     setName("");
     setPhone("");
