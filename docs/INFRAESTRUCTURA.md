@@ -10,7 +10,7 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | HTTPS automático (Caddy + Let's Encrypt) | Hecho |
 | Portal con login, bot, worker, Postgres | Hecho, funcionando en staging |
 | Migraciones versionadas (Drizzle) | Hecho |
-| CI (lint, tipos, pruebas, build, migraciones) | Hecho, corre en todo PR hacia `dev` y `main`. Falta la protección de rama en `dev` que bloquea el merge si falla ([PLAN](PLAN.md) I-4) |
+| CI (lint, tipos, pruebas, build, migraciones) | Hecho, corre en todo PR hacia `dev` y `main`, y `dev` exige que pasen sus tres jobs para mezclar ([PLAN](PLAN.md) I-4) |
 | Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
 | Despliegue automático desde GitHub | **Pendiente**: hoy se despliega a mano, ver `OPERACION.md` ([PLAN](PLAN.md) I-3) |
 | Servidor de producción (separado de staging) | Pendiente ([PLAN](PLAN.md) I-5) |

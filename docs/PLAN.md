@@ -82,11 +82,11 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 ### I-4 · CI en cada PR a `dev`, con las pruebas · Infra · S
 
-**Objetivo:** que nada roto llegue a `dev`. CI ya corre en todo PR a `dev` y a `main`, con `npm test` (incluye `apps/portal`); falta que `dev` lo exija.
+**Objetivo:** que nada roto llegue a `dev`. CI corre en todo PR a `dev` y a `main`, con `npm test` (incluye `apps/portal`), y `dev` exige que pasen `checks`, `engine` y `migrations` para mezclar.
 
 **Éxito:**
 - ~~Todo PR a `dev` (y a `main`) corre lint, tipos, build, migraciones y `npm test`.~~ Hecho.
-- Una prueba rota a propósito en un PR de ensayo bloquea el merge (protección de rama en `dev`).
+- Una prueba rota a propósito en un PR de ensayo bloquea el merge (protección de rama en `dev`, activa desde el 17 de noviembre de 2026; no obliga a los administradores ni exige revisiones).
 
 **Dónde mirar:** `.github/workflows/ci.yml`, script `test` del `package.json` raíz.
 
