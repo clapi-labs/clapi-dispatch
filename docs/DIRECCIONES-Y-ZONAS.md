@@ -3,6 +3,10 @@
 ## Cómo se ubica una dirección hoy
 
 - **Dirección escrita:** se geocodifica una sola vez con Google Geocoding (`apps/bot/src/services/google/geocode.ts`, con pruebas en `geocode.test.ts`), limitado a un rectángulo que va de Cali a Jamundí y Yumbo (sur 3.2, oeste −76.65, norte 3.6, este −76.4). Si no nombra otro municipio, se busca en Cali; si nombra Jamundí, Yumbo, Candelaria o Palmira (o sectores como Alfaguara o Acopi), se consulta en ese municipio sin agregar «Cali», y se descarta cualquier resultado en que Google cruce de municipio o salte a otra calle distinta de la escrita.
+- **Qué resultado de Google se acepta** (`interpretGeocode`): solo uno con precisión de puerta (`ROOFTOP` o `RANGE_INTERPOLATED`) o un cruce de dos calles («Calle 42 con Carrera 85C», que Google da como centro pero es la esquina). Se descarta además:
+  - el que está en una vía con otro número que la escrita («Cra 94A #42-64» para «Carrera 97 # 42-10»), aunque coincida la placa;
+  - el parcial (`partial_match`) cuando el texto no trae vía y placa: con solo un nombre («Valle del Lili», «Univalle sede Meléndez») Google adivina un lugar parecido. Por eso los lugares que Google marca parcial (Unicentro, la Javeriana) pasan a la central;
+  - la dirección que Google ubica en dos lugares a más de 500 m («Cl 52 # 3-29»): no se elige, decide la central.
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
 - **Recogida:** la del restaurante registrado, sin volver a geocodificar. Si no está registrado, hoy se ubica lo que escribió como origen. **Decidido:** la recogida de un restaurante nuevo la verifica la central a mano, no Google ni Places; el flujo está por definir ([PLAN](PLAN.md) B-3).
 - **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.
@@ -18,6 +22,83 @@
 **Por medir** ([PLAN](PLAN.md) B-3): si Google ubica mejor una recogida con el nombre del restaurante delante de la dirección, o sin él. Se compara desde el servidor, mirando `location_type` (solo `ROOFTOP` o `RANGE_INTERPOLATED` cuentan) y si el punto cae en Cali.
 
 Idea para después (no decidida): un geocodificador propio con los datos de OpenStreetMap del mapa de zonas, y Google solo cuando el propio no encuentre.
+
+## Precisión de las direcciones
+
+Qué tan bien ubica el bot una dirección escrita, medido contra **puntos reales verificados en Google Maps**, no contra lo que devuelve la misma API. Mide todo el camino: el texto que escribe el restaurante, lo que va al mapa (`geocode.ts`), el punto que acepta o rechaza y la cobertura (`coverage.ts`).
+
+**Los casos** (`apps/bot/direcciones/casos.json`, 105):
+
+| Tipo | Casos | Qué prueban |
+|---|---|---|
+| `estandar` | 53 | Direcciones completas: «Cra 97 # 45-11 local 102», «Cl 48 Bis # 92-27», «Cl 40 # 46B-15, Mariano Ramos» |
+| `coloquial` | 16 | Como llegan por WhatsApp: «cra97#45-11 loc 102», «kra 95a 42 141», «Carerra 98 # 42-55», «Cl 45 #97a-15 torre 2 apto 502», con indicaciones mezcladas |
+| `esquina` | 5 | «Calle 42 con Carrera 85C»: un punto exacto sin placa |
+| `lugar` | 13 | Lugares conocidos del norte, oeste, centro, oriente, Jamundí y Yumbo (Chipichape, Unicentro, La Ermita, Único…), por su nombre |
+| `trampa` | 7 | La misma placa en Cali y en Jamundí o Yumbo («Calle 30 #1-15 jamundi», el caso de 6256a75), Candelaria y Palmira, «Vía Cali - Jamundí» |
+| `incompleta` | 5 | «la 42 con 83», «Cra 86», «760004, Cali», «Cra 84A, El Ingenio»: no hay una puerta |
+| `solo-barrio` | 6 | «Valle del Lili», «Ciudad Pacífica», «Alfaguara, Jamundí»: el centro de un barrio no es una puerta |
+
+Cada caso dice qué se espera (`ubicar`, `escalar`: no debe inventar un punto, o `cualquiera`: puede pasarla a la central pero nunca ubicarla fuera de su municipio), su municipio y, si lo tiene, su **punto verificado**:
+
+- **70 puntos verificados** salen de la hoja de restaurantes socios: la central copió cada uno del pin de Google Maps (clic derecho) al registrarlos. Son direcciones reales de la operación, todas en el sur (Valle del Lili, Caney, Ciudadela Comfandi, El Ingenio, Bochalema, Ciudad Meléndez) y una en Mariano Ramos. Se cruzaron con los bordes de la IDESC: cada punto cae en el barrio que le corresponde. Para no tener 7 casos iguales, los restaurantes con la misma dirección (Fusión Plaza, Chill Plaza) cuentan una vez.
+- **16 puntos verificados a mano en Google Maps** (17 de noviembre de 2026) para el resto de la ciudad: los 13 lugares, y tres direcciones que salen de sus fichas («Cl 52 # 3-29», Único; «Cra 100 # 5-169», Unicentro; «Cl 5 # 36-08, San Fernando», el HUV). Se buscó cada lugar y se miró que el pin cayera sobre él en el mapa. En los lugares grandes (universidades, zoológico, estadio) el punto es el pin del lugar, no la portería: un error de 150 a 300 m ahí puede ser solo otra entrada, y su nota lo dice.
+- Un caso sin punto verificado (`referencia: null`) se mide, pero no entra en el porcentaje hasta que alguien lo verifique y lo cargue (abajo).
+- La primera versión la armó `armar-casos.py` (en la misma carpeta) con la hoja, que no se versiona porque trae los WhatsApp de los restaurantes. De ahí en adelante se edita `casos.json`.
+
+**Cómo se juzga cada caso** (`apps/bot/src/services/google/address-bench.ts`):
+
+| Resultado | Cuándo | ¿Grave? |
+|---|---|---|
+| Exacto | A **50 m** o menos del punto verificado: la puerta o la de al lado | |
+| Aceptable | A **150 m** o menos: la misma cuadra o la siguiente; el precio no cambia | |
+| Fallo | A más de 150 m | |
+| Lejos | A más de **500 m**: otro sector; precio, zona y moto salen mal | Sí |
+| Otro municipio | Una dirección de Jamundí o Yumbo que cae dentro de un barrio de Cali (bordes de la IDESC, no lo que dice Google) | Sí |
+| Falso positivo | No había un punto (solo el barrio, sin placa) y el bot dio uno | Sí |
+| Pasó a la central teniendo punto | La dirección existía y el bot no la ubicó: cuesta tiempo de la central, no plata | |
+| Pasó a la central (bien) | No había un punto y no lo inventó | |
+
+**El acierto** es el porcentaje de exactos y aceptables entre los casos que el bot debía ubicar y tienen punto verificado (si no la ubicó, cuenta como no acertado). El informe da además el error en metros (mediana, 90 % y máximo).
+
+**La cobertura:** con las zonas de la base, compara dónde cae el punto del bot y dónde el real. Avisa cuando decidirían distinto: por ejemplo, el real queda a menos de 300 m del borde (decide la central) y el del bot adentro (pasa sin preguntar). Los casos al borde salen solos de las zonas que tenga cada servidor.
+
+### Cómo se corre
+
+**En local y en CI**, sin red, con `npm test` (`address-bench.test.ts`):
+- Los casos están bien armados, cada punto verificado de Cali cae en un barrio de Cali (o a menos de 1 km, como el zoológico) y los de Jamundí y Yumbo fuera de ellos.
+- Para cada caso, lo que se decide antes de llamar a Google: que busque en su municipio (sin pegarle «Cali» a una de Jamundí), que confirme con el restaurante las que no dicen el tipo de vía (`ambiguousAddress`) y que la torre o el apto no vayan al mapa.
+- El juicio de cada resultado, el resumen y el caso de 6256a75 de punta a punta, con la respuesta de Google simulada.
+
+**Contra Google de verdad, en el servidor** (la llave solo sirve desde su IP):
+```bash
+/opt/dispatch/measure-addresses.sh                 # todos los casos (unas 100 geocodificaciones, dentro de las gratis)
+/opt/dispatch/measure-addresses.sh --extraccion    # además lee cada texto con el modelo, como en una conversación (gasta OpenAI)
+/opt/dispatch/measure-addresses.sh --solo trampa-01,coloquial-02
+```
+Usa la imagen de migraciones con la llave del `.env` y las zonas de esa base. No escribe en la base ni manda mensajes. Deja `informe.md` y `resultados.json` en `/opt/dispatch/mediciones/direcciones-<fecha>/` y sale con error si hay algún caso grave. `measure-addresses.sh` no viaja con el despliegue: se copia una vez, como `deploy.sh` ([OPERACION](OPERACION.md), «Cambios en `deploy.sh`»). Desde un computador: `npm run bot:direcciones:medir`, que con la llave restringida responde que se corra en el servidor.
+
+**Verificar un punto:** buscar el lugar en Google Maps y **comprobar en el mapa** que el pin está donde debe (la puerta, el edificio, la esquina correcta), no solo aceptar el primer resultado. `resultados.json` trae el punto que dio el bot, para comparar. Después:
+```bash
+npm run bot:direcciones:referencia -- lugar-01 "3.4759489, -76.5276424"   # o el enlace largo de Google Maps
+```
+Agregar un caso: editarlo en `casos.json`; `npm test` revisa que esté bien armado.
+
+### Resultados
+
+| Fecha | Dónde | Acierto | Error (mediana / 90 %) | Graves | Notas |
+|---|---|---|---|---|---|
+| 17 nov. 2026 | Local, sin red | — | — | — | La revisión sin red destapó que el bot pedía confirmar «cra97#45-11» (vía pegada al número) y «Carerra 98 …» (tipeo) como si no dijeran si es calle o carrera. Corregido en `ambiguousAddress`. |
+| 17 nov. 2026 | Staging, antes de corregir (77 zonas) | 81,4 % (70 de 86) | 7 m / 97 m | 6 | Graves: «Valle del Lili» y «Bochalema» solos daban un punto (la clínica, un local), «Univalle sede Meléndez» caía en San Fernando, «Cl 52 # 3-29» en otro sector a 4 km (Google la ubica en dos lugares), y «Ciudad Pacífica» y «Cra 98 # 42» se esperaban sin punto. Además, «Carrera 97 # 42-10» caía en la Cra 94A. |
+| 17 nov. 2026 | Staging, corregido (77 zonas) | 79,1 % (68 de 86) | 7 m / 70 m, máx. 289 m | **0** | Corregido en `geocode.ts` (reglas de arriba). Las esquinas pasaron de escalar a exactas. El acierto baja porque ahora escala lo dudoso en vez de dar un punto: 17 pasan a la central teniendo punto (abajo). Cobertura distinta de la real: 0. Con `--extraccion` (el modelo lee el texto, corrida previa al último ajuste de «kra 95a 42 141»): 77,9 %, igual que sin el modelo en esa corrida, y 0 graves. |
+
+**Casos de borde conocidos** (corrida corregida):
+- **«Cra 83C # 37-31»** (Don Parra): Google da un `ROOFTOP` de esa misma placa a 289 m del pin que copió la central. El único fallo; hay que revisar con la central cuál de los dos puntos es el local.
+- **Lugares por nombre que pasan a la central:** Chipichape, Unicentro, la Javeriana, Univalle, el zoológico, el estadio, el HUV, Único, la Clínica Valle del Lili y el parque de Jamundí, porque Google los da parciales o como centro. Se prefiere eso a un punto inventado; los restaurantes casi siempre mandan la dirección.
+- **Calicanto** («Cra 95A # 45-10», «Carrera 97 # 42-10», «Cra 96A # 42-146», «Cra 95A # 42-17»): Google responde con otra placa u otra carrera y pasan a la central.
+- **«Carrera 97A con Calle 45, Calicanto»:** Google no conoce el cruce; pasa a la central.
+- **«Cl 52 # 3-29»** (Único) y **«Cl 5 # 36-08, San Fernando»** (HUV): Google da la placa en dos lugares o solo como centro; pasan a la central.
+- **«Ciudad Pacífica» sola:** Google tiene la ficha de la urbanización y el bot la ubica; para la IDESC ese punto cae en Piedrachiquita, el barrio de al lado. Se espera `cualquiera`.
 
 ## Precio del domicilio
 
