@@ -1,8 +1,8 @@
 {
-  "nombre": "Peor caso: el regreso cuenta en la ruta",
-  "descripcion": "Ana lleva un pedido casi entregado y un restaurante nuevo le queda de camino, pero su recogida está lejos. Si no tuviera que volver ganaría ella (52.9 vs 50.0). Como solo se sabe al entregar, se cuenta el regreso: el desvío sube y gana Beto.",
+  "nombre": "Datáfono con demanda alta: el pedido nuevo va antes del regreso",
+  "descripcion": "La situación del caso 20 con demanda alta: el regreso se puede aplazar. Ana recoge y entrega el pedido nuevo y después devuelve el datáfono; el regreso sigue en su ruta.",
   "config": {
-    "modo": "valle"
+    "modo": "pico"
   },
   "motos": [
     {
@@ -22,21 +22,21 @@
             -76.521
           ],
           "recogido": true,
-          "puede_volver": true
+          "pendiente": "datafono"
         }
       ]
     },
     {
       "id": "Beto",
-      "lat": 3.371,
-      "lon": -76.523,
+      "lat": 3.385,
+      "lon": -76.52,
       "entregas": 3,
       "min_sin_pedido": 0
     }
   ],
   "pedidos": [
     {
-      "nombre": "Restaurante cercano",
+      "nombre": "Restaurante cercano, de otro lugar",
       "restaurante": [
         3.366,
         -76.522
@@ -51,8 +51,9 @@
   "esperado": [
     {
       "pedido": 1,
-      "moto": "Beto",
-      "por": "Con el regreso de Ana en la ruta, su desvío pasa de 0.8 a 4.6 min"
+      "moto": "Ana",
+      "orden": "C R C B",
+      "por": "El regreso se aplaza por demanda alta y queda al final (80.9 vs 73.5)"
     }
   ]
 }

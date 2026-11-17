@@ -9,7 +9,10 @@ import {
   getDemand,
   getEngineConfig,
   getRoutingConfig,
+  openReturnStops,
   openTripCondition,
+  returnGroupDebtIds,
+  routeReturnDebts,
   saveCourierRoute,
   schema,
   type EngineConfig,
@@ -35,11 +38,12 @@ import { env } from "@/env";
 const MAX_AGE_MS = 3 * 60 * 60_000;
 const ENGINE_TIMEOUT_MS = 3_000;
 
-/** La configuración del engine, el interruptor de km por calle y el modo que
- *  sale de la demanda medida (alta = pico, baja = valle; docs/ALGORITMO.md,
- *  «Demanda»), con los números que lo decidieron. */
+/** La configuración del engine, el interruptor de km por calle y la demanda
+ *  medida en vivo (alta = pico, baja = valle; docs/ALGORITMO.md, «Demanda»),
+ *  con los números que la decidieron. */
 type EngineRunConfig = EngineConfig & {
   porCalle: boolean;
+  demanda: DemandLevel;
   modo: "pico" | "valle";
   demand: { level: DemandLevel; metrics: DemandMetrics | null };
 };
@@ -49,12 +53,14 @@ async function engineRunConfig(): Promise<EngineRunConfig> {
   return {
     ...engine,
     porCalle: routing.porCalle,
+    demanda: demand.level,
     modo: modeForDemand(demand.level),
     demand: { level: demand.level, metrics: demand.metrics },
   };
 }
 
-type EngineStop = { tipo: RouteStop["tipo"]; pedido: number | null };
+/** En `B`, `pedido` es el pendiente y `motivo` dice a qué vuelve. */
+type EngineStop = { tipo: RouteStop["tipo"]; pedido: number | null; motivo?: "datafono" | "plata" };
 
 type EngineResponse = {
   engine_version: string;
@@ -113,7 +119,7 @@ async function loadCouriers(): Promise<SnapshotCourier[]> {
   if (!couriers.length) return [];
   const ids = couriers.map((c) => c.id);
 
-  const [active, delivered, routes, botConfig] = await Promise.all([
+  const [active, delivered, routes, botConfig, returns] = await Promise.all([
     db
       .select({ courierId: schema.assignments.courierId, trip: schema.trips, assignment: schema.assignments })
       .from(schema.assignments)
@@ -127,6 +133,7 @@ async function loadCouriers(): Promise<SnapshotCourier[]> {
       .groupBy(schema.assignments.courierId),
     db.select().from(schema.courierRoutes).where(inArray(schema.courierRoutes.courierId, ids)),
     getBotConfig(),
+    openReturnStops(ids),
   ]);
   const lastDelivered = new Map(delivered.map((d) => [d.courierId, d.last]));
   const route = new Map(routes.map((r) => [r.courierId, r.stops]));
@@ -140,6 +147,7 @@ async function loadCouriers(): Promise<SnapshotCourier[]> {
     shiftStartedAt: c.shiftStartedAt,
     lastDeliveredAt: lastDelivered.get(c.id) ?? null,
     route: route.get(c.id) ?? null,
+    returns: returns.get(c.id) ?? [],
     activeTrips: active
       .filter((a) => a.courierId === c.id)
       .map((a) => ({
@@ -257,7 +265,12 @@ async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: num
     await save(trip.id, { ...common, status: "waiting", reason: "La moto elegida ya no está disponible" });
     return false;
   }
-  if (result.plan) await saveCourierRoute(result.winner, result.plan.map((s) => ({ tipo: s.tipo, pedido: s.pedido ?? trip.id })));
+  if (result.plan) {
+    await saveCourierRoute(result.winner, result.plan.map((s) => ({ tipo: s.tipo, pedido: s.pedido ?? trip.id })));
+    // La plata que el engine metió porque recoge en ese restaurante ya va en su
+    // ruta: paga en la misma vuelta.
+    for (const s of result.plan) if (s.tipo === "B" && s.motivo === "plata" && s.pedido !== null) await routeReturnDebts(await returnGroupDebtIds(s.pedido));
+  }
   await save(trip.id, { ...common, status: "decided", reason: null, decidedAt: now });
   return true;
 }

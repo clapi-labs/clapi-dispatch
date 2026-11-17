@@ -54,7 +54,8 @@ Copia un caso existente y cámbialo. El formato es este:
     "modo": "pico",
     "radio": 3,
     "multi": true,
-    "motor": "haversine"
+    "motor": "haversine",
+    "demanda": "alta"
   },
   "motos": [
     {
@@ -67,8 +68,12 @@ Copia un caso existente y cámbialo. El formato es este:
           "restaurante": [3.3460, -76.5240],
           "cliente": [3.3730, -76.5186],
           "listo_en": 0,
-          "recogido": true
+          "recogido": true,
+          "pendiente": "datafono"
         }
+      ],
+      "pendientes": [
+        { "motivo": "plata", "restaurante": [3.3550, -76.5240], "en_ruta": false }
       ]
     }
   ],
@@ -81,7 +86,7 @@ Copia un caso existente y cámbialo. El formato es este:
     }
   ],
   "esperado": [
-    { "pedido": 1, "moto": "Ana", "por": "Explicación de por qué debería ganar" }
+    { "pedido": 1, "moto": "Ana", "orden": "C R C B", "por": "Explicación de por qué debería ganar" }
   ]
 }
 ```
@@ -95,17 +100,20 @@ Copia un caso existente y cámbialo. El formato es este:
 | `motos[].entregas` | Entregas que lleva hoy |
 | `motos[].min_sin_pedido` | Minutos desde su última entrega o desde que se conectó, lo más reciente (para la equidad) |
 | `motos[].cuota` | Opcional. Cuota justa acumulada en el turno (especificaciones.md, 4.A). Si falta, se usa el promedio de entregas del grupo, que equivale a que todas lleven conectadas todo el turno |
-| `motos[].pedidos_en_curso` | Pedidos que ya lleva. `recogido: false` significa que todavía tiene que pasar por el restaurante. `cliente_no_contesta_hace: 4` significa que la moto está donde el cliente, que no contesta hace 4 minutos (le quedan 6 de espera antes de devolver el pedido). En ese caso, la posición de la moto debe ser la del cliente. `volviendo: true` significa que ya entregó y va de regreso al restaurante de ese pedido: puede recibir otros, pero el regreso cuenta en su ruta. `puede_volver: true`, con `recogido: true`, suma ese regreso después de entregar: es el peor caso que asume el bot, porque hasta entregar no se sabe si tendrá que volver. |
+| `config.demanda` | Opcional: `"alta"` o `"baja"`. Si falta, la del modo (pico = alta, valle = baja) |
+| `motos[].pedidos_en_curso` | Pedidos que ya lleva. `recogido: false` significa que todavía tiene que pasar por el restaurante. `cliente_no_contesta_hace: 4` significa que la moto está donde el cliente, que no contesta hace 4 minutos (le quedan 6 de espera antes de devolver el pedido). En ese caso, la posición de la moto debe ser la del cliente. `pendiente: "datafono"` o `"plata"`: lo declaró al recoger ese pedido, así que tiene que volver a su restaurante |
+| `motos[].pendientes` | Otros pendientes de regreso: `motivo` (`"datafono"` o `"plata"`), `restaurante` y `en_ruta`. El datáfono va en la ruta salvo `en_ruta: false`; la plata solo con `en_ruta: true` (demanda baja con la moto libre). En la ruta se ubica como en el bot: con demanda baja, apenas entrega lo que lleva; con alta, al final. Los que no van en la ruta solo cuentan si el pedido nuevo sale de ese restaurante |
 | `pedidos[]` | Pedidos nuevos, en el **orden en que llegan**. Se numeran 1, 2, 3… |
 | `pedidos[].listo_en` | Minutos que faltan para que la comida esté lista |
 | `esperado[].pedido` | Número del pedido (1 = el primero de la lista `pedidos`) |
 | `esperado[].moto` | Moto que debería ganar, o `null` si ninguna debería ser elegible |
+| `esperado[].orden` | Opcional: los tipos de parada de la ruta de la ganadora, en orden (`"C B R C"`). `R` recoger, `C` entregar, `B` regreso al restaurante |
 | `esperado[].por` | Por qué; es solo para leerlo, no se verifica |
 
 **Para sacar coordenadas:** en Google Maps, clic derecho sobre un punto y la primera línea son la latitud y la longitud. Otra forma es armar la situación en el simulador y guardarla con la opción 1.
 
 **Ten en cuenta:**
-- Los pedidos que las motos ya llevan se numeran desde 101, y en las rutas aparecen como `#101`, `#102`…
+- Los pedidos que las motos ya llevan se numeran desde 101, y en las rutas aparecen como `#101`, `#102`…; los pendientes de regreso, desde 201 («Devuelve el datáfono (pendiente 201)»).
 - Desde la consola, los casos siempre usan línea recta (Haversine), para que el resultado no dependa de internet. El simulador sí puede usar OSRM.
 - Desde la consola, los pedidos se asignan uno tras otro **evaluados como en su momento de despacho** (asignación diferida). El reporte indica cuántos minutos después de llegar se asignaría cada uno.
 - Un caso que falla **no siempre es un error del algoritmo**: puede que la expectativa estuviera equivocada. Pasó con el caso 10, que esperaba la moto más cercana, pero la comida tardaba 5 minutos y ganó la que llegaba justo a tiempo. Antes de corregir el algoritmo, revisa que lo esperado tenga sentido.
@@ -132,3 +140,13 @@ Copia un caso existente y cámbialo. El formato es este:
 | 14 | La misma situación en hora valle: con máximo 2 pedidos, la moto queda excluida |
 | 15 | Cliente que no contesta: la moto no recibe pedidos nuevos, ni siquiera uno del restaurante al que tiene que volver (regla provisional; pendiente de definir la reasignación) |
 | 16 | Cliente que no contesta: aunque la moto está al lado de otro restaurante, queda excluida y gana otra |
+| 17 | Mismo restaurante: entre dos motos parecidas, gana la que tiene un pendiente allí, y paga en la misma vuelta |
+| 18 | Mismo restaurante, pero la otra moto está mucho más cerca: gana la otra |
+| 19 | Sin regresos inventados: una moto sin pendientes no tiene regreso en su ruta |
+| 20 | Datáfono con demanda baja: el pedido de otro restaurante tendría que esperar el regreso, así que gana otra moto |
+| 21 | Datáfono con demanda baja: si es la única, el regreso va antes del pedido nuevo |
+| 22 | Datáfono con demanda alta: el pedido nuevo va antes y el regreso sigue en la ruta |
+| 23 | Plata con demanda alta: nunca entra en la ruta |
+| 24 | Plata con demanda baja ya en la ruta: al recibir un pedido, la parada no se pierde |
+| 25 | Nunca regresa con comida de otro cliente encima, aunque fuera más corto |
+| 26 | Datáfono en el restaurante del pedido nuevo, con demanda baja: lo devuelve en la misma vuelta |

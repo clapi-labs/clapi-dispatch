@@ -30,6 +30,7 @@ Lleva solo lo necesario para ir a recoger:
 - Lugar de recogida, con detalles (local, entrada).
 - A qué hora está listo.
 - Waze hacia el lugar de recogida.
+- Si recoge en un restaurante donde tiene un pendiente: «♻️ Aprovecha y devuelve el datáfono en Donde Lucho» o «Aprovecha y paga en Donde Lucho». Lo hace en la misma vuelta.
 - Barrio de destino y cobro, para que sepa antes de salir si necesita base o datáfono. Si el restaurante dijo que el cliente paga con tarjeta («datáfono», «lleve datáfono», «paga con tarjeta»), le dice «💳 El cliente paga con tarjeta» y **«Pide el datáfono en el restaurante»**; antes eso se leía como «ya pagado» y le decía que no cobrara. Al restaurante no se le pregunta el método de pago: solo se usa si lo dice.
 
 Botones, las tres formas de recoger (WhatsApp permite máximo 3):
@@ -107,7 +108,34 @@ En Flota, la tarjeta del domiciliario muestra los que tiene («💳 Datáfono»,
 
 **Aviso del datáfono.** Si un datáfono lleva 30 minutos afuera desde que se entregó su pedido (uno registrado sin pedido, desde que se registró), a la central le llega una alerta al celular, «Datáfono sin devolver · Donde Lucho». Los minutos se cambian en Pendientes (`settings.bot_config.datafonoAlertMinutes`). Solo avisa la demora: no cambia a quién se le asignan pedidos. La plata no tiene aviso, porque se puede pagar al final del día.
 
-**Para el algoritmo** un pendiente no existe: un domiciliario con pendientes sigue recibiendo pedidos, y ya no se supone que vuelve a recogida después de cada entrega. Planear cuándo vuelve, según el motivo y la demanda, es otra issue (#60).
+**Cuándo vuelve** (#60). Un domiciliario con pendientes sigue recibiendo pedidos, y el algoritmo ya no supone que vuelve a recogida después de cada entrega: solo cuentan los regresos reales, como paradas de su ruta.
+
+| Motivo | Demanda baja | Demanda alta |
+|---|---|---|
+| Datáfono | Vuelve apenas entregue lo que lleva, antes de recoger en otro restaurante | Se puede aplazar: los pedidos nuevos pueden ir antes, pero el regreso sigue en su ruta |
+| Plata | Al quedar libre le llega «💵 Aprovecha: pasa por Donde Lucho a pagar (A-07). Cuando lo hagas, toca «Ya pagué».», con el botón, y la parada entra en su ruta. Si mientras va le asignan un pedido, sigue en la ruta | Nunca entra en la ruta: sigue rodando |
+
+Nunca vuelve con la comida de otro cliente encima, salvo que el regreso sea al mismo restaurante donde va a recoger. Si entra un pedido de un restaurante donde tiene un pendiente, tiene ventaja para ganarlo, pero no le gana a una moto mucho mejor ubicada. La demanda se mide en vivo (#59). Detalle y casos en [ALGORITMO.md](ALGORITMO.md), «Demanda» y «Regresos al restaurante».
+
+«Mandar ya» con plata también la mete en la ruta: la central le pidió que fuera.
+
+## La ruta en los mensajes
+
+Con dos o más paradas pendientes, regresos incluidos, **cada mensaje que ya se le manda empieza con su ruta numerada**, con lo que sigue marcado:
+
+```
+🧭 Tu ruta:
+1. ➡️ Entrega A-07 (San Fernando)
+2. Recoge A-08 en Donde Lucho
+3. Entrega A-08 (El Peñón)
+4. Devuelve el datáfono en La Brasa
+```
+
+- Con un solo pedido y nada más («Recoge A-07 → Entrega A-07») no se muestra: el mensaje ya lo dice. Sale desde dos cosas por hacer: dos pedidos, o un pedido y un regreso («Entrega A-07 → Devuelve el datáfono»).
+- Va en los mensajes 1 y 2, los recordatorios, el «terminado», los de los pendientes, el cliente que no contesta y los avisos de cambios. **Ningún mensaje se manda solo para mostrar la ruta.**
+- Si le asignan otro pedido, el mensaje de ese pedido trae la ruta nueva.
+- Después de cada entrega, la ruta va en el «✅ A-07 terminado.» si ese mensaje sale (`confirmDeliveryToCourier`). Si no sale, no se manda otro: la verá en el siguiente.
+- Es el mismo orden que ve la central en Flota (la tarjeta de cada moto) y el mapa del simulador: el del último plan del engine, con los regresos nuevos donde corresponden a la demanda (`courierRoutesFor`, `packages/shared/src/db/courier-route.ts`; el formato, en `domain/route.ts`).
 
 **Al desplegar** (migración `0020`), lo que estaba en «Volviendo» se dio por terminado sin crear pendientes, porque no se sabía por qué volvía; si un restaurante reclama, la central lo registra a mano.
 
@@ -174,6 +202,7 @@ Suman uno más cada uno de estos casos:
 - Avisar quién va, si no había moto libre.
 - Un recordatorio.
 - Cerrar un pendiente de regreso, si declaró uno (le llega al entregar), y cada «Mandar ya» de la central.
+- «Aprovecha: pasa por X a pagar», una vez por pendiente, si queda libre con demanda baja y no le llegó ya al entregar.
 - Una consulta del restaurante.
 - Cada mensaje de Williams desde el portal.
 
@@ -307,5 +336,5 @@ La lista de entrega también trae «Cliente no contesta». El domiciliario esper
 
 - **Que no toquen los botones.** Un estado mal marcado es peor que no tenerlo. Por eso se puede saltar pasos, se prueba primero con pocos y se miden los servicios cerrados por Williams.
 - **Ventana de 24 horas.** Meta solo deja escribirle a quien nos escribió en las últimas 24 horas. Un domiciliario que lleva más tiempo sin escribir no recibe el mensaje 1, y por eso la fase 3 registra los fallos.
-- **Pedidos múltiples.** Los mensajes siguen siendo por viaje; con varios, el mensaje 1 agrega «Tu orden». Dos pedidos del mismo restaurante son dos mensajes.
+- **Pedidos múltiples.** Los mensajes siguen siendo por viaje; con varias paradas, cada uno empieza con la ruta (ver «La ruta en los mensajes»). Dos pedidos del mismo restaurante son dos mensajes.
 - **GPS en la calle.** Solo se ha probado con posiciones simuladas: falta medir el error real en conjuntos y zonas densas. Los 100 metros de llegada (`gpsArrivalMeters`) y el minuto de permanencia (`gpsDwellSeconds`) son una propuesta.

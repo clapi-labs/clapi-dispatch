@@ -1,7 +1,7 @@
 import { assignPendingTrips, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
-import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
+import { closeCustomerWaits, notifyAssigned, nudgeIdlePayments, remindCouriers } from "@/bot/notify";
 import { recordWorkerTick } from "@/db/queries/worker-heartbeat";
 import { closeSimulatedDebts } from "@/simulator/plan";
 import { runEngine } from "@/dispatch/engine";
@@ -61,6 +61,14 @@ export async function POST(request: Request) {
     await closeCustomerWaits();
   } catch (error) {
     console.error("[tick] no se pudieron cerrar las esperas:", error);
+  }
+
+  // Con demanda baja, quien quedó libre y debe plata: «Aprovecha: pasa por X a
+  // pagar», una vez (docs/FLUJO-DOMICILIARIO.md, «Pendientes de regreso»).
+  try {
+    await nudgeIdlePayments();
+  } catch (error) {
+    console.error("[tick] no se pudo avisar la plata por pagar:", error);
   }
 
   // Cierre de cada restaurante: el recordatorio antes de su hora límite y,

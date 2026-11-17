@@ -2,7 +2,18 @@ import { randomBytes } from "node:crypto";
 
 import { and, desc, eq, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
-import { db, listControls, openReturnDebtCounts, openTripCondition, releaseControlOf, returnUnpickedTrips, schema, simulatorEnabled } from "@dispatch/shared/db";
+import {
+  courierRoutesFor,
+  db,
+  listControls,
+  openReturnDebtCounts,
+  openTripCondition,
+  releaseControlOf,
+  returnUnpickedTrips,
+  schema,
+  simulatorEnabled,
+} from "@dispatch/shared/db";
+import { routeLineText } from "@dispatch/shared";
 
 /** "300 123 4567" → "573001234567": el formato en que WhatsApp identifica el
  *  número, para que el bot reconozca al motorizado cuando escriba. */
@@ -32,6 +43,8 @@ export async function listCouriers(): Promise<
     simulator: SimulatorRole | null;
     /** Pendientes de regreso abiertos, por motivo. */
     returnDebts: { datafono: number; plata: number } | null;
+    /** Su ruta en orden, regresos incluidos: lo mismo que le llega por WhatsApp. */
+    route: RouteStopView[];
   })[]
 > {
   const a = schema.assignments;
@@ -53,6 +66,7 @@ export async function listCouriers(): Promise<
     openReturnDebtCounts(),
   ]);
   const gps = new Set(withGps.map((r) => r.id));
+  const routes = await courierRoutesFor(couriers.filter((c) => c.status !== "offline").map((c) => c.id));
   const byCourier = new Map(stats.map((r) => [r.courierId, r]));
   const names = new Map(couriers.map((c) => [c.id, c.name]));
   const partnerOf = (c: CourierRow) => {
@@ -76,9 +90,13 @@ export async function listCouriers(): Promise<
       assignable: c.simulated === simulator || (simulator && gps.has(c.id)),
       simulator: simulator ? { role: role(c), partner: partnerOf(c) } : null,
       returnDebts: debts.get(c.id) ?? null,
+      route: (routes.get(c.id) ?? []).map((s) => ({ kind: s.tipo, text: routeLineText(s.line) })),
     };
   });
 }
+
+/** Una parada de la ruta, como la ve Flota. `B`: un regreso al restaurante. */
+export type RouteStopView = { kind: "R" | "C" | "W" | "V" | "B"; text: string };
 
 export async function createCourier(input: { name: string; phone: string; lat?: number; lng?: number }) {
   const [courier] = await db

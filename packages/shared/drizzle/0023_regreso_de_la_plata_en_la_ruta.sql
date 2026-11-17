@@ -1,0 +1,1 @@
+ALTER TABLE "return_debts" ADD COLUMN "routed_at" timestamp with time zone;

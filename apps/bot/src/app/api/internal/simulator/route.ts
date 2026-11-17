@@ -1,6 +1,6 @@
 import { ensureSimulatedCouriers, simulatorEnabled } from "@dispatch/shared/db";
 
-import { actFor, simulatorState } from "@/simulator/plan";
+import { actDebtFor, actFor, simulatorState } from "@/simulator/plan";
 import { createSimulatedOrder } from "@/simulator/order";
 
 import { isInternal } from "../auth";
@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
  * - `POST { action: "setup" }`: crea las motos si no hay ninguna.
  * - `POST { action: "act", courierId, tripId }`: toca el botón por una moto que
  *   se maneja sola, por el mismo camino que un toque de WhatsApp.
+ * - `POST { action: "debt", courierId, debtId }`: llegó al restaurante de un
+ *   regreso de su ruta y toca «Ya lo devolví» o «Ya pagué».
  * - `POST { action: "order", restaurantId, lat, lng, readyInMinutes, courierId? }`:
  *   un pedido desde el mapa, sin WhatsApp. Con `courierId`, es el viaje de prueba
  *   de esa moto real con GPS.
@@ -39,6 +41,13 @@ export async function POST(request: Request) {
     const tripId = num(body.tripId);
     if (courierId === null || tripId === null) return Response.json({ error: "Faltan courierId y tripId" }, { status: 400 });
     return Response.json({ pressed: await actFor(courierId, tripId) });
+  }
+
+  if (body.action === "debt") {
+    const courierId = num(body.courierId);
+    const debtId = num(body.debtId);
+    if (courierId === null || debtId === null) return Response.json({ error: "Faltan courierId y debtId" }, { status: 400 });
+    return Response.json({ pressed: await actDebtFor(courierId, debtId) });
   }
 
   if (body.action === "order") {

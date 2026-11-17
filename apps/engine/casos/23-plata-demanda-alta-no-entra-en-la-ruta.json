@@ -1,6 +1,6 @@
 {
-  "nombre": "Volviendo a recogida: puede recibir de otro lugar",
-  "descripcion": "Ana va de regreso al restaurante A y entra un pedido de otro restaurante que le queda al lado. Las motos no se dejan quietas: lo recibe, y el regreso sigue contando en su ruta.",
+  "nombre": "Plata con demanda alta: nunca entra en la ruta",
+  "descripcion": "Ana quedó debiendo la comida en un restaurante lejano. Con demanda alta la plata no genera regreso: su ruta no lo tiene y recibe el pedido que le queda de camino.",
   "config": {
     "modo": "pico"
   },
@@ -14,35 +14,36 @@
       "pedidos_en_curso": [
         {
           "restaurante": [
-            3.355,
+            3.33,
             -76.524
           ],
           "cliente": [
-            3.373,
-            -76.5186
+            3.364,
+            -76.521
           ],
-          "volviendo": true
+          "recogido": true,
+          "pendiente": "plata"
         }
       ]
     },
     {
       "id": "Beto",
-      "lat": 3.378,
+      "lat": 3.385,
       "lon": -76.52,
       "entregas": 3,
-      "min_sin_pedido": 10
+      "min_sin_pedido": 0
     }
   ],
   "pedidos": [
     {
-      "nombre": "Otro restaurante, junto a Ana",
+      "nombre": "Restaurante cercano, de otro lugar",
       "restaurante": [
-        3.3615,
-        -76.5235
+        3.366,
+        -76.522
       ],
       "cliente": [
-        3.3649,
-        -76.5204
+        3.375,
+        -76.52
       ],
       "listo_en": 5
     }
@@ -51,7 +52,8 @@
     {
       "pedido": 1,
       "moto": "Ana",
-      "por": "Está al lado y el regreso a A no la saca de la evaluación"
+      "orden": "C R C",
+      "por": "Sin regreso a pagar en la ruta"
     }
   ]
 }

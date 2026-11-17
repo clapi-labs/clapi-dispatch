@@ -8,6 +8,7 @@ export * from "./domain/fare-examples";
 export * from "./domain/return-debts";
 export * from "./domain/road-distance";
 export * from "./domain/phase";
+export * from "./domain/route";
 export * from "./domain/restaurant-identity";
 export * from "./domain/service-hours";
 export * from "./domain/alerts";

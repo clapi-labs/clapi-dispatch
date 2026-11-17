@@ -38,6 +38,12 @@ DEFAULTS = {
     "S_EQUIDAD": 2.0,             # escala de F_carga, en entregas
     "T_MAX_ESPERA_MIN": 30.0,
 
+    # Regresos al restaurante (pendientes: el datáfono, la plata). Ventaja, en puntos de Score, de la
+    # moto que recoge el pedido nuevo en el restaurante donde tiene un pendiente: devuelve o paga en la
+    # misma vuelta. Equivale a llegar ~1 min más tarde en pico y ~3 min en valle (docs/ALGORITMO.md).
+    "VENTAJA_MISMO_RESTAURANTE": 8.0,
+    "MISMO_LUGAR_KM": 0.05,       # sin id de restaurante, dos paradas a menos de esto son el mismo lugar
+
     "PESOS": {"pico": (0.70, 0.20, 0.10), "valle": (0.30, 0.10, 0.60)},
     "BETA": {"pico": 0.2, "valle": 0.5},
 }
@@ -47,7 +53,12 @@ DEFAULTS = {
 ESPERA_CLIENTE_MIN = 10.0
 
 NOMBRES_FACTOR = {"tiempo": "tiempo de llegada al restaurante", "ruta": "optimización de ruta",
-                  "equidad": "equidad del turno"}
+                  "equidad": "equidad del turno", "pendiente": "un pendiente en el mismo restaurante"}
+
+# La demanda decide cuándo se vuelve al restaurante. Mientras el sistema no la mida (#59), sale del
+# modo: pico = alta, valle = baja.
+DEMANDA_DEL_MODO = {"pico": "alta", "valle": "baja"}
+MOTIVOS = ("datafono", "plata")
 
 
 def configurar(config=None):
@@ -101,10 +112,9 @@ def recorrer(pos, paradas, tiempo):
     """Recorre las paradas en orden. Devuelve la hora de llegada a cada una y los minutos en movimiento.
 
     Tipos de parada: "R" recoger, "C" entregar, "W" esperar a un cliente que no contesta,
-    "V" devolver al restaurante un pedido no entregado, "B" volver a recogida después de entregar
-    (por el cambio o el datáfono, por ejemplo): no impide recibir otro pedido, pero su tiempo cuenta
-    en la ruta. Si la parada tiene t_listo (recoger
-    o esperar al cliente), la moto no sigue antes de ese minuto.
+    "V" devolver al restaurante un pedido no entregado, "B" regreso al restaurante por un pendiente
+    (devolver el datáfono, pagar la comida): no ocupa lugar en la moto, pero su tiempo cuenta en la
+    ruta. Si la parada tiene t_listo (recoger o esperar al cliente), la moto no sigue antes de ese minuto.
     """
     reloj = viaje = 0.0
     anterior = pos
@@ -120,24 +130,80 @@ def recorrer(pos, paradas, tiempo):
 
 
 def describir(paradas):
-    nombres = {"R": "Recoge", "C": "Entrega", "W": "Espera al cliente de", "V": "Devuelve al restaurante",
-               "B": "Vuelve a recogida de"}
-    return " → ".join(f"{nombres[p['tipo']]} {'nuevo' if p['pedido'] is None else '#' + str(p['pedido'])}"
-                      for p in paradas)
+    nombres = {"R": "Recoge", "C": "Entrega", "W": "Espera al cliente de", "V": "Devuelve al restaurante"}
+    regreso = {"datafono": "Devuelve el datáfono", "plata": "Paga"}
+
+    def una(p):
+        if p["tipo"] == "B":
+            return f"{regreso.get(p.get('motivo'), 'Regresa')} (pendiente {p['pedido']})"
+        return f"{nombres[p['tipo']]} {'nuevo' if p['pedido'] is None else '#' + str(p['pedido'])}"
+    return " → ".join(una(p) for p in paradas)
 
 
-def mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo=None, c=DEFAULTS):
+def mismo_lugar(a, b, c=DEFAULTS):
+    """Dos paradas en el mismo restaurante: por su id si las dos lo traen, si no por la distancia."""
+    if a.get("restaurante_id") is not None and b.get("restaurante_id") is not None:
+        return a["restaurante_id"] == b["restaurante_id"]
+    return haversine_km(tuple(a["punto"]), tuple(b["punto"])) <= c["MISMO_LUGAR_KM"]
+
+
+def junto_a_recogida(secuencia, k, c=DEFAULTS):
+    """El regreso k va pegado a una recogida en ese mismo restaurante: es la misma vuelta."""
+    b = secuencia[k]
+    for paso in (-1, 1):
+        i = k + paso
+        while 0 <= i < len(secuencia) and mismo_lugar(secuencia[i], b, c):
+            if secuencia[i]["tipo"] == "R":
+                return True
+            i += paso
+    return False
+
+
+def regresos_con_comida(secuencia, c=DEFAULTS):
+    """Cuántos regresos se harían con comida de otro cliente encima. Nunca se vuelve como un desvío con
+    un pedido a bordo, salvo que el regreso sea al mismo restaurante donde va a recoger."""
+    recoge = {p["pedido"] for p in secuencia if p["tipo"] == "R"}
+    a_bordo = {p["pedido"] for p in secuencia if p["tipo"] == "C"} - recoge  # ya recogidos
+    malos = 0
+    for k, p in enumerate(secuencia):
+        if p["tipo"] == "R":
+            a_bordo.add(p["pedido"])
+        elif p["tipo"] == "C":
+            a_bordo.discard(p["pedido"])
+        elif p["tipo"] == "B" and a_bordo and not junto_a_recogida(secuencia, k, c):
+            malos += 1
+    return malos
+
+
+def regreso_urgente(p, demanda):
+    """Con demanda baja, el datáfono se devuelve apenas entregue lo que lleva: antes de recoger en otro
+    restaurante. Con demanda alta se puede aplazar, y la plata nunca apura."""
+    return p["tipo"] == "B" and p.get("motivo") == "datafono" and demanda == "baja"
+
+
+def mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo=None, c=DEFAULTS, demanda="alta",
+                    pendientes=(), restaurante_id=None):
     """Prueba el pedido nuevo en todas las posiciones de la ruta pendiente de la moto.
 
-    paradas: lista ordenada de {"tipo": "R"|"C", "punto": [lat, lon], "pedido": id, "t_listo": min}.
+    paradas: lista ordenada de {"tipo": "R"|"C"|"B"…, "punto": [lat, lon], "pedido": id, "t_listo": min}.
     La recogida nueva va siempre antes que su entrega, y el orden de las paradas existentes se respeta.
     Devuelve la opción factible que termina antes, o None si todas retrasan más de R_MAX_MIN alguna
     entrega que la moto ya tenía. La espera en restaurantes no cuenta como desvío (la penaliza F_tiempo).
+
+    Regresos ("B"): ninguno se hace con comida de otro cliente encima, salvo en el mismo restaurante
+    donde recoge; con demanda baja, la recogida nueva no va antes de un datáfono por devolver, salvo
+    que sea en ese mismo restaurante. pendientes: los que no están en la ruta (la plata con demanda
+    alta, por ejemplo); el que sea del restaurante del pedido nuevo se hace pegado a la recogida.
     """
     tiempo = tiempo or tiempo_haversine(c)
     nueva_r = {"tipo": "R", "punto": restaurante, "pedido": None, "t_listo": t_listo}
+    if restaurante_id is not None:
+        nueva_r["restaurante_id"] = restaurante_id
     nueva_c = {"tipo": "C", "punto": cliente, "pedido": None} if cliente else None
+    # El pendiente que no está en la ruta solo entra si es del mismo restaurante: no cuesta viaje.
+    de_paso = [dict(p, tipo="B") for p in pendientes if mismo_lugar(p, nueva_r, c)]
     llegadas_base, viaje_base = recorrer(pos, paradas, tiempo)
+    malos_base = regresos_con_comida(paradas, c)
     entrega_base = {p["pedido"]: t for p, t in zip(paradas, llegadas_base) if p["tipo"] == "C"}
     t_b = tiempo(restaurante, cliente) if cliente else 0.0
 
@@ -146,18 +212,33 @@ def mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo=None, c=
     # no puede ir a otro lado: el pedido nuevo solo se puede insertar después de esa espera.
     fijas = next((k for k, p in enumerate(paradas) if p["tipo"] != "W"), len(paradas))
     for i in range(fijas, len(paradas) + 1):
-        con_r = paradas[:i] + [nueva_r] + paradas[i:]
-        for j in (range(i + 1, len(con_r) + 1) if nueva_c else [None]):
+        # Con demanda baja, el datáfono va antes de recoger en otro restaurante; en el mismo, la
+        # recogida puede ir justo antes del regreso: es la misma vuelta.
+        urgentes = [p for p in paradas[i:] if regreso_urgente(p, demanda)]
+        if urgentes and not (len(urgentes) == 1 and paradas[i] is urgentes[0] and mismo_lugar(urgentes[0], nueva_r, c)):
+            continue
+        con_r = paradas[:i] + [nueva_r] + de_paso + paradas[i:]
+        for j in (range(i + 1 + len(de_paso), len(con_r) + 1) if nueva_c else [None]):
             secuencia = con_r if j is None else con_r[:j] + [nueva_c] + con_r[j:]
             llegadas, viaje = recorrer(pos, secuencia, tiempo)
             retraso = max((t - entrega_base[p["pedido"]] for p, t in zip(secuencia, llegadas)
                            if p["tipo"] == "C" and p["pedido"] in entrega_base), default=0.0)
             if retraso > c["R_MAX_MIN"] or (mejor and llegadas[-1] >= mejor["fin"]):
                 continue
+            if regresos_con_comida(secuencia, c) > malos_base:
+                continue
             mejor = {"fin": llegadas[-1], "secuencia": secuencia, "retraso": retraso, "viaje": viaje,
                      "t_a": llegadas[secuencia.index(nueva_r)]}
     if mejor is None:
         return None
+    sec = mejor["secuencia"]
+    k_r = next(k for k, p in enumerate(sec) if p is nueva_r)
+    # Qué pesó un pendiente: el regreso que se hace en la misma vuelta, y el datáfono que se aplaza
+    # porque la demanda está alta (con demanda baja habría ido antes).
+    aprovecha = [p for k, p in enumerate(sec) if p["tipo"] == "B" and mismo_lugar(p, nueva_r, c)
+                 and junto_a_recogida(sec, k, c)]
+    aplazados = [p for p in sec[k_r + 1:] if p["tipo"] == "B" and p.get("motivo") == "datafono"
+                 and any(p is q for q in paradas) and not mismo_lugar(p, nueva_r, c)]
     return {
         "secuencia": describir(mejor["secuencia"]),
         "ruta_puntos": [list(pos)] + [list(p["punto"]) for p in mejor["secuencia"]],
@@ -165,18 +246,23 @@ def mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo=None, c=
         "desvio_min": max(0.0, mejor["viaje"] - viaje_base - t_b),
         "retraso_actual_min": mejor["retraso"],
         "plan": mejor["secuencia"],  # paradas en el orden elegido; las del pedido nuevo tienen pedido=None
+        "aprovecha": aprovecha,
+        "aplazados": aplazados,
     }
 
 
 def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0.0, multipedido=True,
-            tiempo=None, c=DEFAULTS):
+            tiempo=None, c=DEFAULTS, demanda=None, restaurante_id=None):
     """Calcula el Score de cada moto para un pedido y las ordena de mejor a peor.
 
-    motos: dicts con id, lat, lon, sin_senal, entregas, cuota, disponible_desde_ts y paradas
-    pendientes (ver mejor_insercion). Los tiempos (t_listo) van en minutos desde `ahora`.
+    motos: dicts con id, lat, lon, sin_senal, entregas, cuota, disponible_desde_ts, paradas
+    pendientes (ver mejor_insercion) y, opcional, pendientes que no están en su ruta. Los tiempos
+    (t_listo) van en minutos desde `ahora`.
     tiempo: función (a, b) -> minutos de viaje. Por defecto, Haversine × FACTOR_RUTA.
+    demanda: "alta" o "baja"; por defecto, la del modo.
     """
     tiempo = tiempo or tiempo_haversine(c)
+    demanda = demanda or DEMANDA_DEL_MODO[modo]
     w1, w2, w3 = pesos(modo, multipedido, c)
     max_pedidos = c["MAX_PEDIDOS"][modo]
 
@@ -198,20 +284,21 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
             excluir("fuera_radio", f"Fuera del radio de {radio_km:g} km")
             continue
         paradas = m["paradas"]
-        # El regreso no ocupa lugar en la moto: lo ya entregado no cuenta como pedido.
+        # El regreso no ocupa lugar en la moto: un pendiente no cuenta como pedido.
         en_curso = len({p["pedido"] for p in paradas if p["tipo"] != "B"})
         if any(p["tipo"] in "WV" for p in paradas):
             # Pendiente de definir con el cliente: qué pasa si una moto que espera a un cliente que no
             # contesta (o que vuelve a devolver ese pedido) recibe otro pedido. Mientras tanto, no participa.
             excluir("cliente_no_contesta", "Resolviendo un cliente que no contesta")
             continue
-        if paradas and not multipedido:
+        if en_curso and not multipedido:
             excluir("ocupada_sin_multipedido", "Ocupada (multi-pedido desactivado)")
             continue
         if en_curso >= max_pedidos:
             excluir("capacidad", f"Capacidad completa ({max_pedidos} pedidos)")
             continue
-        ruta = mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo, c)
+        ruta = mejor_insercion(pos, paradas, restaurante, cliente, t_listo, tiempo, c, demanda=demanda,
+                               pendientes=m.get("pendientes") or (), restaurante_id=restaurante_id)
         if ruta is None:
             excluir("retraso", f"Retrasaría más de {c['R_MAX_MIN']:g} min un pedido que ya lleva")
             continue
@@ -237,12 +324,21 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
             fr, ruta["desvio_min"] = c["F_RUTA_LIBRE"], None
 
         ft, g = f_tiempo(t_a, t_listo if paradas else t_listo_ef, c)
-        sin_pedido = 0.0 if paradas else max(0.0, (ahora - m["disponible_desde_ts"]) / 60)
+        # Una moto que solo va a devolver o pagar no lleva pedidos: su espera cuenta para la equidad.
+        con_pedidos = any(p["tipo"] != "B" for p in paradas)
+        sin_pedido = 0.0 if con_pedidos else max(0.0, (ahora - m["disponible_desde_ts"]) / 60)
         fe, f_carga, f_espera = f_equidad(m["entregas"], m["cuota"], sin_pedido, modo, c)
         aportes = {"tiempo": ft * w1, "ruta": fr * w2, "equidad": fe * w3}
+        aprovecha = ruta["aprovecha"]
+        if aprovecha:
+            aportes["pendiente"] = c["VENTAJA_MISMO_RESTAURANTE"]
         planes[m["id"]] = ruta["plan"]
 
         r.update({
+            # Lo que pesó un pendiente de regreso (docs/ALGORITMO.md, «Regresos al restaurante»).
+            "aprovecha": [{"pendiente": p["pedido"], "motivo": p.get("motivo")} for p in aprovecha],
+            "regreso_aplazado": [p["pedido"] for p in ruta["aplazados"]],
+            "ventaja_pendiente": c["VENTAJA_MISMO_RESTAURANTE"] if aprovecha else 0.0,
             "elegible": True,
             "score": round(sum(aportes.values()), 1),
             "f_tiempo": round(ft, 1), "f_ruta": round(fr, 1) if multipedido else None,
@@ -260,22 +356,36 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
     for r in elegibles:
         del r["aportes"]  # solo sirven para la explicación
     ganador = elegibles[0]["id"] if elegibles else None
-    return {"motos": elegibles + excluidas, "pesos": [w1, w2, w3], "modo": modo, "despacho": despacho,
-            "ganador": ganador, "plan": planes.get(ganador), "explicacion": explicacion}
+    return {"motos": elegibles + excluidas, "pesos": [w1, w2, w3], "modo": modo, "demanda": demanda,
+            "despacho": despacho, "ganador": ganador, "plan": planes.get(ganador), "explicacion": explicacion}
+
+
+QUE_HACE = {"datafono": "devuelve el datáfono", "plata": "paga"}
 
 
 def explicar(elegibles):
-    """Frase para el motorizado: qué factor le dio la ventaja sobre el segundo lugar."""
+    """Frase para la central: qué factor le dio la ventaja sobre el segundo lugar y, si pesó un
+    pendiente de regreso, cuál."""
     if not elegibles:
         return None
     ganador = elegibles[0]
     if len(elegibles) == 1:
-        return f"{ganador['id']}: única moto elegible para este pedido"
-    segundo = elegibles[1]
-    ventaja = {k: ganador["aportes"][k] - segundo["aportes"][k] for k in ganador["aportes"]}
-    factor = max(ventaja, key=ventaja.get)
-    return (f"Servicio asignado a {ganador['id']} por {NOMBRES_FACTOR[factor]} "
-            f"({ganador['score']} vs {segundo['score']} de {segundo['id']})")
+        frase = f"{ganador['id']}: única moto elegible para este pedido"
+    else:
+        segundo = elegibles[1]
+        ventaja = {k: ganador["aportes"].get(k, 0.0) - segundo["aportes"].get(k, 0.0)
+                   for k in set(ganador["aportes"]) | set(segundo["aportes"])}
+        factor = max(ventaja, key=ventaja.get)
+        frase = (f"Servicio asignado a {ganador['id']} por {NOMBRES_FACTOR[factor]} "
+                 f"({ganador['score']} vs {segundo['score']} de {segundo['id']})")
+    notas = []
+    if ganador["aprovecha"]:
+        que = " y ".join(dict.fromkeys(QUE_HACE.get(p["motivo"], "regresa") for p in ganador["aprovecha"]))
+        notas.append(f"recoge donde tiene un pendiente y {que} en la misma vuelta "
+                     f"(+{ganador['ventaja_pendiente']:g})")
+    if ganador["regreso_aplazado"]:
+        notas.append("el regreso del datáfono se aplaza por demanda alta")
+    return frase + "".join(f"; {n}" for n in notas)
 
 
 def evaluar_peticion(peticion):
@@ -295,6 +405,9 @@ def evaluar_peticion(peticion):
     modo = peticion.get("modo") or "valle"
     if modo not in c["PESOS"]:
         raise ValueError(f"Modo desconocido: {modo}")
+    demanda = peticion.get("demanda") or DEMANDA_DEL_MODO[modo]
+    if demanda not in ("alta", "baja"):
+        raise ValueError(f"Demanda desconocida: {demanda}")
     pedido = peticion["pedido"]
     if not pedido.get("cliente"):
         raise ValueError("pedido.cliente es obligatorio")
@@ -309,7 +422,8 @@ def evaluar_peticion(peticion):
     tiempo, tiempos = medir_tiempos(pedidos, motos, restaurante, cliente, radio_km, c)
     ev = evaluar(motos, restaurante, cliente, radio_km,
                  ahora, modo=modo, t_listo=minutos_hasta(pedido["listo_ts"]),
-                 multipedido=bool(peticion["multipedido"]), tiempo=tiempo, c=c)
+                 multipedido=bool(peticion["multipedido"]), tiempo=tiempo, c=c, demanda=demanda,
+                 restaurante_id=pedido.get("restaurante_id"))
     if pedidos == "osrm":
         usos = tiempo.usos
         tiempos.update(tramos_calle=usos["calle"], tramos_linea_recta=usos["linea_recta"],
@@ -321,6 +435,9 @@ def evaluar_peticion(peticion):
         plan = []
         for p in ev["plan"]:
             parada = {"tipo": p["tipo"], "punto": list(p["punto"]), "pedido": p["pedido"]}
+            for clave in ("motivo", "restaurante_id"):  # el regreso dice a qué vuelve y a dónde
+                if p.get(clave) is not None:
+                    parada[clave] = p[clave]
             if "listo_ts" in p:
                 parada["listo_ts"] = p["listo_ts"]
             elif p["tipo"] == "R" and p["pedido"] is None:
@@ -330,6 +447,7 @@ def evaluar_peticion(peticion):
     return {
         "engine_version": ENGINE_VERSION,
         "modo": ev["modo"],
+        "demanda": ev["demanda"],
         "pesos": ev["pesos"],
         "despacho": {"listo_ts": pedido["listo_ts"], "despachar_ts": round(ahora + faltan * 60),
                      "faltan_min": round(faltan, 1)},
@@ -357,5 +475,6 @@ def medir_tiempos(pedidos, motos, restaurante, cliente, radio_km, c):
         pos = (m["lat"], m["lon"])
         if not m["sin_senal"] and haversine_km(pos, restaurante) <= radio_km:
             puntos += [pos] + [tuple(p["punto"]) for p in m["paradas"]]
+            puntos += [tuple(p["punto"]) for p in m.get("pendientes") or ()]
     km, motivo = calles.tabla_km(puntos)
     return calles.tiempo_por_calle(km, respaldo, c["VELOCIDAD_KMH"]), {"pedido": "osrm", "respaldo": motivo}

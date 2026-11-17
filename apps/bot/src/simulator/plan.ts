@@ -3,19 +3,22 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   getBotConfig,
+  getDemandLevel,
   openReturnDebts,
   openReturnDebtsOfTrip,
   getEngineConfig,
   getSimulatorConfig,
   listControls,
   listSimulatedCouriers,
+  openReturnStops,
   openTripCondition,
   schema,
   simulatorHome,
   type BotConfig,
+  type ReturnStopView,
   type SimulatorConfig,
 } from "@dispatch/shared/db";
-import { haversineKm, orderStops, stopsForPhase, tripPhase, type TripPhase } from "@dispatch/shared";
+import { haversineKm, orderRoute, stopsForPhase, tripPhase, type DemandLevel, type TripPhase } from "@dispatch/shared";
 
 import { handleIncoming } from "@/bot/intake";
 import { SIMULATED_ID_PREFIX } from "@/simulator/outbound";
@@ -42,6 +45,9 @@ export type Move = {
   target: Point | null;
   /** Ya debe tocar un botón por ese pedido (solo las que se manejan solas). */
   act: number | null;
+  /** Llegó al restaurante de un regreso: ya debe tocar «Ya lo devolví» o
+   *  «Ya pagué» por ese pendiente (solo las que se manejan solas). */
+  actDebt?: number | null;
   /** Qué está esperando, para el mapa. */
   waiting: string | null;
 };
@@ -49,7 +55,8 @@ export type Move = {
 const meters = (a: Point, b: Point) => haversineKm(a, b) * 1000;
 const ms = (d: Date | null | undefined) => (d ? d.getTime() : null);
 
-/** A dónde va y qué le falta, según la fase de cada pedido en el orden de su ruta. */
+/** A dónde va y qué le falta, según la fase de cada pedido y sus regresos, en
+ *  el orden de su ruta (domain/route.ts). */
 export function nextMove(
   position: Point | null,
   open: OpenTrip[],
@@ -57,14 +64,26 @@ export function nextMove(
   controlled: boolean,
   bot: BotConfig,
   now: number,
+  returns: Pick<ReturnStopView, "id" | "inRoute" | "location" | "reason">[] = [],
+  level: DemandLevel = "baja",
 ): Move {
-  const stops = orderStops(
+  const located = returns.filter((r) => r.location);
+  const stops = orderRoute(
     route,
     open.map((t) => ({ id: t.trip.id, stops: stopsForPhase(t.phase) })),
+    located,
+    level,
   );
   const near = (p: Point | null) => !!position && !!p && meters(position, p) <= bot.gpsArrivalMeters;
 
   for (const stop of stops) {
+    if (stop.tipo === "B") {
+      const r = located.find((x) => x.id === stop.pedido);
+      if (!r?.location) continue;
+      // Llegó: devuelve o paga. La controlada espera que el número toque el botón.
+      if (near(r.location)) return { target: r.location, act: null, actDebt: controlled ? null : r.id, waiting: controlled ? (r.reason === "datafono" ? "Espera «Ya lo devolví»" : "Espera «Ya pagué»") : null };
+      return { target: r.location, act: null, waiting: null };
+    }
     const t = open.find((o) => o.trip.id === stop.pedido);
     if (!t) continue;
     const { trip, assignment: a, phase } = t;
@@ -105,16 +124,17 @@ export function nextMove(
 
 /** Lo que el proceso de movimiento necesita en cada vuelta. */
 export async function simulatorState() {
-  const [config, engine, bot, home, sims, controls] = await Promise.all([
+  const [config, engine, bot, home, sims, controls, level] = await Promise.all([
     getSimulatorConfig(),
     getEngineConfig(),
     getBotConfig(),
     simulatorHome(),
     listSimulatedCouriers(),
     listControls(),
+    getDemandLevel(),
   ]);
   const ids = sims.map((s) => s.courier.id);
-  const [rows, routes, connected] = ids.length
+  const [rows, routes, connected, returns] = ids.length
     ? await Promise.all([
         db
           .select({ trip: schema.trips, assignment: schema.assignments })
@@ -127,8 +147,9 @@ export async function simulatorState() {
           .select({ id: schema.couriers.id })
           .from(schema.couriers)
           .where(and(eq(schema.couriers.active, true), inArray(schema.couriers.status, ["available", "busy"]))),
+        openReturnStops(ids),
       ])
-    : [[], [], []];
+    : [[], [], [], new Map<number, ReturnStopView[]>()];
   const isConnected = new Set(connected.map((c) => c.id));
   const controlledIds = new Set(controls.filter((c) => c.simCourierId !== null && isConnected.has(c.phoneCourierId)).map((c) => c.simCourierId));
   const now = Date.now();
@@ -153,7 +174,7 @@ export async function simulatorState() {
         lng: courier.lng,
         controlled,
         parked: config.parked[String(courier.id)] ?? null,
-        ...nextMove(position, open, route, controlled, bot, now),
+        ...nextMove(position, open, route, controlled, bot, now, returns.get(courier.id) ?? [], level),
       };
     }),
   };
@@ -225,33 +246,58 @@ export async function actFor(courierId: number, tripId: number) {
   return button.id;
 }
 
-/** Lo que tarda una moto simulada que se maneja sola en cerrar su pendiente. */
-export const SIM_DEBT_CLOSE_MS = 10 * 60_000;
+/** Toca «Ya lo devolví» o «Ya pagué» por una moto simulada que se maneja
+ *  sola, por el mismo camino que un toque de WhatsApp. */
+async function pressDebtDone(phone: string, debtId: number, reason: "datafono" | "plata") {
+  await handleIncoming({
+    waMessageId: `${SIMULATED_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    phone,
+    profileName: null,
+    timestamp: new Date(),
+    kind: "button",
+    buttonId: `debtok:${debtId}`,
+    title: reason === "datafono" ? "✅ Ya lo devolví" : "✅ Ya pagué",
+  });
+}
+
+/** Llegó al restaurante de un regreso de su ruta: lo cierra. Lo pide el proceso
+ *  de movimiento con el `actDebt` de `nextMove`. Una moto controlada no. */
+export async function actDebtFor(courierId: number, debtId: number) {
+  const [[courier], controls, debts] = await Promise.all([
+    db.select().from(schema.couriers).where(and(eq(schema.couriers.id, courierId), eq(schema.couriers.simulated, true))).limit(1),
+    listControls(),
+    openReturnDebts(courierId),
+  ]);
+  const debt = debts.find((d) => d.id === debtId);
+  if (!courier || !debt || controls.some((c) => c.simCourierId === courierId)) return null;
+  await pressDebtDone(courier.phone, debt.id, debt.reason);
+  return debt.id;
+}
+
+/** La plata que no entra en la ruta (demanda alta) se paga «al final del día»:
+ *  en el simulador, esto después de entregar. */
+export const SIM_DEBT_CLOSE_MS = 30 * 60_000;
 
 /**
- * Lo corre el tick con el simulador encendido: la moto simulada que se maneja
- * sola cierra su pendiente unos minutos después de entregar, tocando el botón
- * por el mismo camino que un toque de WhatsApp. Así los pendientes de staging
- * no se acumulan. Una moto controlada no: eso lo hace el número de prueba.
+ * Lo corre el tick con el simulador encendido. Los regresos de la ruta los
+ * cierra la moto al llegar al restaurante (`actDebtFor`); la plata que nunca
+ * entró en la ruta, la moto simulada que se maneja sola la paga un rato
+ * después de entregar, para que los pendientes de staging no se acumulen. Una
+ * moto controlada no: eso lo hace el número de prueba.
  */
 export async function closeSimulatedDebts(now = Date.now()) {
   const [sims, controls] = await Promise.all([listSimulatedCouriers(), listControls()]);
   const controlled = new Set(controls.map((c) => c.simCourierId));
   const own = sims.filter((s) => !controlled.has(s.courier.id));
+  const stops = await openReturnStops(own.map((s) => s.courier.id));
   const closed: number[] = [];
   for (const { courier } of own) {
+    const routed = new Set((stops.get(courier.id) ?? []).filter((r) => r.inRoute && r.location).flatMap((r) => r.debtIds));
     for (const debt of await openReturnDebts(courier.id)) {
+      if (routed.has(debt.id)) continue;
       const since = debt.deliveredAt ?? (debt.tripId === null ? debt.createdAt : null);
       if (!since || now - since.getTime() < SIM_DEBT_CLOSE_MS || closed.includes(debt.id)) continue;
-      await handleIncoming({
-        waMessageId: `${SIMULATED_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-        phone: courier.phone,
-        profileName: null,
-        timestamp: new Date(),
-        kind: "button",
-        buttonId: `debtok:${debt.id}`,
-        title: debt.reason === "datafono" ? "✅ Ya lo devolví" : "✅ Ya pagué",
-      });
+      await pressDebtDone(courier.phone, debt.id, debt.reason);
       closed.push(debt.id);
     }
   }

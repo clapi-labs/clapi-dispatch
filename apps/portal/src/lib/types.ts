@@ -89,6 +89,8 @@ export type Courier = {
   simulator?: { role: "simulated" | "test" | "real"; partner: string | null } | null;
   /** Pendientes de regreso abiertos, por motivo (Pendientes). */
   returnDebts?: { datafono: number; plata: number } | null;
+  /** Su ruta en orden, con los regresos al restaurante como paradas (`B`). */
+  route?: { kind: "R" | "C" | "W" | "V" | "B"; text: string }[];
 };
 
 /** Un pendiente de regreso, como lo manda `/api/pendientes`. */

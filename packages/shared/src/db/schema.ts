@@ -671,6 +671,10 @@ export const returnDebts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /** Cuándo se le pidió cerrarlo: al entregar, o con «Mandar ya». */
     reminderAt: timestamp("reminder_at", { withTimezone: true }),
+    /** Cuándo la plata entró en su ruta como un regreso: con demanda baja al
+     *  quedar libre, con «Mandar ya», o porque recoge en ese restaurante. El
+     *  datáfono va siempre en la ruta y no lo usa (domain/route.ts). */
+    routedAt: timestamp("routed_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedBy: text("resolved_by").$type<"courier" | "central">(),
     resolvedByUserId: integer("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),

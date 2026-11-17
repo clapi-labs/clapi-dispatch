@@ -1,0 +1,53 @@
+{
+  "nombre": "Mismo restaurante, pero otra moto está mucho más cerca",
+  "descripcion": "Ana tiene la plata pendiente en A, pero está a 1,7 km; Beto está a 100 m. La ventaja del mismo restaurante no alcanza a compensar que la comida espere casi 5 minutos más.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.37,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 5,
+      "pendientes": [
+        {
+          "motivo": "plata",
+          "restaurante": [
+            3.355,
+            -76.524
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Beto",
+      "lat": 3.356,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 5
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Sale del restaurante A",
+      "restaurante": [
+        3.355,
+        -76.524
+      ],
+      "cliente": [
+        3.3649,
+        -76.5204
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Beto",
+      "por": "Llega en 0.3 min contra 5.2 de Ana: 81.9 vs 63.9, aun con los +8 de Ana"
+    }
+  ]
+}

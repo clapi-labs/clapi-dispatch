@@ -162,6 +162,13 @@
       "when": 1794875062616,
       "tag": "0022_demanda_en_vivo",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794879876097,
+      "tag": "0023_regreso_de_la_plata_en_la_ruta",
+      "breakpoints": true
     }
   ]
 }

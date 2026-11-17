@@ -1,0 +1,47 @@
+{
+  "nombre": "Nunca regresa con comida de otro cliente encima",
+  "descripcion": "Ana va a devolver un datáfono en un restaurante que queda justo en el camino del pedido nuevo. Lo más corto sería recoger, pasar a devolver y entregar, pero sería con la comida del cliente encima: devuelve después de entregar.",
+  "config": {
+    "modo": "pico"
+  },
+  "motos": [
+    {
+      "id": "Ana",
+      "lat": 3.3604,
+      "lon": -76.524,
+      "entregas": 3,
+      "min_sin_pedido": 0,
+      "pendientes": [
+        {
+          "motivo": "datafono",
+          "restaurante": [
+            3.35,
+            -76.524
+          ]
+        }
+      ]
+    }
+  ],
+  "pedidos": [
+    {
+      "nombre": "Pedido que pasa por el restaurante del datáfono",
+      "restaurante": [
+        3.358,
+        -76.524
+      ],
+      "cliente": [
+        3.342,
+        -76.524
+      ],
+      "listo_en": 0
+    }
+  ],
+  "esperado": [
+    {
+      "pedido": 1,
+      "moto": "Ana",
+      "orden": "R C B",
+      "por": "«R B C» es más corto, pero el regreso iría con la comida a bordo"
+    }
+  ]
+}
