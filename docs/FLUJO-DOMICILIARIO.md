@@ -119,6 +119,17 @@ Nunca vuelve con la comida de otro cliente encima, salvo que el regreso sea al m
 
 «Mandar ya» con plata también la mete en la ruta: la central le pidió que fuera.
 
+**Cuando el restaurante reclama o va a cerrar** (#61). Si el restaurante escribe pidiendo su plata o su datáfono («¿a qué hora me traen la plata?», «necesito el datáfono», «ya vamos a cerrar»):
+
+- **Caso claro:** un solo domiciliario tiene un pendiente que coincide con ese restaurante, está conectado, no se le había avisado ya por un reclamo y puede ir (demanda baja, está libre, o el restaurante dijo que va a cerrar). El bot actúa solo:
+  - Al domiciliario: «📢 Donde Lucho necesita su plata (A-07) (van a cerrar). Pasa apenas entregues lo que llevas. Cuando lo hagas, toca «Ya pagué».», y el regreso entra en su ruta.
+  - Al restaurante: «Ya le avisamos a Juan, va para allá 🛵».
+  - En Pendientes queda anotado «Reclamado a las 9:40, avisado automáticamente».
+- **Cualquier otro caso** (deben varios domiciliarios, el que debe está ocupado con demanda alta sin cierre o desconectado, no hay ningún pendiente registrado, o el restaurante insiste después de haber avisado):
+  - Al restaurante: «La central ya lo está gestionando 🙏» (sin pausar su bot para futuros pedidos).
+  - A la central: alerta al celular y tarjeta en «Reclamos por atender» arriba de `/pendientes`, con «Mandar ya» (o «Registrar pendiente» si no existía) y «Lo resuelvo yo».
+- **Antes del cierre del restaurante:** `closingDebtMinutes` (30 min por defecto) antes de la hora límite del restaurante, el tick le recuerda al domiciliario «⏰ Donde Lucho cierra pronto: pasa a devolver el datáfono / a pagar», con las mismas reglas del caso claro. Si llega la hora límite y todavía hay un **datáfono** afuera, le llega una alerta a la central («Datáfono afuera al cierre»); la **plata** puede quedar para el día siguiente sin alerta.
+
 ## La ruta en los mensajes
 
 Con dos o más paradas pendientes, regresos incluidos, **cada mensaje que ya se le manda empieza con su ruta numerada**, con lo que sigue marcado:

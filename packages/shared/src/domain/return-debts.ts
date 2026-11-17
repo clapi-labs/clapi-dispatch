@@ -153,6 +153,10 @@ export function joinCodes(codes: (string | null)[]): string {
 
 export const DEFAULT_DATAFONO_ALERT_MINUTES = 30;
 
+/** Minutos antes de la hora límite del restaurante en que se recuerda pasar a
+ *  devolver el datáfono o a pagar (`settings.bot_config.closingDebtMinutes`). */
+export const DEFAULT_CLOSING_DEBT_MINUTES = 30;
+
 /**
  * Desde cuándo cuenta que el datáfono está afuera: desde que se entregó el
  * pedido (antes lo está usando). Uno registrado sin pedido, desde que se
@@ -197,4 +201,173 @@ export function debtCloseButtonTitle(reason: ReturnDebtReason): string {
 /** La confirmación al cerrarlo él. */
 export function debtClosedText(reason: ReturnDebtReason, restaurant: string): string {
   return reason === "datafono" ? `✅ Anotado: devolviste el datáfono en ${restaurant}.` : `✅ Anotado: le pagaste a ${restaurant}.`;
+}
+
+// ---------------------------------------------------------------------------
+// El reclamo del restaurante (#61)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que reclama el restaurante cuando pide su plata o su datáfono, o avisa que
+ * ya va a cerrar (`docs/BOT.md`, «Reclamos de datáfono o plata»). `reason`:
+ * `null` cuando dice que va a cerrar o pide cuadrar sin especificar cuál.
+ */
+export type DebtClaim = {
+  reason: ReturnDebtReason | null;
+  closing: boolean;
+};
+
+const CLOSING_RE = new RegExp(
+  String.raw`${B}(?:(?:ya\s+)?vamos\s+a\s+cerrar|estamos\s+(?:por\s+|a\s+punto\s+de\s+)?cerrar|estamos\s+cerrando|ya\s+(?:casi\s+)?cerramos|vamos\s+cerrando|cerramos\s+(?:ya|pronto|en\s+\d+)|antes\s+de\s+(?:que\s+)?(?:cerremos|cerrar))${E}`,
+  "iu",
+);
+
+const CLAIM_VERB = String.raw`(?:a\s+qu[eé]\s+hora|cu[aá]ndo|qui[eé]n|qu[eé]\s+pas[oó]\s+con|c[oó]mo\s+vamos\s+con|necesit(?:o|amos)|urge|m[aá]nd(?:a|e|en)(?:me)?|env[ií](?:a|e|en)(?:me)?|tr[aá](?:e|iga|igan)(?:me)?|devu[eé]lv(?:a|an|eme)|p[aá]s(?:a|e|en)(?:\s+a)?|veng(?:a|an)(?:\s+a)?|reclam(?:o|ar)|no\s+(?:me\s+|nos\s+)?han?\s+(?:tra[ií]do|devuelto|entregado|venido|pagado|cancelado)|no\s+ha\s+(?:vuelto|llegado|tra[ií]do)|faltan?\s+(?:traer|pagar|entregar|devolver))`;
+
+const CLAIM_DATAFONO_RE = new RegExp(
+  String.raw`${B}(?:` +
+    String.raw`${CLAIM_VERB}\s+(?:(?:traer|devolver|entregar|dejar|mandar|enviar|pasar\s+por|por)\s+)?(?:el\s+|mi\s+|nuestro\s+)?(?:dat[aá]fono|m[aá]quina(?:\s+de\s+tarjetas?)?)` +
+    String.raw`|(?:a\s+qu[eé]\s+hora|cu[aá]ndo|qui[eé]n\s+(?:tiene|se\s+llev[oó])|d[oó]nde\s+(?:est[aá]|va)|qu[eé]\s+pas[oó]\s+con)\s+[^.!?\n]{0,35}?(?:el\s+|mi\s+|nuestro\s+)?dat[aá]fono` +
+    String.raw`|(?:se\s+llev(?:o|ó|aron)|qued(?:o|ó|aron)\s+con)\s+(?:el\s+|mi\s+|nuestro\s+)?dat[aá]fono` +
+    String.raw`|(?:el\s+|mi\s+|nuestro\s+)dat[aá]fono\s+(?:no\s+ha\s+(?:llegado|vuelto)|no\s+(?:me\s+)?lo\s+han\s+(?:tra[ií]do|devuelto))` +
+    String.raw`)${E}`,
+  "iu",
+);
+
+const CLAIM_PLATA_RE = new RegExp(
+  String.raw`${B}(?:` +
+    String.raw`${CLAIM_VERB}\s+[^.!?\n]{0,35}?(?:(?:la|mi|nuestra)\s+plata|el\s+efectivo|lo\s+del?\s+efectivo|lo\s+que\s+(?:me\s+|nos\s+)?debe[ns]?|pagar(?:me|nos)?|cuadrar)` +
+    String.raw`|(?:a\s+qu[eé]\s+hora|cu[aá]ndo|qui[eé]n)\s+(?:me\s+|nos\s+)?(?:trae[nr]?|vienen?\s+a\s+(?:pagar|traer|dejar)|pasan?\s+a\s+(?:pagar|dejar)|pagan?|devuelven?)\s+[^.!?\n]{0,30}?(?:plata|efectivo|pedidos?|domicilios?|lo\s+de\s+hoy)` +
+    String.raw`|(?:me\s+|nos\s+)?(?:qued(?:o|ó|aron)\s+debiendo|debe[ns]\s+(?:la\s+plata|el\s+efectivo|un(?:os)?\s+(?:pedido|domicilio)|lo\s+de\s+hoy))` +
+    String.raw`|(?:la|mi|nuestra)\s+plata\s+(?:de\s+(?:los\s+pedidos|los\s+domicilios|hoy)|que\s+(?:me\s+|nos\s+)?debe[ns]?)` +
+    String.raw`)${E}`,
+  "iu",
+);
+
+const CLOSING_PLATA_RE = new RegExp(String.raw`${B}(?:plata|efectivo|pagar|paguen|pague|debe[ns]?|cuadrar)${E}`, "iu");
+const CLOSING_DATAFONO_RE = new RegExp(String.raw`${B}(?:dat[aá]fono|m[aá]quina)${E}`, "iu");
+
+/**
+ * Reconoce si el restaurante está reclamando su plata o su datáfono, o avisando
+ * que ya va a cerrar. No confunde un pedido normal («llevar datáfono», «cobra
+ * 30.000 en efectivo») ni una consulta de estado («¿ya va la moto?»).
+ */
+export function parseDebtClaim(raw: string): DebtClaim | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const closing = CLOSING_RE.test(text);
+  const asksDatafono = CLAIM_DATAFONO_RE.test(text) || (closing && CLOSING_DATAFONO_RE.test(text));
+  const asksPlata = CLAIM_PLATA_RE.test(text) || (closing && CLOSING_PLATA_RE.test(text));
+  if (!closing && !asksDatafono && !asksPlata) return null;
+  const reason: ReturnDebtReason | null = asksDatafono && !asksPlata ? "datafono" : asksPlata && !asksDatafono ? "plata" : null;
+  return { reason, closing };
+}
+
+/** Combina lo que leyó el modelo con la detección determinista en código. */
+export function mergeDebtClaim(fromModel: DebtClaim | null | undefined, fromText: DebtClaim | null): DebtClaim | null {
+  if (!fromModel && !fromText) return null;
+  if (!fromModel) return fromText;
+  if (!fromText) return fromModel;
+  return {
+    reason: fromText.reason ?? fromModel.reason,
+    closing: fromText.closing || fromModel.closing,
+  };
+}
+
+/** Lo que se sabe de cada grupo abierto de ese restaurante para decidir qué hacer. */
+export type ClaimGroupCandidate = {
+  courierId: number;
+  courierName: string;
+  reason: ReturnDebtReason;
+  since: Date;
+  /** Si ya se le avisó al domiciliario por un reclamo anterior. */
+  claimedAt: Date | null;
+  /** Conectado en Flota (`active && status !== "offline"`). */
+  connected: boolean;
+  /** Lleva pedidos abiertos ahora mismo. */
+  busy: boolean;
+};
+
+export type ClaimDecision =
+  | { kind: "auto"; courierId: number; courierName: string; busy: boolean }
+  | { kind: "central"; why: string };
+
+/**
+ * Caso claro vs. pasar a la central (#61):
+ * - Claro: un solo domiciliario tiene pendientes que coinciden, está conectado,
+ *   no se le había avisado ya por un reclamo, y puede ir (demanda baja, o está
+ *   libre, o el restaurante dijo que va a cerrar).
+ * - Cualquier otro caso va a la central con el motivo.
+ */
+export function decideDebtClaim(
+  claim: DebtClaim,
+  groups: ClaimGroupCandidate[],
+  demand: "alta" | "baja",
+): ClaimDecision {
+  const matching = claim.reason ? groups.filter((g) => g.reason === claim.reason) : groups;
+  if (!matching.length) {
+    const what = claim.reason === "datafono" ? "ningún datáfono pendiente registrado" : claim.reason === "plata" ? "plata pendiente registrada" : "ningún pendiente registrado";
+    return { kind: "central", why: `No hay ${what} (el domiciliario no lo declaró).` };
+  }
+  const byCourier = new Map<number, ClaimGroupCandidate[]>();
+  for (const g of matching) {
+    const list = byCourier.get(g.courierId) ?? [];
+    list.push(g);
+    byCourier.set(g.courierId, list);
+  }
+  if (byCourier.size > 1) {
+    const names = joinCodes([...byCourier.values()].map((list) => list[0].courierName));
+    return { kind: "central", why: `Le deben varios domiciliarios (${names}).` };
+  }
+  const [courierGroups] = [...byCourier.values()];
+  const courier = courierGroups[0];
+  if (courierGroups.some((g) => g.claimedAt !== null)) {
+    return { kind: "central", why: `Ya se le había avisado a ${courier.courierName} y el restaurante volvió a reclamar.` };
+  }
+  if (!courier.connected) {
+    return { kind: "central", why: `${courier.courierName} está desconectado.` };
+  }
+  const canGo = demand === "baja" || !courier.busy || claim.closing;
+  if (!canGo) {
+    return { kind: "central", why: `${courier.courierName} está ocupado con demanda alta.` };
+  }
+  return { kind: "auto", courierId: courier.courierId, courierName: courier.courierName, busy: courier.busy };
+}
+
+/** Lo que le llega al domiciliario cuando el restaurante reclama en el caso claro. */
+export function debtClaimCourierText(
+  reason: ReturnDebtReason,
+  restaurant: string,
+  codes: (string | null)[],
+  { closing = false, busy = false }: { closing?: boolean; busy?: boolean } = {},
+): string {
+  const list = joinCodes(codes);
+  const of = list ? ` (${list})` : "";
+  const closingNote = closing ? " (van a cerrar)" : "";
+  const what = reason === "datafono" ? "su datáfono" : "su plata";
+  const button = reason === "datafono" ? "«Ya lo devolví»" : "«Ya pagué»";
+  const when = busy ? "Pasa apenas entregues lo que llevas" : reason === "datafono" ? "Pasa por allá a devolverlo" : "Pasa por allá a pagar";
+  return `📢 ${restaurant} necesita ${what}${of}${closingNote}. ${when}. Cuando lo hagas, toca ${button}.`;
+}
+
+/** Lo que le llega al domiciliario unos minutos antes de la hora límite del restaurante. */
+export function debtClosingSoonText(
+  reason: ReturnDebtReason,
+  restaurant: string,
+  codes: (string | null)[],
+  { busy = false }: { busy?: boolean } = {},
+): string {
+  const list = joinCodes(codes);
+  const of = list ? ` (${list})` : "";
+  const action = reason === "datafono" ? "devolver el datáfono" : "pagar lo que quedaste debiendo";
+  const button = reason === "datafono" ? "«Ya lo devolví»" : "«Ya pagué»";
+  const step = busy ? `pasa apenas entregues lo que llevas a ${action}` : `pasa a ${action}`;
+  return `⏰ ${restaurant} cierra pronto: ${step}${of}. Cuando lo hagas, toca ${button}.`;
+}
+
+/** Lo que el bot le responde al restaurante cuando reclama. */
+export function debtClaimRestaurantText(decision: { kind: "auto"; courierName: string } | { kind: "central" }): string {
+  return decision.kind === "auto"
+    ? `Ya le avisamos a ${decision.courierName}, va para allá 🛵`
+    : "La central ya lo está gestionando 🙏";
 }

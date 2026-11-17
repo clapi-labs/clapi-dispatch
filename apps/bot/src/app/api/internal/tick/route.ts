@@ -1,7 +1,7 @@
 import { assignPendingTrips, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
-import { closeCustomerWaits, notifyAssigned, nudgeIdlePayments, remindCouriers } from "@/bot/notify";
+import { closeCustomerWaits, notifyAssigned, nudgeIdlePayments, remindClosingDebts, remindCouriers } from "@/bot/notify";
 import { recordWorkerTick } from "@/db/queries/worker-heartbeat";
 import { closeSimulatedDebts } from "@/simulator/plan";
 import { runEngine } from "@/dispatch/engine";
@@ -69,6 +69,14 @@ export async function POST(request: Request) {
     await nudgeIdlePayments();
   } catch (error) {
     console.error("[tick] no se pudo avisar la plata por pagar:", error);
+  }
+
+  // Unos minutos antes de que cierre un restaurante, quien le deba el datáfono
+  // o la plata recibe «⏰ X cierra pronto: pasa a devolver / a pagar» (#61).
+  try {
+    await remindClosingDebts();
+  } catch (error) {
+    console.error("[tick] no se pudieron avisar los pendientes por cierre:", error);
   }
 
   // Cierre de cada restaurante: el recordatorio antes de su hora límite y,

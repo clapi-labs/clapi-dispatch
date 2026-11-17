@@ -4,17 +4,22 @@ import { generateVAPIDKeys, sendNotification, WebPushError } from "web-push";
 import {
   ALERT_TTL_S,
   chatHelpMessage,
+  datafonoClosingMessage,
   datafonoLateMessage,
+  debtClaimMessage,
   isFresh,
   pushTopic,
   TAKEOVER_REASON,
   tripAssignedMessage,
   type PushMessage,
 } from "../domain/alerts";
-import { datafonoLateAt } from "../domain/return-debts";
+import { datafonoLateAt, matchRestaurant } from "../domain/return-debts";
+import { formatClock, isOpen, lastOpening } from "../domain/service-hours";
 import { getBotConfig } from "./bot-config";
 import { db } from "./client";
-import { openReturnDebts } from "./return-debts";
+import { listRestaurants } from "./restaurants";
+import { openDebtClaims, openReturnDebts } from "./return-debts";
+import { getServiceHours, hoursFor } from "./service-hours";
 import {
   assignments,
   conversations,
@@ -147,8 +152,63 @@ const datafonoLate: AlertSource<{ id: number; courierName: string; restaurant: s
   message: (d) => datafonoLateMessage(d),
 };
 
+const debtClaim: AlertSource<{
+  id: number;
+  restaurant: string;
+  reason: "datafono" | "plata" | null;
+  closing: boolean;
+  why: string;
+  at: Date;
+}> = {
+  kind: "debt_claim",
+  current: async () => {
+    const claims = await openDebtClaims();
+    return claims.map((c) => ({
+      id: c.id,
+      restaurant: c.restaurantName,
+      reason: c.reason,
+      closing: c.closing,
+      why: c.why,
+      at: c.updatedAt,
+    }));
+  },
+  ref: (c) => c.id,
+  at: (c) => c.at,
+  message: (c) => debtClaimMessage(c),
+};
+
+const datafonoClosing: AlertSource<{
+  id: number;
+  courierName: string;
+  restaurant: string;
+  tripCode: string | null;
+  deadline: string;
+  at: Date;
+}> = {
+  kind: "datafono_closing",
+  // A la hora límite del restaurante todavía hay un datáfono afuera (#61).
+  // La plata puede quedar para el día siguiente, sin alerta.
+  current: async () => {
+    const [debts, hours, restaurants] = await Promise.all([openReturnDebts(), getServiceHours(), listRestaurants()]);
+    const now = new Date();
+    const byId = new Map(restaurants.map((r) => [r.id, r]));
+    return debts.flatMap((d) => {
+      if (d.reason !== "datafono") return [];
+      const r = (d.restaurantId ? byId.get(d.restaurantId) : null) ?? matchRestaurant(d.restaurantName, restaurants);
+      const h = hoursFor(r ?? null, hours);
+      if (isOpen(now, h)) return [];
+      const opening = lastOpening(now, h.opensAt);
+      if (d.createdAt.getTime() < opening.getTime()) return [];
+      return [{ id: d.id, courierName: d.courierName, restaurant: d.restaurantName, tripCode: d.tripCode, deadline: formatClock(h.deadline), at: now }];
+    });
+  },
+  ref: (d) => d.id,
+  at: (d) => d.at,
+  message: (d) => datafonoClosingMessage(d),
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ALERT_SOURCES: AlertSource<any>[] = [chatHelp, tripAssigned, datafonoLate];
+const ALERT_SOURCES: AlertSource<any>[] = [chatHelp, tripAssigned, datafonoLate, debtClaim, datafonoClosing];
 
 /**
  * Marca como dentro de la condición `refs` y devuelve las que acaban de

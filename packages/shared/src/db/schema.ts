@@ -675,6 +675,10 @@ export const returnDebts = pgTable(
      *  quedar libre, con «Mandar ya», o porque recoge en ese restaurante. El
      *  datáfono va siempre en la ruta y no lo usa (domain/route.ts). */
     routedAt: timestamp("routed_at", { withTimezone: true }),
+    /** Cuándo lo reclamó el restaurante y se le avisó automáticamente al domiciliario (#61). */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    /** Cuándo se le avisó al domiciliario porque el restaurante está por cerrar (#61). */
+    closingNotifiedAt: timestamp("closing_notified_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedBy: text("resolved_by").$type<"courier" | "central">(),
     resolvedByUserId: integer("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -686,6 +690,30 @@ export const returnDebts = pgTable(
     uniqueIndex("return_debts_trip_reason_idx").on(t.tripId, t.reason).where(sql`${t.resolvedAt} is null`),
     index("return_debts_open_idx").on(t.courierId, t.resolvedAt),
   ],
+);
+
+/**
+ * Un reclamo de plata o datáfono de un restaurante que pasa a la central (#61):
+ * porque le deben varios domiciliarios, el que debe está ocupado con demanda
+ * alta o desconectado, no hay ningún pendiente registrado, o el restaurante
+ * volvió a insistir después de que ya se le avisó al domiciliario.
+ */
+export const returnDebtClaims = pgTable(
+  "return_debt_claims",
+  {
+    id: serial("id").primaryKey(),
+    restaurantId: integer("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
+    restaurantName: text("restaurant_name").notNull(),
+    conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    reason: text("reason").$type<ReturnDebtReason | null>(),
+    closing: boolean("closing").notNull().default(false),
+    why: text("why").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    handledByUserId: integer("handled_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("return_debt_claims_open_idx").on(t.handledAt, t.createdAt)],
 );
 
 

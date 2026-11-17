@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { DEFAULT_REQUIRED_FIELDS, type OrderFieldKey } from "../domain/extraction";
-import { DEFAULT_DATAFONO_ALERT_MINUTES } from "../domain/return-debts";
+import { DEFAULT_CLOSING_DEBT_MINUTES, DEFAULT_DATAFONO_ALERT_MINUTES } from "../domain/return-debts";
 import { db } from "./client";
 import { settings } from "./schema";
 
@@ -48,6 +48,9 @@ export type BotConfig = {
   /** Minutos con un datáfono afuera desde que se entregó el pedido: alerta al
    *  celular de la central. Se cambia desde el portal (Pendientes). */
   datafonoAlertMinutes: number;
+  /** Minutos antes de la hora límite del restaurante en que se le recuerda al
+   *  domiciliario pasar a devolver el datáfono o a pagar (#61). */
+  closingDebtMinutes: number;
   /** Cuánto espera a un cliente que no contesta antes de devolver el pedido. */
   customerWaitMinutes: number;
   /** A esta distancia del punto, el GPS cuenta que llegó. */
@@ -72,6 +75,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   deliveryAlertMinutes: 30,
   returnAlertMinutes: 20,
   datafonoAlertMinutes: DEFAULT_DATAFONO_ALERT_MINUTES,
+  closingDebtMinutes: DEFAULT_CLOSING_DEBT_MINUTES,
   customerWaitMinutes: 10,
   gpsArrivalMeters: 100,
   gpsDwellSeconds: 60,
@@ -100,6 +104,7 @@ export async function getBotConfig(): Promise<BotConfig> {
     deliveryAlertMinutes: positive(saved.deliveryAlertMinutes) ?? DEFAULT_BOT_CONFIG.deliveryAlertMinutes,
     returnAlertMinutes: positive(saved.returnAlertMinutes) ?? DEFAULT_BOT_CONFIG.returnAlertMinutes,
     datafonoAlertMinutes: positive(saved.datafonoAlertMinutes) ?? DEFAULT_BOT_CONFIG.datafonoAlertMinutes,
+    closingDebtMinutes: positive(saved.closingDebtMinutes) ?? DEFAULT_BOT_CONFIG.closingDebtMinutes,
     customerWaitMinutes: positive(saved.customerWaitMinutes) ?? DEFAULT_BOT_CONFIG.customerWaitMinutes,
     gpsArrivalMeters: positive(saved.gpsArrivalMeters) ?? DEFAULT_BOT_CONFIG.gpsArrivalMeters,
     gpsDwellSeconds: positive(saved.gpsDwellSeconds) ?? DEFAULT_BOT_CONFIG.gpsDwellSeconds,
@@ -107,9 +112,13 @@ export async function getBotConfig(): Promise<BotConfig> {
   };
 }
 
-/** Cambia solo los minutos del aviso del datáfono, sin tocar lo demás. */
-export async function saveDatafonoAlertMinutes(minutes: number) {
+/** Cambia solo los minutos del aviso del datáfono y/o del recordatorio antes del cierre. */
+export async function saveDatafonoAlertMinutes(minutes: number, closingDebtMinutes?: number) {
   const [row] = await db.select().from(settings).where(eq(settings.key, BOT_CONFIG_KEY));
-  const value = { ...((row?.value ?? {}) as Record<string, unknown>), datafonoAlertMinutes: minutes };
+  const value = {
+    ...((row?.value ?? {}) as Record<string, unknown>),
+    datafonoAlertMinutes: minutes,
+    ...(closingDebtMinutes !== undefined ? { closingDebtMinutes } : {}),
+  };
   await db.insert(settings).values({ key: BOT_CONFIG_KEY, value }).onConflictDoUpdate({ target: settings.key, set: { value } });
 }

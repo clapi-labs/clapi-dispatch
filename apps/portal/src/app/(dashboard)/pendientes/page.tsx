@@ -1,13 +1,14 @@
 "use client";
 
 import { datafonoLateAt, groupDebts, joinCodes } from "@dispatch/shared/domain/return-debts";
-import { Check, Clock, CreditCard, Plus, Send, Wallet } from "lucide-react";
+import { sameRestaurant } from "@dispatch/shared";
+import { AlertCircle, Check, Clock, CreditCard, Plus, Send, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import { durationLabel, timeOfDay } from "@/lib/format";
 import { useLive } from "@/lib/live";
-import type { Courier, ReturnDebt, ReturnDebtsData } from "@/lib/types";
+import type { Courier, ReturnDebt, ReturnDebtClaim, ReturnDebtsData } from "@/lib/types";
 import { useNow } from "@/lib/use-now";
 
 type Restaurant = { id: number; name: string; active: boolean };
@@ -32,7 +33,7 @@ const REASON = {
 export default function PendientesPage() {
   const [data, setData] = useState<ReturnDebtsData | null>(null);
   const [failed, setFailed] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<{ restaurantId?: number | null; reason?: "datafono" | "plata" } | null>(null);
   const [resolving, setResolving] = useState<{ id: number; title: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const now = useNow(30_000);
@@ -46,9 +47,10 @@ export default function PendientesPage() {
     setFailed(false);
     setData(await res.json());
   }, []);
-  useLive(refresh, ["return_debts", "trips", "assignments"]);
+  useLive(refresh, ["return_debts", "return_debt_claims", "trips", "assignments"]);
 
   const groups = useMemo(() => groupDebts((data?.open ?? []).map(toRow)), [data]);
+  const claims = data?.claims ?? [];
   const history = data?.resolved ?? [];
 
   function flash(text: string) {
@@ -56,11 +58,11 @@ export default function PendientesPage() {
     setTimeout(() => setNotice(null), 4000);
   }
 
-  async function act(id: number, action: "resolve" | "nudge") {
+  async function act(id: number, action: "resolve" | "nudge" | "handle_claim") {
     const res = await fetch(`/api/pendientes/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) flash(body.error ?? "No se pudo.");
-    else flash(action === "nudge" ? "Le llegó el mensaje al domiciliario." : "Quedó resuelto.");
+    else flash(action === "nudge" ? "Le llegó el mensaje al domiciliario." : action === "handle_claim" ? "Reclamo marcado como atendido." : "Quedó resuelto.");
     refresh();
   }
 
@@ -73,7 +75,7 @@ export default function PendientesPage() {
         </div>
         <button
           type="button"
-          onClick={() => setAdding(true)}
+          onClick={() => setAdding({})}
           className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
         >
           <Plus size={16} /> Registrar pendiente
@@ -82,6 +84,60 @@ export default function PendientesPage() {
 
       {notice && <p className="rounded-xl bg-clapi-soft px-4 py-2.5 text-sm font-medium text-clapi-ink">{notice}</p>}
       {failed && <p className="rounded-xl bg-danger-soft px-4 py-2.5 text-sm text-danger">No se pudieron leer los pendientes. Se reintenta solo.</p>}
+
+      {claims.length > 0 && (
+        <section className="card overflow-hidden border border-danger/30">
+          <div className="flex items-center gap-2 border-b border-line bg-danger-soft/40 px-5 py-3.5 text-sm font-semibold text-danger">
+            <AlertCircle size={16} /> Reclamos por atender ({claims.length})
+          </div>
+          <ul className="flex flex-col divide-y divide-line">
+            {claims.map((c: ReturnDebtClaim) => {
+              const matching = groups.filter((g) => sameRestaurant(c, g) && (!c.reason || g.reason === c.reason));
+              const label = c.reason ? REASON[c.reason].label : "Pendiente";
+              return (
+                <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5">
+                  <span className="flex items-center gap-1.5 rounded-full bg-danger px-2.5 py-1 text-xs font-semibold text-white">
+                    {label}
+                    {c.closing ? " · Cierra" : ""}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{c.restaurantName}</p>
+                    <p className="text-xs text-ink-3">
+                      {c.why} · reclamado a las {timeOfDay(c.updatedAt)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {matching.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => act(matching[0].debts[0].id, "nudge")}
+                        className="ease-ui flex h-9 items-center gap-1.5 rounded-xl bg-sunken px-3 text-xs font-semibold text-ink-2 can-hover:hover:bg-clapi-soft can-hover:hover:text-clapi-ink"
+                      >
+                        <Send size={13} /> Mandar ya
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAdding({ restaurantId: c.restaurantId, reason: c.reason ?? "datafono" })}
+                        className="ease-ui flex h-9 items-center gap-1.5 rounded-xl bg-sunken px-3 text-xs font-semibold text-ink-2 can-hover:hover:bg-clapi-soft can-hover:hover:text-clapi-ink"
+                      >
+                        <Plus size={13} /> Registrar pendiente
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => act(c.id, "handle_claim")}
+                      className="ease-ui flex h-9 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
+                    >
+                      <Check size={13} /> Lo resuelvo yo
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="card overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-4 text-sm font-semibold">
@@ -101,6 +157,7 @@ export default function PendientesPage() {
               const late = lateAt.some((d) => d.getTime() <= now);
               const courier = g.debts[0].courierName;
               const byCentral = g.debts.some((d) => d.declaredBy === "central");
+              const claimed = g.debts.map((d) => d.claimedAt).filter(Boolean).sort().pop();
               const reminded = g.debts.map((d) => d.reminderAt).filter(Boolean).sort().pop();
               const waiting = g.reason === "datafono" && g.debts.every((d) => d.tripId !== null && d.deliveredAt === null);
               return (
@@ -118,7 +175,7 @@ export default function PendientesPage() {
                       {waiting ? " · todavía lleva el pedido" : ""}
                       {late ? " · el datáfono no ha vuelto" : ""}
                       {byCentral ? " · registrado por la central" : ""}
-                      {reminded ? ` · avisado a las ${timeOfDay(reminded)}` : ""}
+                      {claimed ? ` · Reclamado a las ${timeOfDay(claimed)}, avisado automáticamente` : reminded ? ` · avisado a las ${timeOfDay(reminded)}` : ""}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
@@ -180,7 +237,14 @@ export default function PendientesPage() {
         )}
       </section>
 
-      {adding && <AddDebtDialog onClose={() => setAdding(false)} onSaved={() => (flash("Quedó registrado."), refresh())} />}
+      {adding && (
+        <AddDebtDialog
+          initialRestaurantId={adding.restaurantId ?? null}
+          initialReason={adding.reason ?? "datafono"}
+          onClose={() => setAdding(null)}
+          onSaved={() => (flash("Quedó registrado."), refresh())}
+        />
+      )}
       {resolving && (
         <ConfirmDialog
           title={`¿Marcar resuelto? ${resolving.title}`}
@@ -234,13 +298,23 @@ function AlertMinutes({ minutes, onSaved }: { minutes: number; onSaved: (m: numb
 }
 
 /** Registrar uno a mano: el domiciliario no lo declaró y el restaurante reclama. */
-function AddDebtDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function AddDebtDialog({
+  initialRestaurantId = null,
+  initialReason = "datafono",
+  onClose,
+  onSaved,
+}: {
+  initialRestaurantId?: number | null;
+  initialReason?: "datafono" | "plata";
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [couriers, setCouriers] = useState<Courier[] | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [courierId, setCourierId] = useState("");
-  const [reason, setReason] = useState<"datafono" | "plata">("datafono");
+  const [reason, setReason] = useState<"datafono" | "plata">(initialReason);
   const [tripCode, setTripCode] = useState("");
-  const [restaurantId, setRestaurantId] = useState("");
+  const [restaurantId, setRestaurantId] = useState(initialRestaurantId ? String(initialRestaurantId) : "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 

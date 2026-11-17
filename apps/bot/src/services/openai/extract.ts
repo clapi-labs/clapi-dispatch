@@ -1,4 +1,15 @@
-import { ambiguousAddress, buildExtractionPrompt, DOUBTFUL_FIELDS, fixPaymentMethod, type DoubtfulField, type Interpretation, type OrderDraft } from "@dispatch/shared";
+import {
+  ambiguousAddress,
+  buildExtractionPrompt,
+  DOUBTFUL_FIELDS,
+  fixPaymentMethod,
+  mergeDebtClaim,
+  parseDebtClaim,
+  type DebtClaim,
+  type DoubtfulField,
+  type Interpretation,
+  type OrderDraft,
+} from "@dispatch/shared";
 
 import { env } from "@/env";
 import type { DownloadedImage } from "@/services/whatsapp/client";
@@ -6,15 +17,26 @@ import type { DownloadedImage } from "@/services/whatsapp/client";
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
  *  el código igual verifica que haya una cotización que aceptar). */
 /** `query`: el mensaje pregunta algo en vez de pedir (docs/BOT.md, consultas). */
+/** `claim`: el restaurante reclama su plata o su datáfono, o avisa que cierra (#61). */
 /** `intent`: «cotizar» si solo pregunta el precio, «pedir» si pide el servicio (null: ninguno). */
 export type ExtractionOutcome = {
   fields: Interpretation;
   query: "estado" | "cobertura" | null;
+  claim?: DebtClaim | null;
   intent: "cotizar" | "pedir" | null;
   confirms: boolean;
   confused: boolean;
   failed: boolean;
 };
+
+function parseModelClaim(raw: unknown): DebtClaim | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const reason = r.motivo === "datafono" || r.motivo === "plata" ? r.motivo : null;
+  const closing = r.cierra === true;
+  if (!reason && !closing) return null;
+  return { reason, closing };
+}
 
 const NOTHING: Interpretation = { origenRestaurante: null, entregas: [] };
 
@@ -173,6 +195,8 @@ export async function interpretMessage(
       e.dudas = real.length ? real : null;
     }
 
+    const claim = mergeDebtClaim(parseModelClaim(raw.reclamo), parseDebtClaim(messageText));
+
     return {
       fields: {
         origenRestaurante: text(raw.origenRestaurante),
@@ -181,9 +205,10 @@ export async function interpretMessage(
         quitar: Array.isArray(raw.quitar) ? raw.quitar.filter((n: unknown): n is number => Number.isInteger(n)) : [],
       },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
+      claim,
       intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : null,
       confirms: raw.confirma === true,
-      confused: raw.confuso === true,
+      confused: raw.confuso === true && !claim,
       failed: false,
     };
   } catch (error) {

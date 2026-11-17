@@ -13,7 +13,7 @@ import { useEffect, useRef } from "react";
  * se pide nada, y al volver se actualiza enseguida.
  */
 
-export type Topic = "trips" | "assignments" | "couriers" | "conversations" | "messages" | "return_debts" | "demand_state" | "demand_changes";
+export type Topic = "trips" | "assignments" | "couriers" | "conversations" | "messages" | "return_debts" | "return_debt_claims" | "demand_state" | "demand_changes";
 
 const FALLBACK_MS = 3000;
 const SAFETY_MS = 60_000;
