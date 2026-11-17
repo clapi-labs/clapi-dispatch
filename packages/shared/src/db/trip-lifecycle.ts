@@ -1,8 +1,17 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+/**
+ * El ciclo de vida del viaje: asignarlo a una moto (la que eligió el engine o la
+ * central), devolverlo a despacho, entregarlo o cerrarlo sin entregar. Quién
+ * elige la moto en automático es el engine (`apps/bot/src/dispatch/engine.ts`);
+ * aquí solo viven las mutaciones.
+ *
+ * Vive en `shared` porque la usan dos sitios que tienen que coincidir: el bot y
+ * el portal. Los "reclamos" son `UPDATE … WHERE estado = X RETURNING`: si dos
+ * procesos intentan lo mismo a la vez, solo uno gana la fila.
+ */
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { DeliveryPlace, RouteStop } from "../domain/phase";
 import { db } from "./client";
-import { getEngineConfig } from "./engine-config";
 import { assignments, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
 import { assignableByHand, dispatchableCourier } from "./simulator-flag";
 
@@ -10,49 +19,6 @@ import { assignableByHand, dispatchableCourier } from "./simulator-flag";
  *  El servicio termina al entregar: lo que deba volver a llevar al restaurante
  *  es un pendiente aparte (`return_debts`), que no lo deja ocupado. */
 export const openTripCondition = () => inArray(trips.status, ["assigned", "en_route"]);
-
-/**
- * Asignación por cola (round-robin): mientras el engine no esté al frente
- * (`settings.engine_config.mode`), el viaje va al motorizado libre que lleva más
- * tiempo sin recibir uno. Al terminar el servicio vuelve al final de la cola.
- *
- * Vive en `shared` porque la usan dos sitios que tienen que coincidir: el bot
- * (asigna en cuanto el pedido queda completo) y el portal (reintenta los
- * pendientes cuando se libera una moto).
- *
- * Las dos "reservas" son `UPDATE … WHERE estado = X RETURNING`: si el bot y
- * el portal intentan asignar al mismo tiempo, solo uno gana la fila y el otro
- * no hace nada, en vez de mandar dos motos o darle dos viajes a una.
- */
-export async function assignNextCourier(tripId: number): Promise<{ courierId: number; courierName: string } | null> {
-  const now = new Date();
-
-  const [claimedTrip] = await db
-    .update(trips)
-    .set({ status: "en_route", updatedAt: now })
-    .where(and(eq(trips.id, tripId), eq(trips.status, "pending")))
-    .returning({ id: trips.id });
-  if (!claimedTrip) return null;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const [candidate] = await db
-      .select({ id: couriers.id })
-      .from(couriers)
-      .where(and(eq(couriers.status, "available"), eq(couriers.active, true), dispatchableCourier()))
-      .orderBy(sql`${couriers.lastAssignedAt} asc nulls first`, asc(couriers.id))
-      .limit(1);
-
-    if (!candidate) break;
-
-    const courier = await bindCourier(tripId, candidate.id, ["available"], now);
-    if (courier) return { courierId: courier.id, courierName: courier.name };
-    // otro proceso la tomó primero: probar con la siguiente
-  }
-
-  // Ninguna moto libre: el viaje vuelve a esperar en "Por asignar".
-  await db.update(trips).set({ status: "pending", updatedAt: now }).where(eq(trips.id, tripId));
-  return null;
-}
 
 /** Reclama la moto, si sigue en uno de esos estados y entre las que `allowed`
  *  admite, y deja la asignación. */
@@ -190,28 +156,6 @@ export async function closeUndeliveredTrip(tripId: number): Promise<boolean> {
   return true;
 }
 
-/** Asigna los pendientes, el más viejo primero, hasta quedarse sin motos.
- *  Devuelve los ids de los viajes que acaban de recibir moto: quien llama
- *  tiene que avisarle al motorizado y al restaurante. */
-export async function assignPendingTrips(): Promise<number[]> {
-  // Con el engine al frente, la cola no asigna nada (apps/bot/src/dispatch/engine.ts).
-  if ((await getEngineConfig()).mode === "auto") return [];
-
-  const pending = await db
-    .select({ id: trips.id })
-    .from(trips)
-    .where(eq(trips.status, "pending"))
-    .orderBy(asc(trips.createdAt));
-
-  const assigned: number[] = [];
-  for (const trip of pending) {
-    const result = await assignNextCourier(trip.id);
-    if (!result) break;
-    assigned.push(trip.id);
-  }
-  return assigned;
-}
-
 /** Queda libre, salvo que todavía lleve algo o esté en emergencia. */
 async function releaseCourier(courierId: number) {
   const [other] = await db
@@ -230,12 +174,13 @@ async function releaseCourier(courierId: number) {
 
 /**
  * La entrega: el viaje pasa a entregado con la hora real y el lugar, y el
- * servicio termina ahí. Si no lleva nada más queda libre y toma el siguiente
- * pendiente; un pendiente de regreso (el datáfono, la plata) no lo deja
- * ocupado. `null` si el viaje ya no estaba en ruta (un doble toque, o el portal
- * y el motorizado marcándolo a la vez): no es un error, ya se hizo.
+ * servicio termina ahí. Si no lleva nada más queda libre; los pendientes los
+ * asigna el engine en el siguiente tick. Un pendiente de regreso (el datáfono,
+ * la plata) no lo deja ocupado. `false` si el viaje ya no estaba en ruta (un
+ * doble toque, o el portal y el motorizado marcándolo a la vez): no es un
+ * error, ya se hizo.
  */
-export async function deliverTrip(tripId: number, { place }: { place: DeliveryPlace }): Promise<{ newlyAssigned: number[] } | null> {
+export async function deliverTrip(tripId: number, { place }: { place: DeliveryPlace }): Promise<boolean> {
   const now = new Date();
 
   const [trip] = await db
@@ -243,7 +188,7 @@ export async function deliverTrip(tripId: number, { place }: { place: DeliveryPl
     .set({ status: "delivered", updatedAt: now })
     .where(and(eq(trips.id, tripId), eq(trips.status, "en_route")))
     .returning({ id: trips.id });
-  if (!trip) return null;
+  if (!trip) return false;
 
   const [assignment] = await db
     .update(assignments)
@@ -252,5 +197,5 @@ export async function deliverTrip(tripId: number, { place }: { place: DeliveryPl
     .returning({ courierId: assignments.courierId });
 
   if (assignment?.courierId) await releaseCourier(assignment.courierId);
-  return { newlyAssigned: await assignPendingTrips() };
+  return true;
 }

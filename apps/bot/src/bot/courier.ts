@@ -16,7 +16,7 @@ import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPha
 
 import { isAck, isDisconnect, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
-import { courierSay, notifyAssigned, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
+import { courierSay, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { classifyCourierMessage } from "@/services/openai/courier";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -100,7 +100,7 @@ async function declareDebt(courier: Courier, conversation: Conversation, phone: 
     return;
   }
   if (trip.status === "delivered") {
-    await notifyFinished(trip.id, [], "terminado");
+    await notifyFinished(trip.id, "terminado");
     return;
   }
   const what = reason === "datafono" ? "que llevas el datáfono" : "que le quedaste debiendo";
@@ -174,11 +174,8 @@ async function handleDebtText(courier: Courier, conversation: Conversation, phon
 }
 
 async function markDelivered(tripId: number, place: DeliveryPlace) {
-  const result = await deliverTrip(tripId, { place });
-  if (!result) return; // doble toque, o la central ya lo marcó
-  await notifyDelivered(tripId, result.newlyAssigned);
-  // La moto que se liberó puede haber tomado un pendiente en el acto.
-  for (const id of result.newlyAssigned) await notifyAssigned(id);
+  if (!(await deliverTrip(tripId, { place }))) return; // doble toque, o la central ya lo marcó
+  await notifyDelivered(tripId);
 }
 
 /** Empieza la espera al cliente. Sin el pedido en la mano no hay a quién esperar. */
@@ -192,7 +189,7 @@ async function markNoAnswer(courierId: number, tripId: number) {
 }
 
 async function markReturned(tripId: number) {
-  if (await closeUndeliveredTrip(tripId)) await notifyFinished(tripId, [], "devuelto");
+  if (await closeUndeliveredTrip(tripId)) await notifyFinished(tripId, "devuelto");
 }
 
 /**

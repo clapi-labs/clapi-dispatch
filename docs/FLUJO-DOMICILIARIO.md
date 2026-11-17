@@ -201,7 +201,7 @@ Solo salen si hacen falta, y cada uno se envía una vez por asignación. La aler
 | Devolver el datáfono | 30 min desde que se entregó el pedido; se cambia en Pendientes | Alerta al celular de la central |
 | Marcar la entrega | 30 min después de «Recogí» (por confirmar con Williams) | Solo alerta en el portal |
 
-No se cuenta solo desde la asignación porque la cola asigna aunque la comida tarde 30 minutos, y eso daría alarmas falsas. Los tiempos son una propuesta y van en `settings.bot_config`.
+No se cuenta solo desde la asignación porque se puede asignar aunque la comida tarde 30 minutos, y eso daría alarmas falsas. Los tiempos son una propuesta y van en `settings.bot_config`.
 
 ## Mensajes por servicio
 
@@ -243,11 +243,11 @@ Suman uno más cada uno de estos casos:
   - `read_at`, `picked_up_at`, `delivery_place` (`customer` o `gate`), `return_started_at`, `finished_at`, `pickup_reminder_at`. Los viajes anteriores no se reescriben: sin `return_started_at` cuentan como cerrados.
   - `seen_at` pasa a significar «Voy en camino», para no perder las métricas de Flota.
   - Debe aplicarse antes de desplegar el bot, porque `assignments` se lee con `select()`.
-- Al reasignar, limpiar también las columnas nuevas (`assignNextCourier`).
+- Al reasignar, limpiar también las columnas nuevas (`bindCourier` en `trip-lifecycle.ts`).
 - Separar `completeTrip` en dos pasos:
   - **Entregar:** el viaje pasa a `delivered` y guarda la hora y el lugar. Así el arqueo cuenta bien, porque ya lee `status` y `deliveredAt`.
   - **Terminar:** guarda `finished_at` y libera la moto, solo si no le queda otro viaje abierto. Hoy la libera aunque lleve otro.
-- Cambiar lo que considera activo un viaje, para incluir a quien va de regreso (`openTripCondition`): `activeTrips` del bot, `apps/bot/src/dispatch/shadow.ts` y el tablero.
+- Cambiar lo que considera activo un viaje, para incluir a quien va de regreso (`openTripCondition`): `activeTrips` del bot, `apps/bot/src/dispatch/engine.ts` y el tablero.
 - Una función común en `packages/shared` calcula el estado a partir de esas horas.
 - Portal: etiqueta en `TripCard` y en Flota. Un servicio de regreso sigue en la columna de en ruta.
 - Portal: el botón «Entregado» pregunta dónde quedó y si el domiciliario sigue ocupado. Revisar también el camino que marca entregado en `apps/portal/src/db/queries/trips.ts`.
@@ -276,7 +276,7 @@ Suman uno más cada uno de estos casos:
 - `engine-request.ts` envía las paradas reales: sin recogida si ya recogió, sin entrega si ya entregó.
 - Nueva parada para el regreso. La parada `V` no sirve: significa devolver un pedido no entregado y saca a la moto de la evaluación.
 - Las motos deben estar ocupadas siempre: quien está entregando o volviendo puede recibir otro pedido. El motor cuenta el peor caso, el regreso a recogida después de cada entrega, porque solo se sabe al entregar (`asumirRegreso`).
-- Aplica con `settings.engine_config.mode = "auto"`, que es como está staging con el simulador. En `shadow` o `queue` la cola solo le asigna a motos libres.
+- Aplica con `settings.engine_config.mode = "auto"`, que es el valor por defecto y como está staging con el simulador.
 - «Recogí» y la entrega quedan como datos del contrato, en [ALGORITMO.md](ALGORITMO.md) y [CONTRATO-BOT-DESPACHO.md](CONTRATO-BOT-DESPACHO.md).
 
 ### Fase 5: GPS con Traccar

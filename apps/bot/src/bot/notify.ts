@@ -435,28 +435,16 @@ function gateText(trip: Trip, at: string) {
   return `📦 Pedido ${trip.code} quedó en portería a las ${at} ✅\n\nPara ${who}. Ya puedes avisarle al cliente.`;
 }
 
-/** ¿Ya le llegó otro pedido? Entonces ese mensaje le sirve de confirmación. */
-async function gotNewTrip(courierId: number, newlyAssigned: number[]) {
-  if (!newlyAssigned.length) return false;
-  const [row] = await db
-    .select({ tripId: schema.assignments.tripId })
-    .from(schema.assignments)
-    .where(and(eq(schema.assignments.courierId, courierId), inArray(schema.assignments.tripId, newlyAssigned)))
-    .limit(1);
-  return Boolean(row);
-}
-
 /**
  * La entrega, sea el motorizado o la central quien la marque: el servicio
  * termina ahí. Al motorizado se le confirma y, si declaró un pendiente con este
- * pedido, se le dice cómo cerrarlo. `newlyAssigned`: los viajes que se
- * asignaron con esta entrega.
+ * pedido, se le dice cómo cerrarlo.
  */
-export async function notifyDelivered(tripId: number, newlyAssigned: number[] = []) {
+export async function notifyDelivered(tripId: number) {
   const [row, config] = await Promise.all([loadTrip(tripId), getBotConfig()]);
   if (!row) return;
 
-  await notifyFinished(tripId, newlyAssigned);
+  await notifyFinished(tripId);
 
   // El de portería sale siempre: es el que el restaurante necesita para actuar.
   const gate = row.assignment?.deliveryPlace === "gate";
@@ -469,16 +457,16 @@ export async function notifyDelivered(tripId: number, newlyAssigned: number[] = 
 }
 
 /**
- * Terminó el servicio: se le confirma que quedó registrado, salvo que ya le
- * haya llegado otro pedido. No se le dice que quedó libre: puede llevar otro.
- * Si declaró un pendiente con este pedido, ese mensaje sale siempre: «Devuelve
+ * Terminó el servicio: se le confirma que quedó registrado. No se le dice
+ * que quedó libre: puede llevar otro. Si declaró un pendiente con este pedido,
+ * ese mensaje sale siempre: «Devuelve
  * el datáfono en …» o «Quedó anotado que le debes a …», con el botón que lo
  * cierra.
  */
-export async function notifyFinished(tripId: number, newlyAssigned: number[] = [], word: "terminado" | "devuelto" = "terminado") {
+export async function notifyFinished(tripId: number, word: "terminado" | "devuelto" = "terminado") {
   const [row, config] = await Promise.all([loadTrip(tripId), getBotConfig()]);
   if (!row?.courier) return;
-  const confirm = config.confirmDeliveryToCourier && !(await gotNewTrip(row.courier.id, newlyAssigned));
+  const confirm = config.confirmDeliveryToCourier;
   const debts = word === "terminado" ? await openReturnDebtsOfTrip(tripId) : [];
   if (!confirm && !debts.length) return;
 

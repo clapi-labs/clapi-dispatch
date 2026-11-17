@@ -1,6 +1,6 @@
 # Contrato entre el bot y el despacho
 
-Cómo se reparten el trabajo el **bot** (la conversación por WhatsApp) y el **despacho** (quién se asigna a cada pedido, hoy la cola y luego el engine). Sirve para que cada lado avance sin esperar al otro: el bot se construye contra este contrato y el despacho lo cumple, primero con la cola actual y después con el engine, sin que el bot cambie.
+Cómo se reparten el trabajo el **bot** (la conversación por WhatsApp) y el **despacho** (quién se asigna a cada pedido: el engine). Sirve para que cada lado avance sin esperar al otro: el bot se construye contra este contrato y el despacho lo cumple, sin que el bot cambie.
 
 El contrato del engine en sí (`POST /evaluar`) está en [`ALGORITMO.md`](ALGORITMO.md). Este documento está una capa más arriba: es lo que el bot ve.
 
@@ -55,8 +55,7 @@ Reglas:
 
 | Implementación | `asignado` | `en_espera` | `sin_motos` |
 |---|---|---|---|
-| **Hoy: la cola** (`dispatch-queue.ts`) | Primera moto libre, `llegaEnMin: null` | Nunca | Todas ocupadas |
-| **Luego: el engine** | `ganador` con `faltan_min = 0`, `llegaEnMin = t_a_min` | `faltan_min > 0`, `despacharA = despachar_ts` | `ganador = null` o engine caído |
+| **El engine** | `ganador` con `faltan_min = 0`, `llegaEnMin = t_a_min` | `faltan_min > 0`, `despacharA = despachar_ts` | `ganador = null` o engine caído |
 
 Para el tick hay una variante que recorre todos los pendientes y devuelve un resultado por cada uno:
 
@@ -119,9 +118,9 @@ El contrato se escribió antes de construir; los nombres reales son estos:
 
 | En este documento | En el código |
 |---|---|
-| `despachar(tripId)` al crear el viaje | `dispatchNewTrip` (`apps/bot/src/dispatch/engine.ts`): en `auto` lo despacha el engine si ya es hora; si no, la cola le da la próxima moto libre (`assignNextCourier`). Devuelve si quedó asignado |
-| `despacharPendientes()` en el tick | `/api/internal/tick` corre `assignPendingTrips` (la cola, que no hace nada en `auto`) y `runEngine` (el engine, que solo asigna en `auto`) |
-| Asignar a mano desde el portal | `assignTripTo`; quitarle un pedido sin recoger a una moto, `returnTripToDispatch` (`packages/shared/src/db/dispatch-queue.ts`) |
+| `despachar(tripId)` al crear el viaje | `dispatchTrip` (`apps/bot/src/dispatch/engine.ts`): el engine lo despacha si ya es hora; si no, queda pendiente para el tick. Con `mode = "manual"` no hace nada. Devuelve si quedó asignado |
+| `despacharPendientes()` en el tick | `/api/internal/tick` corre solo `runEngine` (el engine, que asigna en `auto`) |
+| Asignar a mano desde el portal | `assignTripTo`; quitarle un pedido sin recoger a una moto, `returnTripToDispatch` (`packages/shared/src/db/trip-lifecycle.ts`) |
 | `en_espera` / `sin_motos` | El viaje sigue `pending`; el motivo y la hora prevista quedan en `engine_evaluations` y el tablero los muestra |
 | `quoteByDistance` | Igual (`packages/shared/src/db/quote.ts`) |
 

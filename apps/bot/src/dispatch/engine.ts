@@ -1,7 +1,6 @@
-import { and, asc, desc, eq, gt, inArray, isNull, max, or } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 
 import {
-  assignNextCourier,
   assignTripTo,
   db,
   dispatchableCourier,
@@ -23,19 +22,14 @@ import { buildEvaluarRequest, type SnapshotCourier } from "@/dispatch/engine-req
 import { env } from "@/env";
 
 /**
- * El engine (docs/ALGORITMO.md), según `settings.engine_config.mode`:
- *
- * - `shadow`: la cola sigue asignando y aquí se calcula al lado, en cada tick, a
- *   quién y cuándo habría asignado cada viaje. No toca la asignación real.
- * - `auto`: asigna de verdad, cuando le llega la hora a cada pedido. La cola no
- *   se usa. Si no hay GPS o el engine falla, el pedido sigue esperando con el
- *   motivo a la vista, y la central lo puede asignar a mano.
+ * El engine (docs/ALGORITMO.md) es el único que asigna en automático, cuando le
+ * llega la hora a cada pedido (`settings.engine_config.mode = "auto"`; con
+ * `manual` no corre). Si no hay GPS o el engine falla, el pedido sigue
+ * esperando con el motivo a la vista, y la central lo puede asignar a mano.
  *
  * Nada de esto envía mensajes: quien llama avisa con los viajes que devuelve.
  */
 
-/** Más viejo que esto sin decidir, el modo sombra deja de evaluarlo. */
-const MAX_AGE_MS = 3 * 60 * 60_000;
 const ENGINE_TIMEOUT_MS = 3_000;
 
 /** La configuración del engine, el interruptor de km por calle y la demanda
@@ -209,47 +203,6 @@ async function evaluate(
   return { result: { winner, faltan, plan: response.plan }, common };
 }
 
-async function runShadow(config: EngineRunConfig) {
-  const now = new Date();
-  // Los que siguen esperando, y los abiertos recientes que aún no se
-  // evaluaron. Los decididos o expirados ya no se tocan.
-  const rows = await db
-    .select({ trip: schema.trips, evaluation: schema.engineEvaluations })
-    .from(schema.trips)
-    .leftJoin(schema.engineEvaluations, eq(schema.engineEvaluations.tripId, schema.trips.id))
-    .where(
-      or(
-        eq(schema.engineEvaluations.status, "waiting"),
-        and(
-          isNull(schema.engineEvaluations.id),
-          inArray(schema.trips.status, ["pending", "assigned", "en_route"]),
-          gt(schema.trips.createdAt, new Date(now.getTime() - MAX_AGE_MS)),
-        ),
-      ),
-    )
-    .orderBy(desc(schema.trips.createdAt));
-  if (!rows.length) return;
-
-  let couriers: SnapshotCourier[] | null = null;
-
-  for (const { trip, evaluation } of rows) {
-    if (trip.status === "cancelled" || trip.status === "delivered") {
-      await save(trip.id, { status: "expired", reason: `El viaje quedó ${trip.status === "cancelled" ? "cancelado" : "entregado"} antes de que el engine decidiera` });
-      continue;
-    }
-    if (now.getTime() - trip.createdAt.getTime() > MAX_AGE_MS) {
-      await save(trip.id, { status: "expired", reason: "Más de 3 horas sin decidir" });
-      continue;
-    }
-
-    couriers ??= await loadCouriers();
-    const { result, common } = await evaluate(trip, evaluation?.evaluations ?? 0, couriers, now, config);
-    if (!result) continue;
-    if (result.faltan > 0) await save(trip.id, { ...common, status: "waiting", reason: `Se despacharía en ${result.faltan} min` });
-    else await save(trip.id, { ...common, status: "decided", reason: null, decidedAt: now });
-  }
-}
-
 /** Evalúa un pedido pendiente y, si ya es hora, se lo asigna a la ganadora y
  *  guarda su ruta. Devuelve si quedó asignado. */
 async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: number, couriers: SnapshotCourier[], config: EngineRunConfig) {
@@ -302,29 +255,22 @@ async function runAuto(config: EngineRunConfig): Promise<number[]> {
 export async function runEngine(): Promise<number[]> {
   if (!env.engineUrl) return [];
   const config = await engineRunConfig();
-  if (config.mode === "auto") return runAuto(config);
-  if (config.mode === "shadow") await runShadow(config);
-  return [];
+  return config.mode === "auto" ? runAuto(config) : [];
 }
 
-/** Modo `auto`, al confirmar un pedido: si ya es hora se asigna en el acto y el
- *  restaurante recibe un solo mensaje, con quién va. */
+/** Un pedido recién confirmado: el engine lo despacha en el acto si ya es hora;
+ *  si no, queda pendiente y lo toma el tick. En modo `manual` no hace nada: lo
+ *  asigna la central. Devuelve si quedó asignado ya. */
 export async function dispatchTrip(tripId: number): Promise<boolean> {
   if (!env.engineUrl) return false;
   const [trip] = await db.select().from(schema.trips).where(and(eq(schema.trips.id, tripId), eq(schema.trips.status, "pending"))).limit(1);
   if (!trip) return false;
   try {
-    return await assignIfDue(trip, 0, await loadCouriers(), await engineRunConfig());
+    const config = await engineRunConfig();
+    if (config.mode !== "auto") return false;
+    return await assignIfDue(trip, 0, await loadCouriers(), config);
   } catch (error) {
     console.error(`[engine] no se pudo despachar el viaje ${tripId}:`, error);
     return false;
   }
-}
-
-/** Un pedido recién confirmado: con el engine al frente, lo despacha él cuando
- *  sea la hora; si no, la cola le da la próxima moto libre. Devuelve si quedó
- *  asignado ya. */
-export async function dispatchNewTrip(tripId: number): Promise<boolean> {
-  if ((await getEngineConfig()).mode === "auto") return dispatchTrip(tripId);
-  return Boolean(await assignNextCourier(tripId));
 }

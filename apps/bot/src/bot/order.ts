@@ -38,7 +38,7 @@ import {
 
 import { coverageAt, coverageQueryReason, nearEdgeText, noServiceText } from "@/bot/coverage";
 import { say } from "@/bot/messaging";
-import { dispatchNewTrip } from "@/dispatch/engine";
+import { dispatchTrip } from "@/dispatch/engine";
 import { handleRestaurantDebtClaim, notifyAssigned } from "@/bot/notify";
 import { recognizeRestaurant } from "@/bot/restaurant-identity";
 import { pinAddress } from "@/bot/turns";
@@ -842,7 +842,7 @@ export async function handleRestaurant(ctx: Context) {
     // ya, un solo mensaje con quién va; sin moto, la confirmación sale ya
     // y quién va llega después (notifyAssigned).
     const engineLeads = (await getEngineConfig()).mode === "auto";
-    if (await dispatchNewTrip(trip.id)) {
+    if (await dispatchTrip(trip.id)) {
       await notifyAssigned(trip.id, { atConfirmation: true });
     } else {
       // Con el engine, esperar es a propósito (que la moto llegue justo cuando

@@ -171,7 +171,7 @@ flowchart LR
 | `GET /api/health` | El monitoreo externo (HetrixTools) | Ninguna (solo dice `ok` o no) | 200 `{"ok":true}` o 503 `{"ok":false}`: configuración, base, worker y, en modo `auto`, engine. El detalle va a los registros ([OPERACION.md](OPERACION.md), «Avisos») |
 | `GET /api/live` | El healthcheck de Docker | No expuesta | El proceso está vivo. No revisa nada más, para que un despliegue no parezca fallido |
 | `GET`/`POST /api/gps` | Traccar Client en el celular del motorizado, o el simulador | Identificador GPS aleatorio por moto; los no registrados se descartan | Guarda la posición y detecta llegadas (`bot/gps.ts`) |
-| `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Corre el despacho (engine o cola), avisa, manda recordatorios y cierra esperas de cliente |
+| `POST /api/internal/tick` | worker, cada 5 s | `x-internal-secret` + no expuesta | Corre el despacho (el engine), avisa, manda recordatorios y cierra esperas de cliente |
 | `POST /api/internal/notify` | portal | `x-internal-secret` + no expuesta | Avisa por WhatsApp cuando el portal asigna o marca entregado |
 | `POST /api/internal/send` | portal | `x-internal-secret` + no expuesta | Un operador escribe en un chat; el bot se pausa en ese chat |
 
@@ -185,7 +185,7 @@ flowchart TB
     subgraph BOT[bot]
         W --> IN[intake: decide qué hacer]
         IN --> AI[OpenAI: extrae los datos del pedido]
-        IN --> Q[despacho: engine o cola]
+        IN --> Q[despacho: engine]
         T --> Q
         N --> NT[notify: arma los mensajes]
         Q --> NT
@@ -264,7 +264,7 @@ Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida
 
 - El paso a `en_route` y a `delivered` es un `UPDATE` condicional (solo si el estado es el esperado). Por eso dos procesos a la vez nunca asignan el mismo viaje ni lo cierran dos veces.
 - El **worker** no tiene lógica: solo llama a `/api/internal/tick` cada 5 s, con espera creciente si el bot falla. Así los pendientes se asignan aunque nadie tenga el portal abierto.
-- Quién elige la moto depende de `settings.engine_config.mode`: en `auto` el engine (`apps/bot/src/dispatch/engine.ts`, ver `ALGORITMO.md`); en `queue` o `shadow`, la cola de `packages/shared/src/db/dispatch-queue.ts`. Nunca los dos a la vez.
+- La moto la elige el engine (`apps/bot/src/dispatch/engine.ts`, ver `ALGORITMO.md`); con `settings.engine_config.mode = "manual"` no corre y asigna solo la central. Las mutaciones del viaje (asignar, devolver, entregar) viven en `packages/shared/src/db/trip-lifecycle.ts`.
 
 ## Decisiones
 
