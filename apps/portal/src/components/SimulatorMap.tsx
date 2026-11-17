@@ -1,6 +1,6 @@
 "use client";
 
-import { NO_SIGNAL_MS } from "@dispatch/shared/domain/gps";
+import { hasSignal } from "@dispatch/shared/domain/gps";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -70,6 +70,7 @@ type SimCourier = {
   lat: number | null;
   lng: number | null;
   locationUpdatedAt: string | null;
+  locationMoving?: boolean | null;
   deliveriesThisShift: number;
   openTrips: { id: number; code: string; label: string }[];
   controlledBy: string | null;
@@ -249,7 +250,6 @@ export function SimulatorMap() {
   const motos = useMemo(() => [...(state?.couriers ?? []), ...(state?.realCouriers ?? []).map((c) => ({ ...c, real: true }))], [state]);
   const names = useMemo(() => new Map(motos.map((c) => [String(c.id), c.name])), [motos]);
   const trip = state?.trips.find((t) => t.id === selectedTrip) ?? null;
-  const signalMs = NO_SIGNAL_MS;
 
   // Dibuja lo que cambió.
   useEffect(() => {
@@ -265,7 +265,7 @@ export function SimulatorMap() {
       // Una moto real desconectada no se muestra: al terminar el turno deja de verse.
       if (c.real && c.status === "offline") continue;
       seen.add(c.id);
-      const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
+      const stale = !hasSignal(c, now);
       const color = stale ? STATUS_COLOR.offline : STATUS_COLOR[c.status];
       // Morado: la controla un número de prueba. Azul: moto real con GPS.
       const ring = c.real ? "box-shadow:0 0 0 3px #0b6bcb;" : c.controlledBy ? "box-shadow:0 0 0 3px #532ce1;" : "";
@@ -335,7 +335,7 @@ export function SimulatorMap() {
         leaflet.polyline(x.ruta_puntos, { color: i === 0 ? "#059669" : "#8b869c", weight: i === 0 ? 5 : 3, opacity: 0.8 }).addTo(ls.focus);
       });
     }
-  }, [state, motos, now, selectedCourier, trip, signalMs]);
+  }, [state, motos, now, selectedCourier, trip]);
 
   // Al llegar los datos por primera vez, centra en el simulador.
   const centered = useRef(false);
@@ -479,7 +479,7 @@ export function SimulatorMap() {
             <p className="text-sm text-ink-3">Ninguna. En Flota, «Ver más» → GPS → «Generar» convierte un número de prueba en moto real.</p>
           )}
           {state?.realCouriers.map((c) => {
-            const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
+            const stale = !hasSignal(c, now);
             return (
               <button
                 key={c.id}
@@ -579,7 +579,7 @@ export function SimulatorMap() {
 
         <Section title={`Motos (${state?.couriers.length ?? 0})`}>
           {state?.couriers.map((c) => {
-            const stale = !c.locationUpdatedAt || now - Date.parse(c.locationUpdatedAt) >= signalMs;
+            const stale = !hasSignal(c, now);
             return (
               <button
                 key={c.id}

@@ -25,7 +25,7 @@ export async function purgeOldPositions(now = new Date()): Promise<{ couriers: n
   const old = and(isNotNull(couriers.locationUpdatedAt), lt(couriers.locationUpdatedAt, cutoff));
   const [stale] = await db.select({ id: couriers.id }).from(couriers).where(old).limit(1);
   const cleared = stale
-    ? await db.update(couriers).set({ lat: null, lng: null, locationUpdatedAt: null }).where(old).returning({ id: couriers.id })
+    ? await db.update(couriers).set({ lat: null, lng: null, locationUpdatedAt: null, locationMoving: null }).where(old).returning({ id: couriers.id })
     : [];
 
   const stripped = await db

@@ -1,7 +1,7 @@
 "use client";
 
 import { isTripOpen } from "@dispatch/shared/domain/phase";
-import { Pencil, RotateCcw } from "lucide-react";
+import { Pencil, RotateCcw, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { PhoneLink } from "@/components/PhoneLink";
@@ -93,6 +93,8 @@ export function CourierDetails({ courier }: { courier: Courier }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [sendingGps, setSendingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +118,20 @@ export function CourierDetails({ courier }: { courier: Courier }) {
     if (!res.ok) return;
     const { gpsDeviceId } = (await res.json()) as { gpsDeviceId: string };
     setProfile((prev) => (prev ? { ...prev, gpsDeviceId } : prev));
+  }
+
+  async function sendGpsWhatsApp() {
+    setSendingGps(true);
+    setGpsStatus(null);
+    const res = await fetch(`/api/couriers/${courier.id}/gps`, { method: "PUT" }).catch(() => null);
+    setSendingGps(false);
+    const data = (await res?.json().catch(() => ({}))) as { ok?: boolean; gpsDeviceId?: string; error?: string };
+    if (data.gpsDeviceId) setProfile((prev) => (prev ? { ...prev, gpsDeviceId: data.gpsDeviceId } : prev));
+    if (!res?.ok) {
+      setGpsStatus({ ok: false, text: data.error ?? "No se pudo enviar por WhatsApp." });
+      return;
+    }
+    setGpsStatus({ ok: true, text: "Enviado por WhatsApp ✅" });
   }
 
   async function save(draft: Draft) {
@@ -213,15 +229,30 @@ export function CourierDetails({ courier }: { courier: Courier }) {
             <Heading>GPS</Heading>
             <dl>
               <Row label="Identificador">
-                {profile.gpsDeviceId ? (
-                  <span className="font-mono">{profile.gpsDeviceId}</span>
-                ) : (
-                  <button type="button" onClick={createGpsId} className="font-semibold text-clapi-ink underline underline-offset-2">
-                    Generar
+                <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                  {profile.gpsDeviceId ? (
+                    <span className="font-mono">{profile.gpsDeviceId}</span>
+                  ) : (
+                    <button type="button" onClick={createGpsId} className="font-semibold text-clapi-ink underline underline-offset-2">
+                      Generar
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={sendingGps}
+                    onClick={sendGpsWhatsApp}
+                    className="ease-ui inline-flex items-center gap-1 rounded-lg bg-clapi-soft px-2.5 py-1 text-[11px] font-semibold text-clapi-ink disabled:opacity-50 can-hover:hover:bg-clapi can-hover:hover:text-white"
+                  >
+                    <Send size={11} /> {sendingGps ? "Enviando…" : "Enviar por WhatsApp"}
                   </button>
-                )}
+                </span>
               </Row>
             </dl>
+            {gpsStatus && (
+              <p className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${gpsStatus.ok ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>
+                {gpsStatus.text}
+              </p>
+            )}
           </section>
 
           <button

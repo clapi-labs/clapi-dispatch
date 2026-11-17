@@ -116,6 +116,7 @@ export async function GET() {
       lat: c.lat,
       lng: c.lng,
       locationUpdatedAt: c.locationUpdatedAt?.toISOString() ?? null,
+      locationMoving: c.locationMoving,
       deliveriesThisShift: c.deliveriesThisShift,
       openTrips: mine.map((t) => ({ id: t.id, code: t.code, label: t.label })),
       controlledBy: c.simulated ? controllerOf(c.id) : null,

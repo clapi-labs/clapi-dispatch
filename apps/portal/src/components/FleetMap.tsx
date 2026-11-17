@@ -1,6 +1,6 @@
 "use client";
 
-import { signalState } from "@dispatch/shared/domain/gps";
+import { hasSignal, signalState } from "@dispatch/shared/domain/gps";
 import { useEffect, useRef, useState } from "react";
 
 import { elapsedLabel, timeOfDay } from "@/lib/format";
@@ -8,11 +8,10 @@ import { LEAFLET_CSS, loadLeaflet, OSM_TILES, type Leaflet } from "@/lib/leaflet
 import type { Courier } from "@/lib/types";
 
 /**
- * Dónde están los domiciliarios conectados (issue #42). Funciona igual en
- * producción y en staging: no depende del simulador. Cada moto se ve con el
- * color de su estado si está en vivo, o gris con su hora de última ubicación si
- * perdió la señal. Las desconectadas no se muestran: al terminar el turno dejan
- * de verse.
+ * Dónde están los domiciliarios (issues #42 y #53). Funciona igual en
+ * producción y en staging: no depende del simulador.
+ * - En turno: color de su estado si está en vivo o quieto; gris punteado si perdió la señal.
+ * - Fuera de turno pero con GPS en vivo/quieto: también se muestra en gris con borde verde para distinguirlos.
  */
 
 const COLOR: Record<Courier["status"], string> = {
@@ -56,7 +55,7 @@ export function FleetMap({ couriers, now }: { couriers: Courier[]; now: number }
     };
   }, []);
 
-  const shown = couriers.filter((c) => c.status !== "offline" && c.lat != null && c.lng != null);
+  const shown = couriers.filter((c) => c.lat != null && c.lng != null && (c.status !== "offline" || hasSignal(c, now)));
 
   // Las motos se mueven en su lugar, sin redibujar el mapa.
   useEffect(() => {
@@ -66,26 +65,34 @@ export function FleetMap({ couriers, now }: { couriers: Courier[]; now: number }
     const seen = new Set<number>();
     for (const c of shown) {
       seen.add(c.id);
-      const live = signalState(c, now) === "live";
-      const color = live ? COLOR[c.status] : LOST;
-      const html = `<div style="width:30px;height:30px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;${
-        live ? "" : "opacity:.75;border-style:dashed;"
+      const state = signalState(c, now);
+      const live = state === "live" || state === "still";
+      const off = c.status === "offline";
+      const color = off ? COLOR.offline : live ? COLOR[c.status] : LOST;
+      const border = off ? "2px solid #059669" : live ? "2px solid #fff" : "2px dashed #fff";
+      const html = `<div style="width:30px;height:30px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:16px;border:${border};${
+        live ? (off ? "opacity:.9;" : "") : "opacity:.75;"
       }box-shadow:0 1px 3px rgba(0,0,0,.3)">🛵</div>`;
       const icon = leaflet.divIcon({ html, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
       const since = c.locationUpdatedAt ? new Date(c.locationUpdatedAt) : null;
-      const label = `${esc(c.name)}${c.simulator?.role === "simulated" ? " · 🧪 simulada" : ""} · ${
-        live ? "en vivo" : `sin señal${since ? ` desde ${timeOfDay(since)} (hace ${elapsedLabel(since, new Date(now))})` : ""}`
-      }`;
+      const gpsText =
+        state === "live"
+          ? "en vivo"
+          : state === "still"
+            ? "quieto"
+            : `sin señal${since ? ` desde ${timeOfDay(since)} (hace ${elapsedLabel(since, new Date(now))})` : ""}`;
+      const label = `${esc(c.name)}${c.simulator?.role === "simulated" ? " · 🧪 simulada" : ""}${off ? " · fuera de turno" : ""} · ${gpsText}`;
       let marker = markers.current.get(c.id);
+      const z = off ? 500 : live ? 1000 : 0;
       if (!marker) {
-        marker = leaflet.marker([c.lat, c.lng], { icon, zIndexOffset: live ? 1000 : 0 }).addTo(m);
+        marker = leaflet.marker([c.lat, c.lng], { icon, zIndexOffset: z }).addTo(m);
         marker.bindTooltip(label, { direction: "top", offset: [0, -16] });
         markers.current.set(c.id, marker);
       } else {
         marker.setLatLng([c.lat, c.lng]);
         marker.setIcon(icon);
         marker.setTooltipContent(label);
-        marker.setZIndexOffset(live ? 1000 : 0);
+        marker.setZIndexOffset(z);
       }
     }
     for (const [id, marker] of markers.current) {
@@ -109,7 +116,7 @@ export function FleetMap({ couriers, now }: { couriers: Courier[]; now: number }
       {error && <p className="absolute inset-x-0 top-3 mx-auto w-fit rounded-lg bg-danger-soft px-3 py-1.5 text-sm text-danger">{error}</p>}
       {ready && shown.length === 0 && (
         <p className="pointer-events-none absolute inset-x-0 top-3 z-[1000] mx-auto w-fit rounded-lg bg-surface px-3 py-1.5 text-sm text-ink-3 shadow">
-          Ninguna moto conectada con ubicación.
+          Ninguna moto en turno ni con GPS en vivo.
         </p>
       )}
     </div>

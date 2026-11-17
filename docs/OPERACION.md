@@ -174,9 +174,15 @@ Cada número debe escribirle «hola» al bot antes de probar: así queda conecta
 La ubicación en vivo llega de la app gratuita [Traccar Client](https://www.traccar.org/client/) en el celular del domiciliario, no de WhatsApp. Pasos y por qué: [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Fase 5».
 
 1. En Flota, en su tarjeta, «Ver más» → GPS → **Generar**. Ese identificador es lo que autoriza a su celular: se le pasa solo a él.
-2. En la app: el identificador y, como servidor, `https://<host del bot>/api/gps` (staging: `https://bot.staging.dispatch.clapi.solutions/api/gps`).
-3. Al empezar el turno prende la app (además del «hola» por WhatsApp); al terminar la apaga.
-4. En Flota → **Mapa**, o en su tarjeta: «En vivo» en menos de un minuto. Sin reporte en 30 s pasa a «Sin señal», con la hora de su última ubicación, y el algoritmo no la elige hasta que vuelva a reportar.
+2. En la misma sección, toca **Enviar por WhatsApp** para mandarle un mensaje listo con su ID y la URL del servidor, cada dato en su línea para copiarlo fácil (requiere que el domiciliario haya escrito en las últimas 24 horas; si no, el portal te pide que primero le escribas «hola»).
+3. En la app [Traccar Client](https://www.traccar.org/client/):
+   - **Device identifier**: el ID generado (ej. `clapi-7`).
+   - **Server URL**: `https://<host del bot>/api/gps` (staging: `https://bot.staging.dispatch.clapi.solutions/api/gps`).
+   - **Location accuracy**: Alta (`high`).
+   - **Interval**: `10` s (reporta cada ~60 s cuando la moto está quieta para ahorrar batería).
+   - **Battery optimization**: Sin restricciones / Desactivada para que siga reportando con pantalla apagada.
+4. Al empezar el turno prende la app (además del «hola» por WhatsApp); al terminar la apaga. Si deja el GPS encendido fuera de turno, en Flota se sigue viendo su señal y en el mapa aparece en gris con borde verde («fuera de turno»).
+5. En Flota → **Mapa**, o en su tarjeta: «En vivo» cuando está en movimiento (ventana 30 s) o «Quieto» si reportó quieto (ventana 3 min por el latido en reposo de Traccar). Sin reporte pasa a «Sin señal» con la hora de su última ubicación, y el algoritmo no la elige hasta que vuelva a reportar.
 
 **Comprobar desde el servidor que llegan reportes:** `docker compose --env-file .env -f compose.yml exec -T postgres psql -U dispatch -d dispatch -c "select name, location_updated_at from couriers where simulated = false and location_updated_at is not null order by 2 desc"`.
 

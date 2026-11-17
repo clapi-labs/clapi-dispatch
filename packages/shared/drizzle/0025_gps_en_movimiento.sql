@@ -1,0 +1,1 @@
+ALTER TABLE "couriers" ADD COLUMN "location_moving" boolean;

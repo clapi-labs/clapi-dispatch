@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { readReport } from "./gps-report";
+import { readReport, reportIsMoving } from "./gps-report";
 
 const URL_GPS = "https://bot.ejemplo.test/api/gps";
 const post = (body: string, type: string, query = "") => new Request(`${URL_GPS}${query}`, { method: "POST", body, headers: { "content-type": type } });
@@ -42,5 +42,21 @@ describe("lo que manda Traccar Client", () => {
       assert.equal(r.id, null);
       assert.ok(Number.isNaN(r.lat));
     }
+  });
+
+  it("lee is_moving, activity y speed para distinguir quieto de en movimiento", async () => {
+    const stillJson = JSON.stringify({
+      device_id: "moto-prueba",
+      location: { timestamp: "2026-11-11T10:00:00Z", is_moving: false, activity: { type: "still" }, coords: { latitude: 3.42, longitude: -76.52, speed: 0 } },
+    });
+    const still = await readReport(post(stillJson, "application/json"));
+    assert.equal(reportIsMoving(still, null), false);
+
+    const movingOsm = await readReport(post("id=moto-prueba&lat=3.42&lon=-76.52&speed=7.5", "application/x-www-form-urlencoded"));
+    assert.equal(reportIsMoving(movingOsm, null), true);
+
+    const staticCoord = await readReport(post("id=moto-prueba&lat=3.42001&lon=-76.52001", "application/x-www-form-urlencoded"));
+    assert.equal(reportIsMoving(staticCoord, { lat: 3.42, lng: -76.52 }), false);
+    assert.equal(reportIsMoving(staticCoord, { lat: 3.43, lng: -76.52 }), true);
   });
 });

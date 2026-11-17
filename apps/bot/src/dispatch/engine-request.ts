@@ -36,6 +36,7 @@ export type SnapshotCourier = {
   lat: number | null;
   lng: number | null;
   locationUpdatedAt: Date | null;
+  locationMoving?: boolean | null;
   deliveriesThisShift: number;
   shiftStartedAt: Date | null;
   lastDeliveredAt: Date | null;
