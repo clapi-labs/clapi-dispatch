@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   for (const { tripId, courierId } of unassigned) await notifyUnassigned(tripId, courierId);
-  for (const id of delivered) await notifyDelivered(id, assigned);
+  for (const id of delivered) await notifyDelivered(id);
   for (const id of assigned) await notifyAssigned(id);
 
   return Response.json({ ok: true });

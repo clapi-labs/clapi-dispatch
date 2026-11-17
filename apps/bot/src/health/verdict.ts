@@ -8,8 +8,8 @@
  * - la base de datos no contesta;
  * - el worker lleva más de `WORKER_STALE_MS` sin completar una vuelta: la
  *   asignación, los avisos y los recordatorios se detuvieron;
- * - el engine no responde mientras asigna de verdad (modo `auto`). En `queue` o
- *   `shadow` asigna la cola, así que el engine caído no detiene nada.
+ * - el engine no responde mientras asigna de verdad (modo `auto`). En `manual`
+ *   asigna la central, así que el engine caído no detiene nada.
  */
 
 /** El worker da una vuelta cada 5 segundos. Un despliegue lo reinicia en menos

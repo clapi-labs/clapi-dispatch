@@ -5,7 +5,7 @@ import { emptyDelivery } from "@dispatch/shared";
 
 import { notifyAssigned } from "@/bot/notify";
 import { createTrip } from "@/db/queries/trips";
-import { dispatchNewTrip } from "@/dispatch/engine";
+import { dispatchTrip } from "@/dispatch/engine";
 
 /**
  * Un pedido creado desde el mapa del simulador, sin WhatsApp. Se crea y se
@@ -51,6 +51,6 @@ export async function createSimulatedOrder(input: { restaurantId: number; lat: n
     return { tripId: trip.id, code: trip.code } as const;
   }
 
-  if (await dispatchNewTrip(trip.id)) await notifyAssigned(trip.id);
+  if (await dispatchTrip(trip.id)) await notifyAssigned(trip.id);
   return { tripId: trip.id, code: trip.code } as const;
 }

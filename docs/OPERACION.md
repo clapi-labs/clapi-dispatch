@@ -323,7 +323,7 @@ Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo
 | Bot apagado | `docker stop dispatch-bot-1` | Aviso en unos 2 a 3 minutos; al `docker start`, el de recuperación |
 | Worker detenido | `docker stop dispatch-worker-1` | Aviso (a los 2 min sin vueltas, más el intervalo del monitor) |
 | Base detenida | `docker stop dispatch-postgres-1` | Aviso |
-| Engine apagado en modo `auto` | `docker stop dispatch-engine-1` | Aviso. En `queue` o `shadow`, no |
+| Engine apagado en modo `auto` | `docker stop dispatch-engine-1` | Aviso. En `manual`, no |
 | Despliegue normal | `./deploy.sh deploy "$(cat .tag)"` | Ningún aviso |
 
 Al terminar cada prueba: `docker start …` y comprobar el aviso de recuperación.

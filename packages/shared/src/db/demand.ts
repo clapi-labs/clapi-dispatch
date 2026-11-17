@@ -12,7 +12,7 @@ import {
 } from "../domain/demand";
 import { hasSignal } from "../domain/gps";
 import { db } from "./client";
-import { openTripCondition } from "./dispatch-queue";
+import { openTripCondition } from "./trip-lifecycle";
 import { assignments, couriers, demandChanges, demandState, settings, trips } from "./schema";
 import { dispatchableCourier } from "./simulator-flag";
 

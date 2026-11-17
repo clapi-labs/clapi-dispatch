@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, max, not, notInArray, or, sql } from "drizzle-orm";
 
 import { db } from "./client";
-import { openTripCondition } from "./dispatch-queue";
+import { openTripCondition } from "./trip-lifecycle";
 import { getEngineConfig } from "./engine-config";
 import { assignments, conversations, courierProfiles, couriers, restaurants, settings, simulatorControls, trips } from "./schema";
 import { hasGpsDevice, realGpsCourier, simulatorEnabled } from "./simulator-flag";

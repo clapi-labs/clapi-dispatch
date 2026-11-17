@@ -6,7 +6,7 @@ import { debtGroupKey, groupDebts, joinCodes } from "../domain/return-debts";
 import { orderRoute, routeText, type RouteLine, type ReturnStop } from "../domain/route";
 import { db } from "./client";
 import { getDemandLevel } from "./demand";
-import { openTripCondition } from "./dispatch-queue";
+import { openTripCondition } from "./trip-lifecycle";
 import { assignments, courierRoutes, restaurants, returnDebts, trips } from "./schema";
 
 /**

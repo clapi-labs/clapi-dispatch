@@ -246,13 +246,13 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 ### D-4 · Comparar el engine con la central · Despacho · M · depende de D-1
 
-**Objetivo:** tener números para decidir pasar producción a `auto`.
+**Objetivo:** tener números para dar por bueno al engine como único asignador automático.
 
 **Éxito:**
-- Con motos reales, unos días en modo `shadow`: una consulta o vista en el portal que muestre, por pedido, a quién habría asignado el engine y a quién asignó la central.
-- Un criterio acordado con el cliente para pasar a `auto` (por ejemplo, tiempo de llegada a la recogida igual o mejor).
+- Con motos reales, unos días en `auto`: una consulta o vista en el portal que muestre, por pedido, a quién asignó el engine y cuántas veces la central lo corrigió a mano.
+- Un criterio acordado con el cliente para dar el engine por bueno (por ejemplo, tiempo de llegada a la recogida igual o mejor).
 
-**Dónde mirar:** [ALGORITMO.md](ALGORITMO.md) («Modo sombra»), tabla `engine_evaluations`.
+**Dónde mirar:** [ALGORITMO.md](ALGORITMO.md) («Cómo corre»), tabla `engine_evaluations`.
 
 ---
 
@@ -283,7 +283,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - Cada acción manual (asignar, pasar a otra moto, cancelar, marcar entrega) guarda quién, cuándo y por qué.
 - Al motorizado que llevaba el pedido le llega el aviso.
 
-**Dónde mirar:** [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md) («Las acciones», «Fases»), `apps/portal/src/db/queries/settlement.ts`, `packages/shared/src/db/dispatch-queue.ts`.
+**Dónde mirar:** [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md) («Las acciones», «Fases»), `apps/portal/src/db/queries/settlement.ts`, `packages/shared/src/db/trip-lifecycle.ts`.
 
 ### C-3 · Ver las imágenes que llegan a los chats · Portal + Bot · M
 
