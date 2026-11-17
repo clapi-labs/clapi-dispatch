@@ -30,12 +30,13 @@ export const ROAD_RETRY_AFTER_MS = 30_000;
  *  daría no sirve y se usa el respaldo. */
 export const MAX_SNAP_METERS = 500;
 
-export type RoadSource = "calle" | "linea_recta";
+export type RoadSource = "google" | "calle" | "linea_recta";
 
 export type RoadDistance = {
   /** Kilómetros, con un decimal. 0 si `routable` es false. */
   km: number;
-  /** `calle`: lo midió OSRM. `linea_recta`: línea recta × 1,3 (interruptor
+  /** `google`: lo midió Google Routes (cotización en vivo). `calle`: lo midió
+   *  OSRM. `linea_recta`: línea recta × 1,3 (interruptor
    *  apagado, o respaldo porque OSRM no respondió). */
   source: RoadSource;
   /** `false`: OSRM respondió que no hay ruta o que un punto queda fuera del

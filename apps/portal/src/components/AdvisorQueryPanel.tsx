@@ -88,7 +88,7 @@ export function AdvisorQueryPanel({ conversationId, items, onDone }: { conversat
             {item.cobertura && (
               <p className="text-xs font-medium text-ink">
                 A {money(item.cobertura.metros)} m de «{item.cobertura.zona}» ·{" "}
-                {item.cobertura.km != null && `${item.cobertura.km.toLocaleString("es-CO")} km${item.cobertura.porCalle ? " por calle" : ""} · `}
+                {item.cobertura.km != null && `${item.cobertura.km.toLocaleString("es-CO")} km · `}
                 por km vale $ {money(item.cobertura.precio)}
               </p>
             )}

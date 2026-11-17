@@ -201,9 +201,11 @@ docker exec dispatch-postgres-1 psql -U dispatch -d dispatch -c   "insert into s
 # Apagar: lo mismo con false
 ```
 
+**Google Routes (cotizaciones en vivo).** Con el interruptor encendido, el bot mide los km con Google Routes API y usa OSRM de respaldo. Requisito: habilitar **Routes API** (`routes.googleapis.com`) en Google Cloud Console sobre la misma `GOOGLE_MAPS_API_KEY` del servidor (la que ya tiene Geocoding), y que la restricción de la llave incluya esa API. Si aún no está habilitada, todo sigue funcionando con OSRM (verás `[calles] Google Routes falló (HTTP 403 …)` una vez cada 30 s). Factura como Compute Routes Essentials (10.000 gratis al mes, luego US$ 5 por 1.000): comprobarlo en Cloud Console → Facturación. Abrir Tarifas no llama a Google; «Probar» de Zonas sí, una llamada por consulta, a través del bot. Cascada de respaldo: Google → OSRM → línea recta × 1,3.
+
 **Si OSRM no responde** (caído, reiniciando, o tarda más de 800 ms en el bot y 1 s en el engine): se usa la línea recta × 1,3, el pedido sigue, el restaurante no ve nada distinto y la caída queda registrada:
 - En los registros del bot y del engine, una línea `[calles] OSRM falló (…)` al empezar la caída y `[calles] OSRM volvió a responder` al terminar. Durante la caída no se le vuelve a preguntar en 30 s, para no esperar en cada cotización.
-- En cada viaje, `trips.route_source`: `calle` o `linea_recta`. Con el interruptor encendido, `linea_recta` quiere decir que ese viaje se cotizó con el respaldo.
+- En cada viaje, `trips.route_source`: `google`, `calle` (OSRM) o `linea_recta`. Con el interruptor encendido, `calle` quiere decir que Google no respondió y se usó OSRM, y `linea_recta` que tampoco respondió OSRM. Para vigilarlo: `select route_source, count(*) from trips where created_at > now() - interval '7 days' group by 1`.
 - En cada evaluación del engine, `engine_evaluations.response->'tiempos'`: `fuente` (`osrm`, `haversine` o `mixta`) y `respaldo` (por qué no se usó OSRM, o `null`).
 
 **Si OSRM responde que no hay ruta** o que un punto queda fuera de su mapa, el bot **no cotiza** esa entrega: no la reemplaza por línea recta × 1,3. La pasa a la central como consulta de dirección para que confirme el valor. Lo mismo si el punto queda fuera de las zonas de servicio.
@@ -264,6 +266,7 @@ curl -s https://bot.staging.dispatch.clapi.solutions/api/health
 | El bot no responde | `BOT_ACTIVE` en `false`, token de WhatsApp vencido (el temporal dura ~24 h) o falla de OpenAI |
 | Certificado no emitido | DNS aún sin propagar o puertos 80/443 cerrados |
 | No llegan las alertas al celular | En ese celular, **Alertas al celular** dice si están activas o bloqueadas, y **Enviar una de prueba** las prueba. En los registros del bot y del portal, `[alertas]` dice qué rechazó el servicio de notificaciones |
+| Con el interruptor de km por calle encendido, los viajes salen con `route_source = calle` | Google Routes no responde: ¿Routes API habilitada en la llave? `docker logs dispatch-bot-1 2>&1 \| grep 'Google Routes'`. Se cotiza con OSRM, sin afectar los pedidos |
 | Con el interruptor de km por calle encendido, los viajes salen con `route_source = linea_recta` | OSRM no responde: `docker ps` (¿`dispatch-osrm-1` healthy?) y `docker logs dispatch-bot-1 2>&1 \| grep '\[calles\]'`. Mientras tanto se cotiza en línea recta × 1,3, sin afectar los pedidos |
 | Un chat de prueba quedó con un pedido a medio armar que se mezcla con los nuevos | El borrador no vence ni se cancela todavía ([PLAN](PLAN.md) B-1). Se limpia a mano, abajo |
 

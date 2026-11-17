@@ -1,5 +1,5 @@
 import { NEAR_ZONE_M, serviceVerdictAt } from "@dispatch/shared";
-import { db, getBotConfig, listServiceZones, quoteByDistance, schema } from "@dispatch/shared/db";
+import { db, getBotConfig, listServiceZones, quoteByDistance, schema, type Quote } from "@dispatch/shared/db";
 import { eq } from "drizzle-orm";
 
 import { askBot } from "@/lib/bot";
@@ -23,7 +23,7 @@ const REASONS: Record<string, string> = {
  * restringe nada). Lee las zonas guardadas: es lo que usaría el bot.
  *
  * Con `restaurantId`, también la cotización real desde ese restaurante
- * (`quoteByDistance`, la misma del bot): km, precio de la tabla, ajuste de la
+ * (`quoteByDistance` vía el bot, la misma de un pedido): km, precio de la tabla, ajuste de la
  * zona y total. Fuera de las zonas o del mapa de calles no hay precio: el bot
  * no lo toma. No crea pedidos ni manda mensajes.
  */
@@ -64,7 +64,11 @@ export async function POST(request: Request) {
   // Lo mismo que hace el bot: fuera y lejos no se cotiza.
   let quote = null;
   if (pickup && verdict.kind !== "fuera") {
-    const [q, config] = await Promise.all([quoteByDistance(pickup, point, { zones }), getBotConfig()]);
+    // Los km salen igual que en un pedido real (Google Routes): la llave solo
+    // la tiene el bot. Si no responde, se mide aquí con OSRM (sin Google).
+    const viaBot = await askBot<Quote>("/api/internal/quote", { pickup, point });
+    if (!viaBot.ok) console.warn(`[portal] el bot no cotizó (${viaBot.reason}): se mide con OSRM local`);
+    const [q, config] = await Promise.all([viaBot.ok ? viaBot.data : quoteByDistance(pickup, point, { zones }), getBotConfig()]);
     quote = {
       restaurant: restaurantName,
       pickup,

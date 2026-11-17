@@ -140,7 +140,7 @@ function signedCOP(n: number) {
  * central; el restaurante solo ve el total.
  */
 function FareDetail({ trip }: { trip: Trip }) {
-  const km = trip.distanceKm != null ? `${trip.distanceKm.toLocaleString("es-CO", { maximumFractionDigits: 1 })} km${trip.routeSource === "calle" ? " por calle" : trip.routeSource === "linea_recta" ? " en línea recta" : ""}` : null;
+  const km = trip.distanceKm != null ? `${trip.distanceKm.toLocaleString("es-CO", { maximumFractionDigits: 1 })} km` : null;
   const split = trip.fareTablePrice != null;
   return (
     <dl className="grid w-full grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded-xl bg-sunken px-3 py-2 text-xs tabular-nums">

@@ -211,7 +211,7 @@ export const trips = pgTable(
     routeKm: real("route_km"),
     /** `calle` (OSRM) o `linea_recta` (interruptor apagado, o respaldo porque
      *  OSRM no respondió). */
-    routeSource: text("route_source").$type<"calle" | "linea_recta">(),
+    routeSource: text("route_source").$type<"google" | "calle" | "linea_recta">(),
     /** El desglose del precio, congelado como él (docs/DIRECCIONES-Y-ZONAS.md,
      *  «Precio del domicilio»): lo de la tabla por km, el ajuste de la zona de
      *  la entrega y el nombre de esa zona. Nulos si el precio lo puso la

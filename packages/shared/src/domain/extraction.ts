@@ -73,7 +73,7 @@ export type DeliveryDraft = DeliveryFields & {
    *  1,3). Vacía en los borradores de antes de este dato. `desglose`: de dónde
    *  sale el precio (tabla por km y ajuste de la zona); vacío si lo puso la
    *  central. */
-  cotizacion?: { precio: number; km: number | null; fuente?: "calle" | "linea_recta"; desglose?: FareSplit | null } | null;
+  cotizacion?: { precio: number; km: number | null; fuente?: "google" | "calle" | "linea_recta"; desglose?: FareSplit | null } | null;
   /** El mapa no la ubicó, pero el asesor dijo que es válida y cuánto vale:
    *  no se vuelve a buscar mientras no cambie la dirección. */
   validadaPorAsesor?: boolean;
@@ -92,7 +92,7 @@ export type CoverageQueryItem = {
   metros: number;
   precio: number;
   km: number;
-  fuente?: "calle" | "linea_recta";
+  fuente?: "google" | "calle" | "linea_recta";
   desglose?: FareSplit | null;
 };
 

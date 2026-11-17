@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { createRoadRouter } from "../domain/road-distance";
 import { haversineKm } from "../domain/dispatch/haversine";
-import { deliveryDistance, routeKm } from "./quote";
+import { deliveryDistance, osrmRouter, routeKm } from "./quote";
 
 /**
  * El interruptor `settings.routing_config.porCalle` (docs/DIRECCIONES-Y-ZONAS.md):
@@ -61,5 +61,38 @@ describe("deliveryDistance: interruptor de km por calle", () => {
       fetch: async () => ({ ok: false, status: 400, json: async () => ({ code: "NoRoute", message: "Impossible route" }) }),
     });
     assert.deepEqual(await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: true }, router), { km: 0, source: "linea_recta", routable: false });
+  });
+});
+
+describe("tabla de ejemplos de Tarifas: nunca llama a Google", () => {
+  it("con el OSRM propio y una llave puesta, no sale ninguna llamada a Google Routes", async () => {
+    const real = globalThis.fetch;
+    const urls: string[] = [];
+    const previous = { key: process.env.GOOGLE_MAPS_API_KEY, osrm: process.env.OSRM_URL };
+    process.env.GOOGLE_MAPS_API_KEY = "llave";
+    process.env.OSRM_URL = "http://osrm:5000";
+    globalThis.fetch = (async (url: string | URL) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ code: "Ok", routes: [{ distance: 8730 }], waypoints: [] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const r = await deliveryDistance(RESTAURANTE, CLIENTE, { porCalle: true }, osrmRouter());
+      assert.equal(r.source, "calle");
+      assert.equal(urls.length, 1);
+      assert.ok(urls.every((u) => !u.includes("googleapis.com")));
+    } finally {
+      globalThis.fetch = real;
+      if (previous.key === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
+      else process.env.GOOGLE_MAPS_API_KEY = previous.key;
+      if (previous.osrm === undefined) delete process.env.OSRM_URL;
+      else process.env.OSRM_URL = previous.osrm;
+    }
+  });
+
+  it("fareExampleDistances mide con osrmRouter()", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(new URL("./fare-examples.ts", import.meta.url), "utf8");
+    assert.match(source, /measurer = osrmRouter\(\)/);
+    assert.match(source, /config, measurer\)/);
   });
 });
