@@ -2,7 +2,7 @@
 
 ## Cómo se ubica una dirección hoy
 
-- **Dirección escrita:** se geocodifica una sola vez con Google Geocoding (`apps/bot/src/services/google/geocode.ts`), limitado a un rectángulo que va de Cali a Jamundí (sur 3.2, oeste −76.65, norte 3.6, este −76.4).
+- **Dirección escrita:** se geocodifica una sola vez con Google Geocoding (`apps/bot/src/services/google/geocode.ts`, con pruebas en `geocode.test.ts`), limitado a un rectángulo que va de Cali a Jamundí y Yumbo (sur 3.2, oeste −76.65, norte 3.6, este −76.4). Si no nombra otro municipio, se busca en Cali; si nombra Jamundí, Yumbo, Candelaria o Palmira (o sectores como Alfaguara o Acopi), se consulta en ese municipio sin agregar «Cali», y se descarta cualquier resultado en que Google cruce de municipio o salte a otra calle distinta de la escrita.
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
 - **Recogida:** la del restaurante registrado, sin volver a geocodificar. Si no está registrado, hoy se ubica lo que escribió como origen. **Decidido:** la recogida de un restaurante nuevo la verifica la central a mano, no Google ni Places; el flujo está por definir ([PLAN](PLAN.md) B-3).
 - **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.

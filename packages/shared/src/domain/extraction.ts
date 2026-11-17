@@ -455,7 +455,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "nombreRestaurante": string | null,   // el nombre del NEGOCIO QUE ESCRIBE, solo si el mensaje nuevo se identifica así a propósito ("soy de Pizza Nona", "habla Donde Lucho", "te escribo de Sushi Ya"), sin dirección. null si el mensaje no dice que el negocio es quien escribe: un nombre tras "domi", "domicilio", "moto", "llevar", "a", "para" o "al lado de" es a dónde va el pedido o una referencia ("domi para Café Luna, Calle 3 # 4-5", "domicilio a Café Luna", "al lado de Café Luna"), o si es el de una persona o del cliente. Ante la duda, null
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados; también la dirección o el lugar por el que solo pregunta el precio
     {
-      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio y barrio; SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
+      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio, barrio y municipio si dice otro distinto de Cali ("Jamundí", "Yumbo", "Candelaria"); SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
