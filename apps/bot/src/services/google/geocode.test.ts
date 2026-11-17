@@ -142,3 +142,195 @@ describe("interpretGeocode: no cruza municipios ni inventa otra calle", () => {
     });
   });
 });
+
+/** Respuestas reales de Google desde staging (medición del 17 de noviembre de
+ *  2026, docs/DIRECCIONES-Y-ZONAS.md, «Precisión de las direcciones»), recortadas. */
+describe("interpretGeocode: lo que destapó la medición contra Google", () => {
+  it("dos lugares con la misma placa, lejos uno del otro: no elige, decide la central", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["premise", "street_address"],
+            formatted_address: "Cl. 52 #3-29, Comuna 5, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.46519, lng: -76.50023 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [
+              { long_name: "Calle 52", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+          {
+            types: ["street_address", "subpremise"],
+            formatted_address: "Cl. 52 #3-29, San Pedro Claver, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.42659, lng: -76.50247 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "3-29", types: ["street_number"] },
+              { long_name: "Calle 52", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Cl 52 # 3-29",
+    );
+    assert.deepEqual(outcome, { kind: "not_found" });
+  });
+
+  it("el centro de la calle lejos de la placa no la vuelve ambigua", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["street_address"],
+            formatted_address: "Cra. 81 #45-05, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.38744, lng: -76.51823 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "45-05", types: ["street_number"] },
+              { long_name: "Carrera 81", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+          {
+            types: ["route"],
+            formatted_address: "Cra. 81, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.40, lng: -76.52 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [
+              { long_name: "Carrera 81", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Cra 81 # 45-05",
+    );
+    assert.equal(outcome.kind, "found");
+  });
+
+  it("sin vía ni placa, un resultado parcial es Google adivinando: «Valle del Lili» no es la clínica", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            partial_match: true,
+            types: ["hospital", "establishment", "point_of_interest"],
+            formatted_address: "Av. Simón Bolívar, first floor, Cra. 98 #18-49, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.37274, lng: -76.52563 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "Carrera 98", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Valle del Lili",
+    );
+    assert.deepEqual(outcome, { kind: "not_found" });
+  });
+
+  it("parcial, pero con la vía y la placa del resultado escritas sin «#» («kra 95a 42 141»): se ubica", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            partial_match: true,
+            types: ["premise", "street_address"],
+            formatted_address: "Cra. 95A # 42-141, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.37369, lng: -76.51903 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "42-141", types: ["street_number"] },
+              { long_name: "Carrera 95A", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "kra 95a 42 141",
+    );
+    assert.equal(outcome.kind, "found");
+  });
+
+  it("parcial con números que no son los del resultado («kra 95a 41 141»): no se ubica", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            partial_match: true,
+            types: ["premise", "street_address"],
+            formatted_address: "Cra. 95A # 42-141, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.37369, lng: -76.51903 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "42-141", types: ["street_number"] },
+              { long_name: "Carrera 95A", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "kra 95a 41 141",
+    );
+    assert.deepEqual(outcome, { kind: "not_found" });
+  });
+
+  it("un lugar con nombre que Google encuentra completo sí se ubica", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["establishment", "point_of_interest"],
+            formatted_address: "Cra. 98 #16-200, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.36893, lng: -76.52834 }, location_type: "ROOFTOP" },
+            address_components: [{ long_name: "Cali", types: ["locality"] }],
+          },
+        ],
+      },
+      "Centro Comercial Jardín Plaza",
+    );
+    assert.equal(outcome.kind, "found");
+  });
+
+  it("si la vía del resultado tiene otro número, coincidir en la placa no basta", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["beauty_salon", "establishment", "point_of_interest"],
+            formatted_address: "Cra 94A #42-64, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.37437, lng: -76.51961 }, location_type: "ROOFTOP" },
+            address_components: [
+              { long_name: "42-64", types: ["street_number"] },
+              { long_name: "Carrera 94A", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Carrera 97 # 42-10, Calicanto",
+    );
+    assert.deepEqual(outcome, { kind: "not_found" });
+  });
+
+  it("una esquina («Calle 42 con Carrera 85C») es un punto exacto aunque Google la dé como centro", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["intersection"],
+            formatted_address: "Cl. 42 & Cra 85c, Comuna 17, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.38086, lng: -76.52026 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [{ long_name: "Cali", types: ["locality"] }],
+          },
+        ],
+      },
+      "Calle 42 con Carrera 85C",
+    );
+    assert.deepEqual(outcome, { kind: "found", location: { lat: 3.38086, lng: -76.52026 }, neighborhood: null });
+  });
+});

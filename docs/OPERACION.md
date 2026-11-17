@@ -232,6 +232,15 @@ docker exec dispatch-osrm-1 wget -qO- "http://127.0.0.1:5000/route/v1/driving/-7
 curl -s https://download.geofabrik.de/south-america/colombia-261201.osm.pbf.md5
 ```
 
+## 4e. Precisión de las direcciones
+
+Mide qué tan bien ubica el bot las direcciones contra puntos verificados en Google Maps. Solo corre en el servidor, porque la llave de Google está restringida a su IP. No cambia nada y gasta unas 100 geocodificaciones (más OpenAI con `--extraccion`). Qué se mide, los casos y cómo leer el informe: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Precisión de las direcciones».
+```bash
+/opt/dispatch/measure-addresses.sh                # informe en /opt/dispatch/mediciones/direcciones-<fecha>/informe.md
+/opt/dispatch/measure-addresses.sh --extraccion   # además lee cada texto con el modelo
+```
+`measure-addresses.sh` no viaja con el despliegue. Se copia una vez, igual que `deploy.sh` (arriba, «Cambios en `deploy.sh`»), cambiando el nombre del archivo. Corre con la imagen desplegada (`.tag`): los casos nuevos solo entran después de desplegarlos.
+
 ## 5. Usuarios del portal
 
 No hay registro público. Se crean en el servidor:

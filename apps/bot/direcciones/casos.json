@@ -1,0 +1,1512 @@
+{
+  "descripcion": "Direcciones reales para medir qué tan bien ubica el bot una entrega (docs/DIRECCIONES-Y-ZONAS.md, «Precisión de las direcciones»).",
+  "campos": {
+    "texto": "Lo que escribe el restaurante.",
+    "direccion": "Lo que debe quedar en direccionEntrega después de leer el mensaje (sin torre, apto ni indicaciones). Si falta, es el texto.",
+    "detalle": "La puerta, que va aparte (detalleDireccion).",
+    "esperado": "ubicar: tiene un punto y el bot debe darlo. escalar: no hay un punto y no debe inventarlo. cualquiera: puede ubicarla o pasarla a la central, pero nunca fuera de su municipio.",
+    "municipio": "Dónde queda de verdad: cali, jamundi, yumbo, candelaria o palmira.",
+    "dudosa": "El bot la confirma con el restaurante antes de cotizar (ambiguousAddress).",
+    "referencia": "El punto real, verificado en Google Maps (el pin comprobado sobre el mapa). null: falta verificarlo; ese caso no entra en el porcentaje."
+  },
+  "casos": [
+    {
+      "id": "estandar-01",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 97 # 45-11 local 102",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372222,
+        "lng": -76.518821,
+        "lugar": "747",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-02",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 45 # 97A-15 local 102",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371805,
+        "lng": -76.518795,
+        "lugar": "Antojitos Mi Tierra Caribe",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-03",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 83C # 48A-08",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.383549,
+        "lng": -76.515256,
+        "lugar": "Arepalandia",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-04",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 95A # 42-141",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373697,
+        "lng": -76.519031,
+        "lugar": "Arepas de Choclo",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-05",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 95A # 45-10, Calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373474,
+        "lng": -76.518828,
+        "lugar": "Arepas Don Jhon",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-06",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 81 # 45-05",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387444,
+        "lng": -76.518231,
+        "lugar": "Arepas Kukuruza",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-07",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 83C # 35A-07",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.38397,
+        "lng": -76.521436,
+        "lugar": "Arroz Paisa Caney",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-08",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 # 86-125, Chill Plaza",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.378524,
+        "lng": -76.516051,
+        "lugar": "Bellamia",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-09",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 Bis # 92-27",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.37621,
+        "lng": -76.515799,
+        "lugar": "Benditarepa",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-10",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 42 # 81-15",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387181,
+        "lng": -76.519974,
+        "lugar": "Capri Delicias",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-11",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 # 109-33, Bochalema",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.359424,
+        "lng": -76.515866,
+        "lugar": "Contenedor de Arepas",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-12",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Calle 16 Sur # 84A-31, El Ingenio",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3826,
+        "lng": -76.528556,
+        "lugar": "Córner Ingenio",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-13",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Carrera 97 # 42-10, Calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372105,
+        "lng": -76.520156,
+        "lugar": "Córner Valle del Lili",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-14",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 85 # 43-76",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.38184,
+        "lng": -76.518458,
+        "lugar": "D'amore",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-15",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 97A # 42-30",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371547,
+        "lng": -76.52003,
+        "lugar": "Dar Fresas",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-16",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 Bis # 92-11",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376368,
+        "lng": -76.515967,
+        "lugar": "Delicias de Isa",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-17",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 # 106-83, Bochalema",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.36103,
+        "lng": -76.516069,
+        "lugar": "Dihuk",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-18",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 83C # 37-31",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.383962,
+        "lng": -76.520728,
+        "lugar": "Don Parra",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-19",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 98 # 42-55",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371031,
+        "lng": -76.519521,
+        "lugar": "Dorilocos co",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-20",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 94A # 48A-70, Senderos",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.374506,
+        "lng": -76.514327,
+        "lugar": "Droguería Hellen",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-21",
+      "zona": "oriente",
+      "tipo": "estandar",
+      "texto": "Cl 40 # 46B-15, Mariano Ramos",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.406564,
+        "lng": -76.516898,
+        "lugar": "Droguería Jhoana",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-22",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 42 # 81-09",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387285,
+        "lng": -76.519939,
+        "lugar": "Fries and Wings",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-23",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 94A # 42-12",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373849,
+        "lng": -76.520135,
+        "lugar": "Fritanga Buen Frito",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-24",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 97 # 42-110",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372048,
+        "lng": -76.518932,
+        "lugar": "Fruty Lovers",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-25",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 98 # 42-105, Fusión Plaza",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371178,
+        "lng": -76.518976,
+        "lugar": "Grill Republic",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-26",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 85A # 45",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.381486,
+        "lng": -76.518189,
+        "lugar": "Hogareña Caney",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-27",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 97 # 58-31, Ciudad Meléndez",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371982,
+        "lng": -76.507315,
+        "lugar": "Hogareña Ciudad Meléndez",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-28",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 92 # 42-100 local 101",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376568,
+        "lng": -76.519193,
+        "lugar": "Home Pizza",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-29",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 56 # 85C1-78",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.379618,
+        "lng": -76.508033,
+        "lugar": "Hunter Grill",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-30",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 45 # 84-06 local 1",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.382321,
+        "lng": -76.518486,
+        "lugar": "Kelotes",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-31",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 45 # 83A-1",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.385801,
+        "lng": -76.518249,
+        "lugar": "Kiosco Caney",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-32",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 16 # 83A-15",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.385036,
+        "lng": -76.528355,
+        "lugar": "Koi Sushi Ingenio",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-33",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 83 # 38-2",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.385698,
+        "lng": -76.520377,
+        "lugar": "La Cocina de Alba",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-34",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 96A # 42-146, Calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.37252,
+        "lng": -76.51898,
+        "lugar": "La Esquina del Sabor",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-35",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 95A # 42-09",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373868,
+        "lng": -76.520144,
+        "lugar": "Los Weros",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-36",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 85B # 43-77",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.381338,
+        "lng": -76.518506,
+        "lugar": "Mambas Burguer",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-37",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 91 # 34-110",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376931,
+        "lng": -76.520881,
+        "lugar": "Mi Sabor Llanero",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-38",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 97A # 42-09",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371796,
+        "lng": -76.520151,
+        "lugar": "Monkey Valle del Lili",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-39",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 96A # 45-11 local 102",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372919,
+        "lng": -76.51885,
+        "lugar": "Papelería Calicanto",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-40",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 48 Bis # 92-07",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376419,
+        "lng": -76.515969,
+        "lugar": "Pizzaron Cali",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-41",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 95 # 42-09",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.374165,
+        "lng": -76.520121,
+        "lugar": "Rock&Bacoa",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-42",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 98 # 45-41",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371274,
+        "lng": -76.51849,
+        "lugar": "Salchipaisa",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-43",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cl 45 # 81A-12",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.386909,
+        "lng": -76.518429,
+        "lugar": "Succulentas",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-44",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 83 # 28-42",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.385267,
+        "lng": -76.523034,
+        "lugar": "Súper Deli empanaditas",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-45",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 95A # 42-17, Calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373653,
+        "lng": -76.520029,
+        "lugar": "Sushi Hatori",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-46",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 86 # 38-111 local 11, Altos del Caney",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.379396,
+        "lng": -76.520973,
+        "lugar": "Tortas del Gordo Valle del lili",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-47",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 90 # 45-13",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.377199,
+        "lng": -76.518717,
+        "lugar": "Varamar",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-48",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 109 # 34-190",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.358725,
+        "lng": -76.521839,
+        "lugar": "Licores toro",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-49",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 94A # 42-48",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.374516,
+        "lng": -76.519723,
+        "lugar": "Chino el primero emperador",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "estandar-50",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 96A # 45-11 local 101",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372679,
+        "lng": -76.518827,
+        "lugar": "Panadería la fortaleza",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "esquina-01",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Calle 42 con Carrera 85C",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.380331,
+        "lng": -76.520903,
+        "lugar": "Bambú Burguer",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "nota": "Una esquina con calle y carrera: el punto existe aunque no haya placa."
+    },
+    {
+      "id": "esquina-02",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Cra 92 con Cl 48A",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376599,
+        "lng": -76.515384,
+        "lugar": "Fritanga Senderos",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "nota": "Una esquina con calle y carrera: el punto existe aunque no haya placa."
+    },
+    {
+      "id": "esquina-03",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Calle 42 con carrera 85C esquina",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.380758,
+        "lng": -76.520135,
+        "lugar": "Punto Rojo",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "nota": "Una esquina con calle y carrera: el punto existe aunque no haya placa."
+    },
+    {
+      "id": "esquina-04",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Carrera 97A con Calle 45, Calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371737,
+        "lng": -76.518986,
+        "lugar": "Súper Droguería Store",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "nota": "Una esquina con calle y carrera: el punto existe aunque no haya placa."
+    },
+    {
+      "id": "coloquial-01",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "cra97#45-11 loc 102",
+      "direccion": "cra97 # 45-11 loc 102",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372222,
+        "lng": -76.518821,
+        "lugar": "747",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-02",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "kra 95a 42 141",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373697,
+        "lng": -76.519031,
+        "lugar": "Arepas de Choclo",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-03",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "cll 48bis 92-27",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.37621,
+        "lng": -76.515799,
+        "lugar": "Benditarepa",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-04",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "calle 48 # 106-83 local 17 bochalema",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.36112,
+        "lng": -76.516049,
+        "lugar": "Kiosco Bochalema",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-05",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "cra 83c 35a 07 caney",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.38397,
+        "lng": -76.521436,
+        "lugar": "Arroz Paisa Caney",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-06",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Carerra 98 # 42-55",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371031,
+        "lng": -76.519521,
+        "lugar": "Dorilocos co",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-07",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Cra 98 #42-105 fusion plaza local 5, frente al parque",
+      "direccion": "Cra 98 # 42-105, Fusión Plaza",
+      "detalle": "Local 5",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371178,
+        "lng": -76.518976,
+        "lugar": "Grill Republic",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-08",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Cl 45 #97a-15 torre 2 apto 502",
+      "direccion": "Cl 45 # 97a-15",
+      "detalle": "Torre 2 apto 502",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371805,
+        "lng": -76.518795,
+        "lugar": "Antojitos Mi Tierra Caribe",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-09",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Cra 97 # 58-31 Ciudad Melendez casa 6",
+      "direccion": "Cra 97 # 58-31 Ciudad Melendez",
+      "detalle": "Casa 6",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371982,
+        "lng": -76.507315,
+        "lugar": "Hogareña Ciudad Meléndez",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-10",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "CALLE 16 SUR 84A-31 EL INGENIO",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3826,
+        "lng": -76.528556,
+        "lugar": "Córner Ingenio",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-11",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "cl.42 #81-15 caney",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387181,
+        "lng": -76.519974,
+        "lugar": "Capri Delicias",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-12",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "cra 83 c # 48 a - 08",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.383549,
+        "lng": -76.515256,
+        "lugar": "Arepalandia",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-13",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Cl 45 #9710",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.37139,
+        "lng": -76.519025,
+        "lugar": "Fritanga 97B / BENDITA TENTACION",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-14",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "carrera 94a no. 48a-70 senderos, conjunto, dejar en porteria",
+      "direccion": "carrera 94a no. 48a-70 senderos",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.374506,
+        "lng": -76.514327,
+        "lugar": "Droguería Hellen",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-15",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Kr 91 # 34 - 110",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376931,
+        "lng": -76.520881,
+        "lugar": "Mi Sabor Llanero",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "coloquial-16",
+      "zona": "sur",
+      "tipo": "coloquial",
+      "texto": "Cra. 109 #34-190 diagonal a la tienda",
+      "direccion": "Cra. 109 #34-190",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.358725,
+        "lng": -76.521839,
+        "lugar": "Licores toro",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      }
+    },
+    {
+      "id": "trampa-01",
+      "zona": "jamundi",
+      "tipo": "trampa",
+      "texto": "Calle 30 #1-15 jamundi",
+      "esperado": "cualquiera",
+      "municipio": "jamundi",
+      "referencia": null,
+      "nota": "El caso de 6256a75: caía en Ciudad Pacífica (Cali). Nunca puede quedar en Cali."
+    },
+    {
+      "id": "trampa-02",
+      "zona": "oriente",
+      "tipo": "trampa",
+      "texto": "Calle 30 # 1-15",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "La misma placa sin municipio: es Cali."
+    },
+    {
+      "id": "trampa-03",
+      "zona": "yumbo",
+      "tipo": "trampa",
+      "texto": "Cra 10 # 5-20, Yumbo",
+      "esperado": "cualquiera",
+      "municipio": "yumbo",
+      "referencia": null,
+      "nota": "Placa que también existe en Cali: no puede quedar en Cali."
+    },
+    {
+      "id": "trampa-04",
+      "zona": "jamundi",
+      "tipo": "trampa",
+      "texto": "Calle 10 # 5-20 Jamundí",
+      "esperado": "cualquiera",
+      "municipio": "jamundi",
+      "referencia": null
+    },
+    {
+      "id": "trampa-05",
+      "zona": "otro",
+      "tipo": "trampa",
+      "texto": "Calle 13 # 5-20 Candelaria",
+      "esperado": "escalar",
+      "municipio": "candelaria",
+      "referencia": null,
+      "nota": "Candelaria queda fuera del área que busca el bot: no se ubica, decide la central."
+    },
+    {
+      "id": "trampa-06",
+      "zona": "otro",
+      "tipo": "trampa",
+      "texto": "Cra 28 # 30-10 Palmira",
+      "esperado": "escalar",
+      "municipio": "palmira",
+      "referencia": null,
+      "nota": "Palmira queda fuera del área que busca el bot."
+    },
+    {
+      "id": "trampa-07",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Cra 122 # 18-50 Vía Cali - Jamundí, Pance",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Nombra Jamundí, pero es la vía dentro de Cali."
+    },
+    {
+      "id": "trampa-08",
+      "zona": "sur",
+      "tipo": "incompleta",
+      "texto": "la 42 con 83",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "dudosa": true,
+      "referencia": null,
+      "nota": "Sin tipo de vía ni placa: no hay un punto."
+    },
+    {
+      "id": "trampa-09",
+      "zona": "sur",
+      "tipo": "incompleta",
+      "texto": "42 # 83-15",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "dudosa": true,
+      "referencia": null,
+      "nota": "Sin tipo de vía: el bot la marca como dudosa y la confirma con el restaurante antes de cotizar."
+    },
+    {
+      "id": "trampa-10",
+      "zona": "sur",
+      "tipo": "incompleta",
+      "texto": "Cra 86",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Solo la vía (ficha de Chilitos sin placa)."
+    },
+    {
+      "id": "trampa-11",
+      "zona": "sur",
+      "tipo": "incompleta",
+      "texto": "Cra 84A, El Ingenio",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Vía y barrio sin placa."
+    },
+    {
+      "id": "trampa-12",
+      "zona": "sur",
+      "tipo": "incompleta",
+      "texto": "760004, Cali",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "dudosa": true,
+      "referencia": null,
+      "nota": "Solo el código postal (ficha de Insanne Burguer)."
+    },
+    {
+      "id": "trampa-13",
+      "zona": "sur",
+      "tipo": "solo-barrio",
+      "texto": "Valle del Lili",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Solo el barrio: el centro de un barrio no es una puerta; la central pide la dirección."
+    },
+    {
+      "id": "trampa-14",
+      "zona": "sur",
+      "tipo": "solo-barrio",
+      "texto": "Ciudad Jardín",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Solo el barrio: el centro de un barrio no es una puerta; la central pide la dirección."
+    },
+    {
+      "id": "trampa-15",
+      "zona": "sur",
+      "tipo": "solo-barrio",
+      "texto": "Bochalema",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Solo el barrio: el centro de un barrio no es una puerta; la central pide la dirección."
+    },
+    {
+      "id": "trampa-16",
+      "zona": "sur",
+      "tipo": "solo-barrio",
+      "texto": "Ciudad Pacífica",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Google tiene una ficha del lugar «Ciudad Pacífica» (la urbanización, Cra. 122 #5-4) y el bot la ubica ahí. Para OpenStreetMap ese punto está en Ciudad Pacífica; para la IDESC cae en Piedrachiquita, el barrio de al lado. Caso de borde conocido: no se marca grave, pero hay que mirarlo si cambia de barrio o se aleja."
+    },
+    {
+      "id": "trampa-17",
+      "zona": "sur",
+      "tipo": "solo-barrio",
+      "texto": "Capri",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Solo el barrio: el centro de un barrio no es una puerta; la central pide la dirección."
+    },
+    {
+      "id": "trampa-18",
+      "zona": "jamundi",
+      "tipo": "solo-barrio",
+      "texto": "Alfaguara, Jamundí",
+      "esperado": "escalar",
+      "municipio": "jamundi",
+      "referencia": null
+    },
+    {
+      "id": "trampa-19",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Cra 98 # 42",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Sin placa es la esquina de la Cra 98 con la Calle 42: un punto que existe. Puede ubicarla o pedir la placa."
+    },
+    {
+      "id": "lugar-01",
+      "zona": "norte",
+      "tipo": "lugar",
+      "texto": "Centro Comercial Chipichape",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4759489,
+        "lng": -76.5276424,
+        "lugar": "Centro Comercial Chipichape",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-02",
+      "zona": "oriente",
+      "tipo": "estandar",
+      "texto": "Cl 52 # 3-29",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4649061,
+        "lng": -76.5004859,
+        "lugar": "Centro Comercial UNICO Outlet (ficha: Cl. 52 #3-29)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-03",
+      "zona": "sur",
+      "tipo": "lugar",
+      "texto": "Unicentro Cali",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3752263,
+        "lng": -76.5378072,
+        "lugar": "Unicentro Cali",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-04",
+      "zona": "sur",
+      "tipo": "estandar",
+      "texto": "Cra 100 # 5-169",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3752263,
+        "lng": -76.5378072,
+        "lugar": "Unicentro Cali (ficha: Cra. 100 #5-169)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-05",
+      "zona": "sur",
+      "tipo": "lugar",
+      "texto": "Clínica Valle del Lili",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3727365,
+        "lng": -76.5256296,
+        "lugar": "Fundación Valle del Lili (ficha: Cra. 98 #18-49)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-06",
+      "zona": "sur",
+      "tipo": "lugar",
+      "texto": "Centro Comercial Jardín Plaza",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3689323,
+        "lng": -76.52834,
+        "lugar": "Centro Comercial Jardín Plaza (ficha: Cra. 98 #16-200)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-07",
+      "zona": "sur",
+      "tipo": "lugar",
+      "texto": "Pontificia Universidad Javeriana Cali",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3487239,
+        "lng": -76.5316285,
+        "lugar": "Pontificia Universidad Javeriana Cali (ficha: Cl. 18 #118-250)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      },
+      "nota": "Lugar grande: el punto es el pin del lugar, no la portería; a más de 150 m puede ser solo otra entrada."
+    },
+    {
+      "id": "lugar-08",
+      "zona": "sur",
+      "tipo": "lugar",
+      "texto": "Universidad del Valle sede Meléndez",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.3767679,
+        "lng": -76.5343197,
+        "lugar": "Universidad del Valle (ficha: Calle 13 #100-00)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      },
+      "nota": "Lugar grande: el punto es el pin del lugar, no la portería; a más de 150 m puede ser solo otra entrada."
+    },
+    {
+      "id": "lugar-09",
+      "zona": "oeste",
+      "tipo": "lugar",
+      "texto": "Zoológico de Cali",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4481076,
+        "lng": -76.5568372,
+        "lugar": "Zoológico de Cali",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      },
+      "nota": "Lugar grande: el punto es el pin del lugar, no la portería; a más de 150 m puede ser solo otra entrada."
+    },
+    {
+      "id": "lugar-10",
+      "zona": "centro",
+      "tipo": "lugar",
+      "texto": "Iglesia La Ermita",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4540056,
+        "lng": -76.5319868,
+        "lugar": "Iglesia La Ermita",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-11",
+      "zona": "centro",
+      "tipo": "lugar",
+      "texto": "Estadio Pascual Guerrero",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4298633,
+        "lng": -76.5410336,
+        "lugar": "Estadio Olímpico Pascual Guerrero",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      },
+      "nota": "Lugar grande: el punto es el pin del lugar, no la portería; a más de 150 m puede ser solo otra entrada."
+    },
+    {
+      "id": "lugar-12",
+      "zona": "centro",
+      "tipo": "lugar",
+      "texto": "Hospital Universitario del Valle",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4300309,
+        "lng": -76.5448537,
+        "lugar": "Hospital Universitario del Valle Evaristo García",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-13",
+      "zona": "centro",
+      "tipo": "estandar",
+      "texto": "Cl 5 # 36-08, San Fernando",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4300309,
+        "lng": -76.5448537,
+        "lugar": "Hospital Universitario del Valle (ficha: Cl. 5 #36-08)",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-14",
+      "zona": "oriente",
+      "tipo": "lugar",
+      "texto": "Centro Comercial Único Outlet",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.4649061,
+        "lng": -76.5004859,
+        "lugar": "Centro Comercial UNICO Outlet",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-15",
+      "zona": "jamundi",
+      "tipo": "lugar",
+      "texto": "Parque principal de Jamundí",
+      "esperado": "ubicar",
+      "municipio": "jamundi",
+      "referencia": {
+        "lat": 3.261766,
+        "lng": -76.540813,
+        "lugar": "Parque Principal de Jamundí",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    },
+    {
+      "id": "lugar-16",
+      "zona": "yumbo",
+      "tipo": "lugar",
+      "texto": "Parque Belalcázar, Yumbo",
+      "esperado": "ubicar",
+      "municipio": "yumbo",
+      "referencia": {
+        "lat": 3.5834898,
+        "lng": -76.4952664,
+        "lugar": "Parque Principal Sebastián de Belalcázar, Yumbo",
+        "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
+        "verificado": "2026-11-17"
+      }
+    }
+  ]
+}

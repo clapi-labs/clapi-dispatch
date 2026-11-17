@@ -1,3 +1,5 @@
+import { haversineKm } from "@dispatch/shared";
+
 import { env } from "../../env";
 
 export type LatLng = { lat: number; lng: number };
@@ -24,12 +26,24 @@ const AREA = { south: 3.2, west: -76.65, north: 3.6, east: -76.4 };
 
 /** ROOFTOP = la puerta; RANGE_INTERPOLATED = entre dos números conocidos de la
  *  cuadra. GEOMETRIC_CENTER y APPROXIMATE son el centro de una calle o de un
- *  barrio: para medir quién llega primero, eso no sirve. */
+ *  barrio: para medir quién llega primero, eso no sirve. La excepción es el
+ *  cruce de dos calles («Calle 42 con Carrera 85C»): Google lo da como
+ *  GEOMETRIC_CENTER, pero es la esquina, un punto exacto. */
 const PRECISE = new Set(["ROOFTOP", "RANGE_INTERPOLATED"]);
+const precise = (r: GoogleGeocodeResult) => PRECISE.has(r.geometry.location_type) || !!r.types?.includes("intersection");
+
+/** Un resultado que es una dirección, un edificio, un lugar o un cruce; no una calle ni un barrio. */
+const PLACE_TYPES = ["street_address", "premise", "subpremise", "establishment", "point_of_interest", "intersection"];
+const pinpoints = (r: GoogleGeocodeResult) => !r.types || r.types.some((t) => PLACE_TYPES.includes(t));
+
+/** Dos resultados de la misma dirección a más de esto: hay dos lugares con esa
+ *  placa (pasó con «Cl 52 # 3-29», en Salomia y a 4 km). No se elige: decide la central. */
+const AMBIGUOUS_M = 500;
 
 type GoogleGeocodeResult = {
   formatted_address?: string;
   partial_match?: boolean;
+  types?: string[];
   geometry: { location: LatLng; location_type: string };
   address_components?: { long_name: string; short_name?: string; types: string[] }[];
 };
@@ -215,7 +229,39 @@ function matchesWrittenStreet(r: GoogleGeocodeResult, address: string): boolean 
 
   // Si Google marcó partial_match y ni siquiera coincide la vía principal, es un salto a otra calle.
   if (r.partial_match && !hasMain) return false;
+  // La vía del resultado tiene número y es otra («Cra 94A #42-64» para «Carrera 97 # 42-10»):
+  // coincidir en la placa no basta. Una vía con nombre propio (Av. Pasoancho) sí puede ser la escrita.
+  const routeNum = routeComp ? /(?<![0-9])(\d{1,3})(?![0-9])/u.exec(plain(routeComp.long_name))?.[1] : undefined;
+  if (routeNum && routeNum !== mainNum) return false;
   return hasMain || hasCross;
+}
+
+/** Los números de la vía y la placa del resultado («Carrera 95A», «42-141» → 95, 42, 141). */
+function resultNumbers(r: GoogleGeocodeResult): string[] {
+  const components = r.address_components ?? [];
+  const route = components.find((c) => c.types.includes("route"))?.long_name;
+  const plate = components.find((c) => c.types.includes("street_number"))?.long_name;
+  if (!route || !plate) return [];
+  return plain(`${route} ${plate}`).match(/\d+/gu) ?? [];
+}
+
+/** El texto trae, en orden, la vía y la placa del resultado aunque sin «#» («kra 95a 42 141»). */
+function writesResultNumbers(r: GoogleGeocodeResult, address: string): boolean {
+  const wanted = resultNumbers(r);
+  if (wanted.length < 3) return false;
+  const written = plain(address).match(/\d+/gu) ?? [];
+  let i = 0;
+  for (const n of written) if (n === wanted[i]) i++;
+  return i === wanted.length;
+}
+
+/** Sin vía y placa escritas («Unicentro», «Valle del Lili»), un resultado
+ *  parcial es Google adivinando: «Valle del Lili» daba la clínica, «Bochalema»
+ *  un local del barrio y «Univalle sede Meléndez» la sede de San Fernando.
+ *  Con eso, también pasan a la central lugares que Google sí acertaba
+ *  (Unicentro, la Javeriana): se prefiere eso a un punto inventado. */
+function trustsPlace(r: GoogleGeocodeResult, address: string): boolean {
+  return !r.partial_match || WRITTEN_STREET_RE.test(plain(address)) || writesResultNumbers(r, address);
 }
 
 /** Pura: decide con la respuesta de Google, sin red. */
@@ -223,14 +269,15 @@ export function interpretGeocode(data: GoogleGeocodeResponse, address = ""): Geo
   if (data.status === "ZERO_RESULTS") return { kind: "not_found" };
   if (data.status !== "OK") return { kind: "failed" };
   const expected = requestedMunicipality(address);
-  const best = data.results?.find(
-    (r) =>
-      PRECISE.has(r.geometry.location_type) &&
-      insideArea(r.geometry.location) &&
-      matchesMunicipality(r, expected) &&
-      matchesWrittenStreet(r, address),
+  const plausible = (data.results ?? []).filter(
+    (r) => insideArea(r.geometry.location) && matchesMunicipality(r, expected) && matchesWrittenStreet(r, address),
   );
+  const best = plausible.find((r) => precise(r) && trustsPlace(r, address));
   if (!best) return { kind: "not_found" };
+  // Otra dirección o lugar que también sirve, lejos de este: no se sabe cuál es.
+  // El centro de una calle o de un barrio no cuenta como otro lugar.
+  const otherPlace = plausible.some((r) => pinpoints(r) && haversineKm(r.geometry.location, best.geometry.location) * 1000 > AMBIGUOUS_M);
+  if (otherPlace) return { kind: "not_found" };
   const sub = best.address_components?.find((c) => c.types.includes("neighborhood") || c.types.includes("sublocality"))?.long_name ?? null;
   const neighborhood = expected ? (sub ? `${sub}, ${expected.label}` : expected.label) : sub;
   return { kind: "found", location: best.geometry.location, neighborhood };
@@ -257,6 +304,20 @@ function simulatedLocation(address: string): LatLng {
  *  pedido a la central, no se cobra sin ubicación). */
 export async function geocodeAddress(address: string): Promise<GeocodeOutcome> {
   if (env.geocodeSimulated) return { kind: "found", location: simulatedLocation(address) };
+  const response = await requestGeocode(address);
+  if (response.kind !== "response") return response;
+  const outcome = interpretGeocode(response.data, address);
+  if (outcome.kind === "failed") console.error(`[geocode] ${response.data.status}: ${response.data.error_message ?? ""}`);
+  return outcome;
+}
+
+/**
+ * La consulta a Google, con la respuesta tal cual: `geocodeAddress` decide
+ * con ella, y la medición de precisión (`address-bench.ts`) además la muestra.
+ */
+export async function requestGeocode(
+  address: string,
+): Promise<{ kind: "response"; data: GoogleGeocodeResponse } | { kind: "failed" } | { kind: "disabled" }> {
   const key = env.google.mapsApiKey;
   if (!key) return { kind: "disabled" };
 
@@ -277,10 +338,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeOutcome> {
       console.error(`[geocode] error HTTP ${response.status}`);
       return { kind: "failed" };
     }
-    const data = (await response.json()) as GoogleGeocodeResponse;
-    const outcome = interpretGeocode(data, address);
-    if (outcome.kind === "failed") console.error(`[geocode] ${data.status}: ${data.error_message ?? ""}`);
-    return outcome;
+    return { kind: "response", data: (await response.json()) as GoogleGeocodeResponse };
   } catch (error) {
     console.error("[geocode] no se pudo consultar:", error instanceof Error ? error.message : error);
     return { kind: "failed" };

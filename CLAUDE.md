@@ -27,6 +27,7 @@ npm run bot:chat                   # conversar con el bot desde la terminal (Wha
 npm run bot:gps                    # motos de prueba que se mueven y reportan GPS al bot local (solo contra una base local)
 npm run bot:eval:restaurantes      # compara nombres de restaurantes contra OpenAI de verdad (gasta la llave; no va en CI)
 npm run calles:comparar            # km por calle (OSRM_URL) frente a línea recta × 1,3, con los restaurantes y zonas de la base; solo agregados
+npm run bot:direcciones:medir       # precisión de las direcciones contra Google real (solo desde el servidor: deploy/measure-addresses.sh); los casos van en apps/bot/direcciones/casos.json
 npm test                           # pruebas unitarias (*.test.ts en packages/shared y apps/bot)
 npm run lint                       # eslint en cada workspace
 npm run typecheck                  # tsc --build (project references; el bot se revisa en el build o con tsc -p apps/bot)

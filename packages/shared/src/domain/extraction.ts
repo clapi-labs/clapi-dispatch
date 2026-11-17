@@ -252,9 +252,10 @@ export function looksLikeMultiUnit(address: string | null | undefined): boolean 
 }
 
 /** Calle, carrera, avenida…: el tipo de vía, sin el cual «la 42 con 83» puede
- *  ser una calle o una carrera. */
+ *  ser una calle o una carrera. Vale pegado al número («cra97#45-11») y con
+ *  los errores de tipeo de siempre («carerra», «cale»). */
 const ROAD_TYPE =
-  /\b(calle|cll?|carrera|cra|cr|kra?|kr|avenida|av|avda|diagonal|dg|diag|transversal|tv|trans|transv|autopista|circular|circ|v[ií]a|km|kil[oó]metro|manzana|mz|vereda|corregimiento|sector)\b/iu;
+  /(?<![\p{L}\p{N}])(cal+e|cll?|car+e+r+a|cra|cr|kra?|kr|avenida|av|avda|diagonal|dg|diag|transversal|tv|trans|transv|autopista|circular|circ|v[ií]a|km|kil[oó]metro|manzana|mz|vereda|corregimiento|sector)(?!\p{L})/iu;
 
 /**
  * La dirección tiene números pero no dice el tipo de vía («La 42 con

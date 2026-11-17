@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { emptyDelivery, fixPaymentMethod, mentionsCardOnDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, type Interpretation, type OrderDraft } from "./extraction";
+import { ambiguousAddress, emptyDelivery, fixPaymentMethod, mentionsCardOnDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, type Interpretation, type OrderDraft } from "./extraction";
 
 type DeliveryFields = Interpretation["entregas"][number];
 
@@ -199,5 +199,25 @@ describe("datáfono y tarjeta", () => {
   it("sin mencionarlo no se toca nada", () => {
     const [e] = fixPaymentMethod([fields({ metodoPago: "transferencia" })], "ya está pagado por Nequi");
     assert.equal(e.metodoPago, "transferencia");
+  });
+});
+
+describe("ambiguousAddress: sin tipo de vía se confirma", () => {
+  it("«la 42 con 83» o «42 # 83-15» no dicen si es calle o carrera", () => {
+    for (const a of ["la 42 con 83", "42 # 83-15", "La 42 con 83E-15", "760004, Cali"]) assert.equal(ambiguousAddress(a), true, a);
+  });
+
+  it("con el tipo de vía pegado al número o mal escrito, no se pregunta de más", () => {
+    for (const a of ["cra97#45-11 loc 102", "Carerra 98 # 42-55", "cll 48bis 92-27", "kra 95a 42 141", "Kr 91 # 34 - 110", "cale 5 # 40-20", "cl.42 #81-15"]) {
+      assert.equal(ambiguousAddress(a), false, a);
+    }
+  });
+
+  it("un lugar con nombre y sin número de calle no es dudoso", () => {
+    for (const a of ["Clínica Farallones", "Unicentro local 12", "Conjunto Bosques del Lili, torre 3"]) assert.equal(ambiguousAddress(a), false, a);
+  });
+
+  it("una palabra que empieza como un tipo de vía no cuenta como tipo de vía", () => {
+    assert.equal(ambiguousAddress("Callejón 4 casa 2"), true);
   });
 });
