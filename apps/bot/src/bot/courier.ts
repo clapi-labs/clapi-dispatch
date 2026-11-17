@@ -14,7 +14,7 @@ import {
 } from "@dispatch/shared/db";
 import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPhase, type DeliveryPlace, type ReturnDebtReason } from "@dispatch/shared";
 
-import { isAck, parseCourierText } from "@/bot/courier-text";
+import { isAck, isDisconnect, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
 import { courierSay, notifyAssigned, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
@@ -209,6 +209,7 @@ async function markReturned(tripId: number) {
  *   el botón, si solo hay un pedido al que le aplique.
  * - «Llevo datáfono», «quedé debiendo en X», «ya devolví el datáfono», «ya le
  *   pagué a X»: declara o cierra un pendiente de regreso.
+ * - «Desactivado»: termina su turno si no lleva pedidos encima.
  */
 export async function handleCourier(courier: Courier, conversation: Conversation, message: IncomingMessage) {
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
@@ -265,6 +266,31 @@ export async function handleCourier(courier: Courier, conversation: Conversation
   // de entregar.
   if (message.kind === "text" && (await handleDebtText(courier, conversation, message.phone, message.text))) return;
 
+  // Terminar el turno: solo si no lleva pedidos abiertos. Si ya estaba
+  // desconectado, no lo conecta.
+  if (message.kind === "text" && isDisconnect(message.text)) {
+    if (courier.status === "offline") {
+      await say(conversation.id, message.phone, "Ya estabas desconectado. Para volver escribe hola.");
+      return;
+    }
+    if (courier.status === "paused") return;
+    const [disconnected] = !trips.length
+      ? await db
+          .update(schema.couriers)
+          .set({ status: "offline" })
+          .where(and(eq(schema.couriers.id, courier.id), eq(schema.couriers.status, courier.status)))
+          .returning({ id: schema.couriers.id })
+      : [];
+    await say(
+      conversation.id,
+      message.phone,
+      disconnected
+        ? "Quedaste desconectado. Para volver escribe hola."
+        : "Termina primero lo que llevas y vuelve a escribir desactivado.",
+    );
+    return;
+  }
+
   const written = message.kind === "text" ? parseCourierText(message.text) : null;
   if (written) {
     const applies = trips.filter((t) => {
@@ -313,8 +339,8 @@ export async function handleCourier(courier: Courier, conversation: Conversation
       conversation.id,
       message.phone,
       testNumber
-        ? `🧪 ${first}, quedaste conectado como número de prueba del simulador. Te llega el próximo pedido que reciba una moto simulada 🛵`
-        : `👋 ${first}, quedaste conectado. Te escribo apenas tengas un servicio 🛵`,
+        ? `🧪 ${first}, quedaste conectado como número de prueba del simulador. Te llega el próximo pedido que reciba una moto simulada 🛵 Para desconectarte escribe desactivado.`
+        : `👋 ${first}, quedaste conectado. Te escribo apenas tengas un servicio 🛵 Para desconectarte escribe desactivado.`,
     );
     return;
   }

@@ -13,6 +13,22 @@ export function isAck(text: string) {
   return ACK.test(text.trim());
 }
 
+const DISCONNECT = /^(?:desactivad[oa]|desactivar(?:me)?|me\s+desactivo)$/i;
+
+/**
+ * «Desactivado», sin importar mayúsculas, tildes ni signos («Desactivado.»,
+ * «DESACTIVADO 👍»). Solo cuenta si el mensaje entero es la palabra o una
+ * variante directa: una frase normal que la contenga sigue su camino.
+ */
+export function isDisconnect(raw: string): boolean {
+  const clean = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")
+    .replace(/\s+/g, " ");
+  return DISCONNECT.test(clean);
+}
+
 const END = "[\\s!.,👍✅🛵🙏]*$";
 const ALREADY = "^(?:ya\\s+)?(?:lo\\s+|el pedido\\s+)?";
 /** «… y vuelvo»: de cuando la entrega decidía si volvía. Se acepta y se ignora:
