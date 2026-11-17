@@ -12,8 +12,14 @@ export const dynamic = "force-dynamic";
  * minutos del aviso del datáfono.
  */
 export async function GET() {
-  const [{ open, resolved }, config] = await Promise.all([returnDebtsForPortal(), getBotConfig()]);
-  return Response.json({ open, resolved, datafonoAlertMinutes: config.datafonoAlertMinutes });
+  const [{ open, resolved, claims }, config] = await Promise.all([returnDebtsForPortal(), getBotConfig()]);
+  return Response.json({
+    open,
+    resolved,
+    claims,
+    datafonoAlertMinutes: config.datafonoAlertMinutes,
+    closingDebtMinutes: config.closingDebtMinutes,
+  });
 }
 
 /**
@@ -79,13 +85,18 @@ export async function POST(request: Request) {
   return Response.json(debt, { status: 201 });
 }
 
-/** Los minutos del aviso del datáfono (`settings.bot_config.datafonoAlertMinutes`). */
+/** Los minutos del aviso del datáfono y del recordatorio antes del cierre (`settings.bot_config`). */
 export async function PUT(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { datafonoAlertMinutes?: unknown };
-  const minutes = Number(body.datafonoAlertMinutes);
+  const body = (await request.json().catch(() => ({}))) as { datafonoAlertMinutes?: unknown; closingDebtMinutes?: unknown };
+  const config = await getBotConfig();
+  const minutes = body.datafonoAlertMinutes !== undefined ? Number(body.datafonoAlertMinutes) : config.datafonoAlertMinutes;
+  const closingMinutes = body.closingDebtMinutes !== undefined ? Number(body.closingDebtMinutes) : config.closingDebtMinutes;
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 24 * 60) {
     return Response.json({ error: `Los minutos van de 1 a 1.440 (por defecto, ${DEFAULT_DATAFONO_ALERT_MINUTES})` }, { status: 400 });
   }
-  await saveDatafonoAlertMinutes(minutes);
-  return Response.json({ ok: true, datafonoAlertMinutes: minutes });
+  if (!Number.isInteger(closingMinutes) || closingMinutes < 1 || closingMinutes > 24 * 60) {
+    return Response.json({ error: "Los minutos antes del cierre van de 1 a 1.440" }, { status: 400 });
+  }
+  await saveDatafonoAlertMinutes(minutes, closingMinutes);
+  return Response.json({ ok: true, datafonoAlertMinutes: minutes, closingDebtMinutes: closingMinutes });
 }

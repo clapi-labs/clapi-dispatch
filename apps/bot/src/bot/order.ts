@@ -12,6 +12,7 @@ import {
   namedAsDestination,
   normalizeDraft,
   normalizeName,
+  parseDebtClaim,
   removeDeliveries,
   type DeliveryDraft,
   type DoubtfulField,
@@ -38,7 +39,7 @@ import {
 import { coverageAt, coverageQueryReason, nearEdgeText, noServiceText } from "@/bot/coverage";
 import { say } from "@/bot/messaging";
 import { dispatchNewTrip } from "@/dispatch/engine";
-import { notifyAssigned } from "@/bot/notify";
+import { handleRestaurantDebtClaim, notifyAssigned } from "@/bot/notify";
 import { recognizeRestaurant } from "@/bot/restaurant-identity";
 import { pinAddress } from "@/bot/turns";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
@@ -488,13 +489,14 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     const extraction = await interpretMessage(text, draft, images);
+    const claim = extraction.claim ?? parseDebtClaim(text);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
-    // escala y el borrador queda como estaba. Solo se le pide reenviar.
-    if (extraction.failed) {
+    // escala y el borrador queda como estaba. Si era un reclamo claro, igual se atiende.
+    if (extraction.failed && !claim) {
       await say(conversation.id, message.phone, TECHNICAL_ERROR_MESSAGE);
       return;
     }
-    if (extraction.confused) {
+    if (extraction.confused && !claim) {
       // Fuera de horario no pasa a la central, salvo que tenga un pedido en
       // curso: lo ya confirmado se atiende igual («el domi no ha llegado»).
       if (!open && !(await openTrips(conversation.id)).length) {
@@ -511,6 +513,38 @@ export async function handleRestaurant(ctx: Context) {
 
     saidName = extraction.fields.nombreRestaurante ?? null;
     if (saidName && namedAsDestination(text, saidName)) saidName = null;
+
+    // Reclamo de su plata o de su datáfono (#61): se atiende sin frenar los
+    // pedidos. Si el mensaje solo traía el reclamo, termina aquí; si además
+    // pide un domicilio o manda datos, sigue normal abajo.
+    if (claim) {
+      const rec = restaurant
+        ? { restaurant }
+        : await recognizeRestaurant({ byPhone: restaurant, saidName, profileName: conversation.displayName, reviewed: draft.nombresRevisados ?? [] });
+      const rest = rec.restaurant ?? restaurant;
+      const restName = rest?.name ?? draft.origenRestaurante ?? conversation.displayName ?? message.phone;
+      await handleRestaurantDebtClaim(
+        {
+          conversationId: conversation.id,
+          phone: message.phone,
+          restaurantId: rest?.id ?? null,
+          restaurantName: restName,
+          claim,
+          replyTo: message.waMessageId,
+        },
+        now,
+      );
+      const merged = mergeTripFields(before, extraction.fields);
+      const hasOrderContent =
+        pins.length > 0 ||
+        pressedConfirm ||
+        extraction.confirms ||
+        extraction.intent === "pedir" ||
+        extraction.intent === "cotizar" ||
+        countFields(merged) > countFields(before) ||
+        (extraction.fields.quitar ?? []).length > 0;
+      if (!hasOrderContent && !extraction.query) return;
+    }
 
     // Consultas: no cambian el pedido en curso, solo se responden.
     if (extraction.query === "estado") {

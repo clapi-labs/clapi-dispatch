@@ -6,12 +6,18 @@ import { isTripOpen, stopsForPhase, tripPhase } from "./phase";
 import {
   datafonoLateAt,
   datafonoOutSince,
+  debtClaimCourierText,
+  debtClaimRestaurantText,
   debtCloseText,
+  debtClosingSoonText,
   debtGroupKey,
+  decideDebtClaim,
   groupDebts,
   joinCodes,
   matchRestaurant,
+  parseDebtClaim,
   parseDebtText,
+  type ClaimGroupCandidate,
   type DebtRow,
 } from "./return-debts";
 
@@ -191,5 +197,142 @@ describe("«tarjeta» y «datáfono» se leen como datáfono, no como ya pagado"
     assert.deepEqual(fixPaymentMethod([{ metodoPago: "efectivo" as const }], "lleve datáfono"), [{ metodoPago: "efectivo" }]);
     assert.deepEqual(fixPaymentMethod([{ metodoPago: null }, { metodoPago: null }], "lleve datáfono"), [{ metodoPago: null }, { metodoPago: null }]);
     assert.deepEqual(fixPaymentMethod([{ metodoPago: "transferencia" as const }], "ya está pagado por Nequi"), [{ metodoPago: "transferencia" }]);
+  });
+});
+
+describe("parseDebtClaim: cuando el restaurante reclama su plata o su datáfono (#61)", () => {
+  it("reconoce reclamos de plata", () => {
+    assert.deepEqual(parseDebtClaim("¿a qué hora me traen la plata?"), { reason: "plata", closing: false });
+    assert.deepEqual(parseDebtClaim("¿cuándo me traen la plata?"), { reason: "plata", closing: false });
+    assert.deepEqual(parseDebtClaim("necesito la plata de los domicilios"), { reason: "plata", closing: false });
+    assert.deepEqual(parseDebtClaim("no me han traído el efectivo"), { reason: "plata", closing: false });
+    assert.deepEqual(parseDebtClaim("me quedaron debiendo un pedido"), { reason: "plata", closing: false });
+  });
+
+  it("reconoce reclamos de datáfono", () => {
+    assert.deepEqual(parseDebtClaim("necesito el datáfono"), { reason: "datafono", closing: false });
+    assert.deepEqual(parseDebtClaim("¿quién tiene el datáfono?"), { reason: "datafono", closing: false });
+    assert.deepEqual(parseDebtClaim("no me han devuelto el datafono"), { reason: "datafono", closing: false });
+    assert.deepEqual(parseDebtClaim("¿a qué hora traen el datáfono?"), { reason: "datafono", closing: false });
+    assert.deepEqual(parseDebtClaim("se llevaron el datáfono"), { reason: "datafono", closing: false });
+  });
+
+  it("reconoce cuando dicen que ya van a cerrar", () => {
+    assert.deepEqual(parseDebtClaim("ya vamos a cerrar, necesito la plata"), { reason: "plata", closing: true });
+    assert.deepEqual(parseDebtClaim("vamos a cerrar, mándenme el datáfono"), { reason: "datafono", closing: true });
+    assert.deepEqual(parseDebtClaim("ya vamos a cerrar"), { reason: null, closing: true });
+    assert.deepEqual(parseDebtClaim("estamos cerrando, que pasen a cuadrar"), { reason: "plata", closing: true });
+  });
+
+  it("reconoce un reclamo aunque venga en el mismo mensaje que un pedido", () => {
+    assert.deepEqual(
+      parseDebtClaim("Mándame un domi para Cra 85 # 15-20, Juan 3001234567, cobra 30.000. ¿A qué hora me traen la plata?"),
+      { reason: "plata", closing: false },
+    );
+  });
+
+  it("no confunde pedidos normales ni consultas de estado o cobertura con reclamos", () => {
+    for (const msg of [
+      "Cra 100 # 15-20, Juan Pérez 3001234567, cobra $45.000 en efectivo",
+      "Necesito un domi con datáfono para Ciudad Jardín",
+      "Llevar datáfono, el cliente paga con tarjeta",
+      "Paga en efectivo con billete de 50 mil",
+      "¿ya va la moto?",
+      "¿ya llegó el domiciliario?",
+      "¿quién viene por el pedido B-12?",
+      "¿llegan a Pance?",
+      "¿cuánto vale un domicilio a Valle del Lili?",
+    ]) {
+      assert.equal(parseDebtClaim(msg), null, msg);
+    }
+  });
+});
+
+describe("decideDebtClaim: caso claro vs. pasar a la central (#61)", () => {
+  const candidate = (over: Partial<ClaimGroupCandidate> = {}): ClaimGroupCandidate => ({
+    courierId: 10,
+    courierName: "Juan",
+    reason: "plata",
+    since: t(0),
+    claimedAt: null,
+    connected: true,
+    busy: false,
+    ...over,
+  });
+
+  it("caso claro: un domiciliario conectado y libre, o con demanda baja → avisa automáticamente", () => {
+    assert.deepEqual(decideDebtClaim({ reason: "plata", closing: false }, [candidate({ busy: false })], "baja"), {
+      kind: "auto",
+      courierId: 10,
+      courierName: "Juan",
+      busy: false,
+    });
+    assert.deepEqual(decideDebtClaim({ reason: "plata", closing: false }, [candidate({ busy: true })], "baja"), {
+      kind: "auto",
+      courierId: 10,
+      courierName: "Juan",
+      busy: true,
+    });
+    assert.deepEqual(decideDebtClaim({ reason: "plata", closing: false }, [candidate({ busy: false })], "alta"), {
+      kind: "auto",
+      courierId: 10,
+      courierName: "Juan",
+      busy: false,
+    });
+  });
+
+  it("ocupado con demanda alta y sin cierre → pasa a la central", () => {
+    const decision = decideDebtClaim({ reason: "plata", closing: false }, [candidate({ busy: true })], "alta");
+    assert.equal(decision.kind, "central");
+  });
+
+  it("«vamos a cerrar» pesa más que la demanda: aunque esté alta y ocupado, se avisa al domiciliario", () => {
+    assert.deepEqual(decideDebtClaim({ reason: "plata", closing: true }, [candidate({ busy: true })], "alta"), {
+      kind: "auto",
+      courierId: 10,
+      courierName: "Juan",
+      busy: true,
+    });
+  });
+
+  it("dos domiciliarios con pendientes → va a la central", () => {
+    const decision = decideDebtClaim(
+      { reason: "plata", closing: false },
+      [candidate({ courierId: 10, courierName: "Juan" }), candidate({ courierId: 11, courierName: "Pedro" })],
+      "baja",
+    );
+    assert.equal(decision.kind, "central");
+    if (decision.kind === "central") assert.match(decision.why, /Juan y Pedro/);
+  });
+
+  it("nadie tiene pendientes registrados → va a la central", () => {
+    const decision = decideDebtClaim({ reason: "plata", closing: false }, [], "baja");
+    assert.equal(decision.kind, "central");
+    if (decision.kind === "central") assert.match(decision.why, /no lo declaró/);
+  });
+
+  it("el domiciliario está desconectado → va a la central", () => {
+    const decision = decideDebtClaim({ reason: "plata", closing: false }, [candidate({ connected: false })], "baja");
+    assert.equal(decision.kind, "central");
+    if (decision.kind === "central") assert.match(decision.why, /desconectado/);
+  });
+
+  it("si el restaurante insiste después de que ya se avisó → no repite al domiciliario, pasa a la central", () => {
+    const decision = decideDebtClaim({ reason: "plata", closing: true }, [candidate({ claimedAt: t(5) })], "baja");
+    assert.equal(decision.kind, "central");
+    if (decision.kind === "central") assert.match(decision.why, /volvió a reclamar/);
+  });
+
+  it("los textos al domiciliario, antes del cierre y al restaurante", () => {
+    assert.equal(
+      debtClaimCourierText("plata", "Donde Lucho", ["A-07"], { closing: true, busy: true }),
+      "📢 Donde Lucho necesita su plata (A-07) (van a cerrar). Pasa apenas entregues lo que llevas. Cuando lo hagas, toca «Ya pagué».",
+    );
+    assert.equal(
+      debtClosingSoonText("datafono", "Donde Lucho", ["A-07"]),
+      "⏰ Donde Lucho cierra pronto: pasa a devolver el datáfono (A-07). Cuando lo hagas, toca «Ya lo devolví».",
+    );
+    assert.equal(debtClaimRestaurantText({ kind: "auto", courierName: "Juan" }), "Ya le avisamos a Juan, va para allá 🛵");
+    assert.equal(debtClaimRestaurantText({ kind: "central" }), "La central ya lo está gestionando 🙏");
   });
 });

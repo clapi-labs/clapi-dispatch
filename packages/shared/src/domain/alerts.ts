@@ -112,6 +112,43 @@ export function datafonoLateMessage(debt: { id: number; courierName: string; res
   };
 }
 
+/** Un restaurante reclamó su plata o su datáfono y requiere a la central (#61). */
+export function debtClaimMessage(claim: {
+  id: number;
+  restaurant: string;
+  reason: "datafono" | "plata" | null;
+  closing: boolean;
+  why: string;
+  at: Date;
+}): PushMessage {
+  const what = claim.reason === "datafono" ? "datáfono" : claim.reason === "plata" ? "plata" : "pendiente";
+  return {
+    title: `Reclamo de ${what} · ${claim.restaurant}${claim.closing ? " (cierra)" : ""}`,
+    body: clip(claim.why),
+    url: "/pendientes",
+    tag: `reclamo-${claim.id}`,
+    at: claim.at.getTime(),
+  };
+}
+
+/** A la hora límite del restaurante todavía hay un datáfono afuera (#61). */
+export function datafonoClosingMessage(debt: {
+  id: number;
+  courierName: string;
+  restaurant: string;
+  tripCode: string | null;
+  deadline: string;
+  at: Date;
+}): PushMessage {
+  return {
+    title: `Datáfono afuera al cierre · ${debt.restaurant}`,
+    body: clip(`${debt.courierName} todavía tiene el datáfono${debt.tripCode ? ` (${debt.tripCode})` : ""} y cerró a las ${debt.deadline}.`),
+    url: "/pendientes",
+    tag: `datafono-cierre-${debt.id}`,
+    at: debt.at.getTime(),
+  };
+}
+
 /** El aviso de prueba que se manda desde el portal al activar las alertas. */
 export function testMessage(now = new Date()): PushMessage {
   return {

@@ -107,15 +107,31 @@ export type ReturnDebt = {
   deliveredAt: string | null;
   declaredBy: "courier" | "central";
   reminderAt: string | null;
+  claimedAt?: string | null;
+  closingNotifiedAt?: string | null;
   resolvedAt: string | null;
   resolvedBy: "courier" | "central" | null;
   resolvedByName: string | null;
 };
 
+export type ReturnDebtClaim = {
+  id: number;
+  restaurantId: number | null;
+  restaurantName: string;
+  conversationId: number | null;
+  reason: "datafono" | "plata" | null;
+  closing: boolean;
+  why: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ReturnDebtsData = {
   open: ReturnDebt[];
   resolved: ReturnDebt[];
+  claims: ReturnDebtClaim[];
   datafonoAlertMinutes: number;
+  closingDebtMinutes: number;
 };
 
 export type CourierProfile = {

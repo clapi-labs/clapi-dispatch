@@ -8,11 +8,19 @@ import {
   getBotConfig,
   getDemandLevel,
   getReturnDebt,
+  getServiceHours,
+  hoursFor,
+  listRestaurants,
+  markReturnDebtsClaimed,
+  markReturnDebtsClosingNotified,
   markReturnDebtsReminded,
   openGroupOf,
+  openReturnDebts,
   openReturnDebtsOfTrip,
   openReturnStops,
   openTripCondition,
+  recordDebtClaim,
+  resolveDebtClaimsOfRestaurant,
   returnGroupDebtIds,
   routeReturnDebts,
   schema,
@@ -21,15 +29,24 @@ import {
 } from "@dispatch/shared/db";
 import {
   customerWaitEndsAt,
+  debtClaimCourierText,
+  debtClaimRestaurantText,
   debtCloseText,
+  debtClosingSoonText,
+  decideDebtClaim,
   goingReminderAt,
+  groupDebts,
   idlePayText,
   isBeforePickup,
   joinCodes,
+  matchRestaurant,
+  minutesLeft,
   pickupLateAt,
   sameRestaurant,
   sameTripReturnText,
   tripPhase,
+  type ClaimGroupCandidate,
+  type DebtClaim,
   type PhaseInput,
 } from "@dispatch/shared";
 
@@ -555,7 +572,163 @@ export async function notifyDebtNudge(debtId: number): Promise<boolean> {
   if (debt.reason === "plata") await routeReturnDebts(await returnGroupDebtIds(debt.id));
   await courierSay(debt.courierId, debt.courierPhone, reminder.text, { tripId: debt.tripId, buttons: [debtButton(debt.id, debt.reason)] });
   await markReturnDebtsReminded(reminder.ids);
+  await resolveDebtClaimsOfRestaurant({ restaurantId: debt.restaurantId, restaurantName: debt.restaurantName });
   return true;
+}
+
+/**
+ * Cuando un restaurante reclama su plata o su datáfono, o avisa que ya va a
+ * cerrar (#61):
+ * - Caso claro (un solo domiciliario tiene un pendiente que coincide, está
+ *   conectado, no se le había avisado ya por un reclamo y puede ir): le escribe
+ *   al domiciliario, mete el regreso en su ruta y le responde al restaurante
+ *   «Ya le avisamos a X, va para allá 🛵».
+ * - Cualquier otro caso: registra el reclamo para la central y le responde al
+ *   restaurante «La central ya lo está gestionando 🙏».
+ */
+export async function handleRestaurantDebtClaim(
+  input: {
+    conversationId: number;
+    phone: string;
+    restaurantId: number | null;
+    restaurantName: string;
+    claim: DebtClaim;
+    replyTo?: string | null;
+  },
+  now = new Date(),
+) {
+  const [allDebts, demand] = await Promise.all([openReturnDebts(), getDemandLevel()]);
+  const debts = allDebts.filter((d) => sameRestaurant(input, d));
+  const groups = groupDebts(debts);
+  const courierIds = [...new Set(groups.map((g) => g.courierId))];
+  const couriers = courierIds.length
+    ? await db.select().from(schema.couriers).where(inArray(schema.couriers.id, courierIds))
+    : [];
+  const byCourier = new Map(couriers.map((c) => [c.id, c]));
+  const busyByCourier = new Map<number, boolean>();
+  for (const id of courierIds) busyByCourier.set(id, await hasOpenTrips(id));
+
+  const candidates: ClaimGroupCandidate[] = groups.map((g) => {
+    const c = byCourier.get(g.courierId);
+    return {
+      courierId: g.courierId,
+      courierName: g.debts[0].courierName,
+      reason: g.reason,
+      since: g.since,
+      claimedAt: g.debts.map((d) => d.claimedAt).find((at) => at !== null) ?? null,
+      connected: Boolean(c?.active && c.status !== "offline"),
+      busy: busyByCourier.get(g.courierId) ?? false,
+    };
+  });
+
+  const decision = decideDebtClaim(input.claim, candidates, demand);
+  if (decision.kind === "auto") {
+    const targetGroups = groups.filter(
+      (g) => g.courierId === decision.courierId && (!input.claim.reason || g.reason === input.claim.reason),
+    );
+    for (const g of targetGroups) {
+      const ids = g.debts.map((d) => d.id);
+      if (g.reason === "plata") await routeReturnDebts(ids);
+      await markReturnDebtsClaimed(ids, now);
+      const text = debtClaimCourierText(
+        g.reason,
+        g.restaurantName,
+        g.debts.map((d) => d.tripCode),
+        { closing: input.claim.closing, busy: decision.busy },
+      );
+      await courierSay(g.courierId, g.debts[0].courierPhone, text, {
+        tripId: g.debts[0].tripId,
+        buttons: [debtButton(g.debts[0].id, g.reason)],
+      });
+    }
+    await say(input.conversationId, input.phone, debtClaimRestaurantText(decision), {
+      replyTo: input.replyTo ?? undefined,
+    });
+    return decision;
+  }
+
+  await recordDebtClaim(
+    {
+      restaurantId: input.restaurantId,
+      restaurantName: input.restaurantName,
+      conversationId: input.conversationId,
+      reason: input.claim.reason,
+      closing: input.claim.closing,
+      why: decision.why,
+    },
+    now,
+  );
+  await say(input.conversationId, input.phone, debtClaimRestaurantText(decision), {
+    replyTo: input.replyTo ?? undefined,
+  });
+  return decision;
+}
+
+/**
+ * Lo corre el tick: unos minutos antes de la hora límite de cada restaurante
+ * (`closingDebtMinutes`), avisa a quien tenga un pendiente con ese restaurante
+ * («⏰ X cierra pronto: pasa a devolver el datáfono / a pagar») con las mismas
+ * reglas del caso claro (#61).
+ */
+export async function remindClosingDebts(now = new Date()): Promise<number[]> {
+  const [debts, config, hours, restaurants, demand] = await Promise.all([
+    openReturnDebts(),
+    getBotConfig(),
+    getServiceHours(),
+    listRestaurants(),
+    getDemandLevel(),
+  ]);
+  if (!debts.length) return [];
+
+  const groups = groupDebts(debts);
+  const courierIds = [...new Set(groups.map((g) => g.courierId))];
+  const couriers = await db.select().from(schema.couriers).where(inArray(schema.couriers.id, courierIds));
+  const byCourier = new Map(couriers.map((c) => [c.id, c]));
+  const byRestId = new Map(restaurants.map((r) => [r.id, r]));
+
+  const notified: number[] = [];
+  for (const g of groups) {
+    if (g.debts.some((d) => d.closingNotifiedAt !== null || d.claimedAt !== null)) continue;
+    const r = (g.restaurantId ? byRestId.get(g.restaurantId) : null) ?? matchRestaurant(g.restaurantName, restaurants);
+    const restHours = hoursFor(r ?? null, hours);
+    const left = minutesLeft(now, restHours);
+    if (left === null || left > config.closingDebtMinutes) continue;
+
+    // Mismas reglas del caso claro para ese restaurante y motivo (con closing = true).
+    const peerGroups = groups.filter((p) => p.reason === g.reason && sameRestaurant(g, p));
+    const candidates: ClaimGroupCandidate[] = [];
+    for (const p of peerGroups) {
+      const c = byCourier.get(p.courierId);
+      candidates.push({
+        courierId: p.courierId,
+        courierName: p.debts[0].courierName,
+        reason: p.reason,
+        since: p.since,
+        claimedAt: p.debts.map((d) => d.claimedAt ?? d.closingNotifiedAt).find((at) => at !== null) ?? null,
+        connected: Boolean(c?.active && c.status !== "offline"),
+        busy: await hasOpenTrips(p.courierId),
+      });
+    }
+    const decision = decideDebtClaim({ reason: g.reason, closing: true }, candidates, demand);
+    if (decision.kind !== "auto" || decision.courierId !== g.courierId) continue;
+
+    const ids = g.debts.map((d) => d.id);
+    const claimedIds = await markReturnDebtsClosingNotified(ids, now);
+    if (!claimedIds.length) continue;
+    if (g.reason === "plata") await routeReturnDebts(ids);
+    const text = debtClosingSoonText(
+      g.reason,
+      g.restaurantName,
+      g.debts.map((d) => d.tripCode),
+      { busy: decision.busy },
+    );
+    await courierSay(g.courierId, g.debts[0].courierPhone, text, {
+      tripId: g.debts[0].tripId,
+      buttons: [debtButton(g.debts[0].id, g.reason)],
+    });
+    notified.push(...claimedIds);
+  }
+  return notified;
 }
 
 /** El último mensaje que el bot le mandó a un número sobre un viaje: para
