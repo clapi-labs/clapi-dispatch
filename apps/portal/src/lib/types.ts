@@ -18,7 +18,7 @@ export type Trip = {
   deliveryFee: number;
   distanceKm: number | null;
   /** `calle` (OSRM) o `linea_recta`; nulo si no se midió. */
-  routeSource?: "calle" | "linea_recta" | null;
+  routeSource?: "google" | "calle" | "linea_recta" | null;
   /** De dónde sale `deliveryFee`: tabla por km y ajuste de la zona de la
    *  entrega. Nulos si el precio lo puso la central o es de antes del dato. */
   fareTablePrice?: number | null;

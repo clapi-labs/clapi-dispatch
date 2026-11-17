@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 
+import { createLiveRouterFromEnv } from "../domain/google-routes";
 import { createRoadRouter, straightRouteKm, type RoadDistance, type RoadRouter, type RoadSource } from "../domain/road-distance";
 import type { GeoPoint } from "../domain/dispatch/types";
 import { db } from "./client";
@@ -18,7 +19,8 @@ export const ROUTING_CONFIG_KEY = "routing_config";
  * cambia en la base, sin redesplegar (docs/OPERACION.md, «Mapa de calles»).
  */
 export type RoutingConfig = {
-  /** `true`: km reales por calle con el OSRM propio, para el precio y para los
+  /** `true`: km reales por calle (Google Routes en la cotización del bot, con respaldo
+   *  al OSRM propio), para el precio y para los
    *  minutos del engine. `false` (por defecto): línea recta × 1,3, como
    *  siempre. Se enciende junto con la tabla de precios hecha para km por
    *  calle: con la tabla vieja todos los precios subirían de golpe. */
@@ -40,7 +42,7 @@ export type QuoteCoverage = "ok" | "cerca" | "fuera" | "sin_zonas";
 export type Quote = {
   /** Distancia por calles, con un decimal. 0 si `routable` es false. */
   km: number;
-  /** De dónde salió `km`: OSRM, o línea recta × 1,3. */
+  /** De dónde salió `km`: Google Routes, OSRM, o línea recta × 1,3. */
   source: RoadSource;
   /** `false`: el punto queda fuera de las zonas o del mapa de calles, o no
    *  hay ruta hasta él. No se cotiza. */
@@ -60,19 +62,30 @@ export function routeKm(from: GeoPoint, to: GeoPoint): number {
   return straightRouteKm(from, to);
 }
 
-let router: RoadRouter | null = null;
-/** Uno por proceso: así recuerda si OSRM está caído entre cotizaciones. */
-function roadRouter(): RoadRouter {
-  router ??= createRoadRouter({ url: process.env.OSRM_URL ?? "" });
-  return router;
+let osrm: RoadRouter | null = null;
+/** Solo OSRM propio ($0), con respaldo a línea recta. Para lo masivo (tabla de
+ *  ejemplos de Tarifas): nunca llama a Google. Uno por proceso: así recuerda
+ *  si OSRM está caído entre cotizaciones. */
+export function osrmRouter(): RoadRouter {
+  osrm ??= createRoadRouter({ url: process.env.OSRM_URL ?? "" });
+  return osrm;
 }
 
-/** Los km del domicilio según el interruptor: por calle (con respaldo a línea
- *  recta si OSRM no responde) o en línea recta × 1,3. */
+let live: RoadRouter | null = null;
+/** Cotización en vivo: Google Routes → OSRM → línea recta × 1,3. Sin
+ *  `GOOGLE_MAPS_API_KEY` (el portal no la tiene) salta directo a OSRM. */
+function liveRouter(): RoadRouter {
+  live ??= createLiveRouterFromEnv(process.env);
+  return live;
+}
+
+/** Los km del domicilio según el interruptor: por calle (Google, con respaldo a
+ *  OSRM y luego a línea recta) o en línea recta × 1,3. Con `measurer` se mide
+ *  solo con ese (los procesos masivos pasan `osrmRouter()`). */
 export async function deliveryDistance(from: GeoPoint, to: GeoPoint, config?: RoutingConfig, measurer?: RoadRouter): Promise<RoadDistance> {
   const { porCalle } = config ?? (await getRoutingConfig());
   if (!porCalle) return { km: routeKm(from, to), source: "linea_recta", routable: true };
-  return (measurer ?? roadRouter()).distance(from, to);
+  return (measurer ?? liveRouter()).distance(from, to);
 }
 
 /**

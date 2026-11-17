@@ -1,7 +1,7 @@
 import { medianKm, zoneCenter, zoneOfPoint, type FareExample } from "../domain/fare-examples";
 import type { RoadSource } from "../domain/road-distance";
 import { listRestaurants } from "./restaurants";
-import { deliveryDistance, getRoutingConfig } from "./quote";
+import { deliveryDistance, getRoutingConfig, osrmRouter } from "./quote";
 import { listServiceZones } from "./service-zones";
 
 /** Cuántas distancias se piden a OSRM a la vez. */
@@ -29,7 +29,7 @@ export type FareExamples = {
 
 /**
  * Los km de la tabla de ejemplos de Tarifas, medidos igual que los mide el bot
- * (`deliveryDistance`: por calle si está encendido, línea recta × 1,3 si no):
+ * (`deliveryDistance`: por calle si está encendido, línea recta × 1,3 si no; por calle siempre con el OSRM propio, sin llamar a Google):
  * de cada restaurante activo de una zona al centro de cada zona.
  *
  * `previewStreet`: medir por calle aunque el interruptor esté apagado, para
@@ -56,13 +56,15 @@ export async function fareExampleDistances(opts: { previewStreet?: boolean } = {
   for (const [origin, points] of byZone) for (const z of usable) for (const from of points) jobs.push({ origin, destination: z.id, from });
 
   const km: (number | null)[] = new Array(jobs.length).fill(null);
+  // ~1.286 pares por consulta: solo OSRM propio, nunca Google (cuesta por llamada).
+  const measurer = osrmRouter();
   let fallbacks = 0;
   let unroutable = 0;
   let next = 0;
   async function worker() {
     while (next < jobs.length) {
       const i = next++;
-      const d = await deliveryDistance(jobs[i].from, centers.get(jobs[i].destination)!, config);
+      const d = await deliveryDistance(jobs[i].from, centers.get(jobs[i].destination)!, config, measurer);
       if (!d.routable) {
         unroutable++;
         continue;

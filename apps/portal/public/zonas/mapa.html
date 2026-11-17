@@ -746,7 +746,7 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
     if (q.total === null) { box.append(el("p", { className: "status err", textContent: "La tabla por km está vacía: el bot no puede cotizar. Llénala en Tarifas." })); return box; }
     const row = (dt, dd, cls) => [el("dt", { className: cls || "", textContent: dt }), el("dd", { className: cls || "", textContent: dd })];
     const dl = el("dl", { className: "fare" },
-      ...row("Distancia", `${kmText(q.km)} ${q.source === "calle" ? "por calle" : "en línea recta × 1,3"}`),
+      ...row("Distancia", kmText(q.km)),
       ...row("Tabla por km", pesos(q.table)),
       ...row(q.zone ? `Ajuste de «${q.zone.name}»` : "Ajuste de zona", q.zone ? signed(q.adjustment) : "sin zona"),
       ...row("Total", pesos(q.total), "total"));

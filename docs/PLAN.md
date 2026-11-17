@@ -222,7 +222,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 **Objetivo:** que el engine decida entre las tres mejores motos con tiempos reales de calle, no con línea recta.
 
 **Éxito:**
-- Verificado y anotado: si Google tiene modo moto en Colombia, el costo con el volumen real y lo que permiten sus términos sobre guardar resultados.
+- Verificado y anotado: si Google tiene modo moto en Colombia, el costo con el volumen real y lo que permiten sus términos sobre guardar resultados. (Para el precio ya se usa Google Routes en el nivel Essentials, `DRIVE` y sin tráfico, #74; `TWO_WHEELER` queda descartado por costo. Los términos prohíben cachear distancias.)
 - Si conviene: una sola consulta por pedido para las finalistas, respaldo a los km por calle de OSRM (D-5) si Google falla o pasa del tope diario, y el costo por pedido medido en staging.
 
 **Dónde mirar:** [ALGORITMO.md](ALGORITMO.md) («Cómo calcula los tiempos»), `apps/engine/`.
