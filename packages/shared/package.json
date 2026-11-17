@@ -14,6 +14,7 @@
     "./domain/fare": "./src/domain/fare.ts",
     "./domain/return-debts": "./src/domain/return-debts.ts",
     "./domain/service-hours": "./src/domain/service-hours.ts",
+    "./domain/demand": "./src/domain/demand.ts",
     "./auth/password": "./src/auth/password.ts"
   },
   "scripts": {

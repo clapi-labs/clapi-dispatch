@@ -38,13 +38,14 @@ export type SnapshotCourier = {
  *  calle de OSRM, los mismos con que se cotiza. Si no, línea recta × 1,3. */
 /** El algoritmo ya no supone que la moto vuelve a recogida después de entregar:
  *  un pendiente de regreso no la deja ocupada (docs/FLUJO-DOMICILIARIO.md). */
-export type EngineSettings = { radioKm: number; multipedido: boolean; porCalle?: boolean };
+/** `modo` sale de la demanda medida (alta = pico, baja = valle), no de la hora. */
+export type EngineSettings = { radioKm: number; multipedido: boolean; porCalle?: boolean; modo: "pico" | "valle" };
 
 type Parada = { tipo: StopKind; punto: [number, number]; pedido: number; listo_ts?: number };
 
 export type EvaluarRequest = {
   ahora: number;
-  modo: null;
+  modo: "pico" | "valle";
   multipedido: boolean;
   radio_km: number;
   pedido: { id: number; restaurante: [number, number]; cliente: [number, number]; listo_ts: number };
@@ -109,7 +110,7 @@ export function buildEvaluarRequest(
     ok: true,
     request: {
       ahora: seconds(now),
-      modo: null, // el engine lo saca de la hora de Cali
+      modo: settings.modo,
       multipedido: settings.multipedido,
       radio_km: settings.radioKm,
       pedido: { id: trip.id, restaurante: point(trip.pickupLocation), cliente: point(trip.deliveryLocation), listo_ts: seconds(trip.readyAt) },

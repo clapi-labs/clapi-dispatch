@@ -82,16 +82,16 @@ class Respuesta(unittest.TestCase):
 
 
 class Modo(unittest.TestCase):
-    def test_hora_de_cali(self):
-        # 19:30 en Cali son las 00:30 UTC del día siguiente: debe ser pico sin importar el servidor.
-        self.assertEqual(algoritmo.modo_por_hora(AHORA + 4.5 * 3600), "pico")
-        self.assertEqual(algoritmo.modo_por_hora(AHORA + 3.98 * 3600), "valle")  # 18:58
-        self.assertEqual(algoritmo.modo_por_hora(AHORA + 6.5 * 3600), "valle")   # 21:30
-
-    def test_sin_modo_lo_calcula(self):
+    def test_sin_modo_es_valle_a_cualquier_hora(self):
+        # El modo sale de la demanda que mide el bot, no del reloj: sin modo es valle,
+        # también a las 7:30 p.m. de Cali, que antes era hora pico.
         r = algoritmo.evaluar_peticion(dict(peticion([moto("Ana")]), modo=None))
         self.assertEqual(r["modo"], "valle")
         r = algoritmo.evaluar_peticion(dict(peticion([moto("Ana")]), modo=None, ahora=AHORA + 4.5 * 3600))
+        self.assertEqual(r["modo"], "valle")
+
+    def test_respeta_el_modo_que_llega(self):
+        r = algoritmo.evaluar_peticion(dict(peticion([moto("Ana")]), modo="pico"))
         self.assertEqual(r["modo"], "pico")
 
 

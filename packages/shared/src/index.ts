@@ -11,3 +11,4 @@ export * from "./domain/phase";
 export * from "./domain/restaurant-identity";
 export * from "./domain/service-hours";
 export * from "./domain/alerts";
+export * from "./domain/demand";

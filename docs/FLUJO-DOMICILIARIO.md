@@ -296,7 +296,7 @@ La lista de entrega también trae «Cliente no contesta». El domiciliario esper
 ## Preguntas para Williams
 
 1. ¿Qué tan seguido vuelven al restaurante por el datáfono o la plata? ¿Le sirven los 30 minutos del aviso del datáfono?
-2. ¿Cuántos pedidos puede llevar a la vez una moto? El motor usa 3 en hora pico y 2 en valle, y el de valle sigue sin confirmar.
+2. ¿Cuántos pedidos puede llevar a la vez una moto? El motor usa 3 en pico (demanda alta) y 2 en valle (demanda baja), y el de valle sigue sin confirmar. El modo ya no depende de la hora ([ALGORITMO.md](ALGORITMO.md), «Demanda»).
 3. ¿A los cuántos minutos alertar si no marca la entrega?
 4. ¿Los tiempos de los recordatorios le sirven?
 5. ¿El aviso de portería dice lo que el restaurante necesita?

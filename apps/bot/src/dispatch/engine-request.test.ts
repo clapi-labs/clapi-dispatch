@@ -11,7 +11,7 @@ import { buildEvaluarRequest, type SnapshotCourier, type SnapshotTrip } from "./
 
 const now = new Date("2026-11-10T15:00:00Z");
 const ago = (ms: number) => new Date(now.getTime() - ms);
-const settings = { radioKm: 4, multipedido: true };
+const settings = { radioKm: 4, multipedido: true, modo: "valle" as const };
 
 const trip: SnapshotTrip = {
   id: 1,
@@ -100,5 +100,15 @@ describe("buildEvaluarRequest: sin regreso supuesto", () => {
       built.request.motos[0].paradas.map((p) => p.tipo),
       ["R", "C"],
     );
+  });
+});
+
+describe("el modo", () => {
+  it("va el que decidió la demanda, no se deja a la hora", () => {
+    for (const modo of ["pico", "valle"] as const) {
+      const built = buildEvaluarRequest(trip, [moto(1, ago(0))], now, { ...settings, modo });
+      assert.ok(built.ok);
+      assert.equal(built.request.modo, modo);
+    }
   });
 });
