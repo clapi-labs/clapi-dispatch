@@ -202,8 +202,10 @@ function matchesMunicipality(r: GoogleGeocodeResult, expected: MunicipalitySpec 
   return true;
 }
 
+const ROAD_PREFIX_RE = String.raw`(?:cal+e|cll?|car+e+r+a|cra?|kra?|kr|diagonal|dg|diag|transversal|tv|trans|transv|tr|avenida|avda|av)`;
+
 const WRITTEN_STREET_RE = new RegExp(
-  String.raw`${B}(?:calle|cll?|carrera|cra?|kr|diagonal|dg|transversal|tv|tr|avenida|av)\.?\s*(\d{1,3})\s*[a-z]?(?:\s+(?:bis|norte|nt|sur|oeste|oe|este))?\s*(?:#|no\.?|n[uú]mero|\bcon\b)\s*(\d{1,3})`,
+  String.raw`${B}${ROAD_PREFIX_RE}\.?\s*(\d{1,3})\s*[a-z]?(?:\s+(?:bis|norte|nt|sur|oeste|oe|este))?\s*(?:#|no\.?|n[uú]mero|\bcon\b(?:\s+${ROAD_PREFIX_RE}\.?)?)\s*(\d{1,3})`,
   "iu",
 );
 
@@ -231,8 +233,10 @@ function matchesWrittenStreet(r: GoogleGeocodeResult, address: string): boolean 
   if (r.partial_match && !hasMain) return false;
   // La vía del resultado tiene número y es otra («Cra 94A #42-64» para «Carrera 97 # 42-10»):
   // coincidir en la placa no basta. Una vía con nombre propio (Av. Pasoancho) sí puede ser la escrita.
+  // En una esquina («intersection»), Google puede devolver cualquiera de las dos vías en `route`.
   const routeNum = routeComp ? /(?<![0-9])(\d{1,3})(?![0-9])/u.exec(plain(routeComp.long_name))?.[1] : undefined;
-  if (routeNum && routeNum !== mainNum) return false;
+  const isIntersection = !!r.types?.includes("intersection");
+  if (routeNum && routeNum !== mainNum && !(isIntersection && routeNum === crossNum)) return false;
   return hasMain || hasCross;
 }
 

@@ -33,10 +33,10 @@ Qué tan bien ubica el bot una dirección escrita, medido contra **puntos reales
 |---|---|---|
 | `estandar` | 53 | Direcciones completas: «Cra 97 # 45-11 local 102», «Cl 48 Bis # 92-27», «Cl 40 # 46B-15, Mariano Ramos» |
 | `coloquial` | 16 | Como llegan por WhatsApp: «cra97#45-11 loc 102», «kra 95a 42 141», «Carerra 98 # 42-55», «Cl 45 #97a-15 torre 2 apto 502», con indicaciones mezcladas |
-| `esquina` | 4 | «Calle 42 con Carrera 85C»: un punto exacto sin placa |
+| `esquina` | 5 | «Calle 42 con Carrera 85C»: un punto exacto sin placa |
 | `lugar` | 13 | Lugares conocidos del norte, oeste, centro, oriente, Jamundí y Yumbo (Chipichape, Unicentro, La Ermita, Único…), por su nombre |
 | `trampa` | 7 | La misma placa en Cali y en Jamundí o Yumbo («Calle 30 #1-15 jamundi», el caso de 6256a75), Candelaria y Palmira, «Vía Cali - Jamundí» |
-| `incompleta` | 6 | «la 42 con 83», «Cra 86», «760004, Cali», «Cra 98 # 42»: no hay una puerta |
+| `incompleta` | 5 | «la 42 con 83», «Cra 86», «760004, Cali», «Cra 84A, El Ingenio»: no hay una puerta |
 | `solo-barrio` | 6 | «Valle del Lili», «Ciudad Pacífica», «Alfaguara, Jamundí»: el centro de un barrio no es una puerta |
 
 Cada caso dice qué se espera (`ubicar`, `escalar`: no debe inventar un punto, o `cualquiera`: puede pasarla a la central pero nunca ubicarla fuera de su municipio), su municipio y, si lo tiene, su **punto verificado**:

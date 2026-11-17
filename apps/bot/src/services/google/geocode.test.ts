@@ -333,4 +333,65 @@ describe("interpretGeocode: lo que destapó la medición contra Google", () => {
     );
     assert.deepEqual(outcome, { kind: "found", location: { lat: 3.38086, lng: -76.52026 }, neighborhood: null });
   });
+
+  it("acepta una esquina cuando Google pone la vía cruzada en route y descarta otra calle distinta", () => {
+    const crossRoute = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["intersection"],
+            formatted_address: "Cl. 42 & Cra 85c, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.38086, lng: -76.52026 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [
+              { long_name: "Carrera 85C", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Calle 42 con Carrera 85C",
+    );
+    assert.equal(crossRoute.kind, "found");
+
+    const wrongRoute = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            types: ["intersection"],
+            formatted_address: "Cl. 99 & Cra 85c, Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.38086, lng: -76.52026 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [
+              { long_name: "Calle 99", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "Calle 42 con Carrera 85C",
+    );
+    assert.deepEqual(wrongRoute, { kind: "not_found" });
+  });
+
+  it("también valida el número de vía cuando escriben «Kra» o «Carerra»", () => {
+    const wrongWayResponse = {
+      status: "OK",
+      results: [
+        {
+          types: ["beauty_salon", "establishment", "point_of_interest"],
+          formatted_address: "Cra 94A #42-64, Comuna 17, Cali, Valle del Cauca, Colombia",
+          geometry: { location: { lat: 3.37437, lng: -76.51961 }, location_type: "ROOFTOP" },
+          address_components: [
+            { long_name: "42-64", types: ["street_number"] },
+            { long_name: "Carrera 94A", types: ["route"] },
+            { long_name: "Cali", types: ["locality"] },
+          ],
+        },
+      ],
+    };
+    for (const addr of ["Kra 97 # 42-10, Calicanto", "Carerra 97 # 42-10"]) {
+      assert.deepEqual(interpretGeocode(wrongWayResponse, addr), { kind: "not_found" }, addr);
+    }
+  });
 });
