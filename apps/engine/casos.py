@@ -20,8 +20,8 @@ import algoritmo
 
 DIR_CASOS = Path(__file__).parent / "casos"
 ID_EN_CURSO = 100  # los pedidos que las motos ya llevan se numeran desde 101
-# Hora fija, para que los casos den siempre lo mismo. Es un martes a las 3:00 p.m. en Cali, así que
-# un caso con modo "auto" corre en hora valle.
+# Hora fija, para que los casos den siempre lo mismo (un martes a las 3:00 p.m. en Cali). La hora ya
+# no decide el modo: lo fija cada caso, y sin modo es pico.
 AHORA = 1790712000
 
 
@@ -106,7 +106,7 @@ def peticion(caso, motos, pedido, ahora=AHORA):
     promedio = sum(m["entregas"] for m in motos) / len(motos) if motos else 0.0
     return {
         "ahora": ahora,
-        "modo": None if c["modo"] == "auto" else c["modo"],
+        "modo": c["modo"],
         "multipedido": bool(c["multi"]),
         "radio_km": float(c["radio"]),
         "pedido": {"id": pedido["id"], "restaurante": pedido["restaurante"], "cliente": pedido["cliente"],

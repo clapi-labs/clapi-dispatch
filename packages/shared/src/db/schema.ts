@@ -16,6 +16,7 @@ import {
 import type { Interpretation, OrderDraft, PaymentMethod } from "../domain/extraction";
 import type { OfferOutcome } from "../domain/dispatch/types";
 import type { DeliveryPlace, RouteStop } from "../domain/phase";
+import type { DemandConfig, DemandLevel, DemandMetrics, DemandSignal } from "../domain/demand";
 import type { ReturnDebtReason } from "../domain/return-debts";
 
 /**
@@ -457,6 +458,10 @@ export const engineEvaluations = pgTable(
     request: jsonb("request"),
     response: jsonb("response"),
     evaluations: integer("evaluations").notNull().default(0),
+    /** Con qué modo se evaluó (pico o valle) y la demanda que lo decidió, en la
+     *  última evaluación. Nulos en las de antes de medir la demanda. */
+    mode: text("mode").$type<"pico" | "valle">(),
+    demand: jsonb("demand").$type<{ level: DemandLevel; metrics: DemandMetrics | null }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
@@ -679,3 +684,40 @@ export const returnDebts = pgTable(
   ],
 );
 
+
+// ---------------------------------------------------------------------------
+// Demanda (docs/ALGORITMO.md, «Demanda»)
+// ---------------------------------------------------------------------------
+
+/**
+ * La demanda de ahora: una sola fila (`id` 1). La actualiza el tick con cada
+ * medición; el nivel cambia con un UPDATE condicional, así dos ticks en
+ * paralelo nunca registran el mismo cambio dos veces (`db/demand.ts`).
+ */
+export const demandState = pgTable("demand_state", {
+  id: integer("id").primaryKey().default(1),
+  level: text("level").$type<DemandLevel>().notNull().default("baja"),
+  /** Desde cuándo está en este nivel. */
+  since: timestamp("since", { withTimezone: true }).notNull().defaultNow(),
+  /** Desde cuándo la medición pide el otro nivel sin cortarse. */
+  candidateSince: timestamp("candidate_since", { withTimezone: true }),
+  measuredAt: timestamp("measured_at", { withTimezone: true }),
+  /** La última medición y lo que pedía en ese momento. */
+  signal: text("signal").$type<DemandSignal>(),
+  metrics: jsonb("metrics").$type<DemandMetrics>(),
+});
+
+/** Cada vez que la demanda sube o baja, con los números y los umbrales de ese
+ *  momento: con esto se calibra contra lo que pasó de verdad. */
+export const demandChanges = pgTable(
+  "demand_changes",
+  {
+    id: serial("id").primaryKey(),
+    level: text("level").$type<DemandLevel>().notNull(),
+    previous: text("previous").$type<DemandLevel>().notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    metrics: jsonb("metrics").$type<DemandMetrics>().notNull(),
+    config: jsonb("config").$type<DemandConfig>().notNull(),
+  },
+  (t) => [index("demand_changes_at_idx").on(t.at)],
+);

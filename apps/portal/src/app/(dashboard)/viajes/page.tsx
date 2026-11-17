@@ -5,6 +5,7 @@ import { Inbox } from "lucide-react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 import { useEffect, useState } from "react";
 
+import { DemandBar } from "@/components/DemandBar";
 import { TripCard } from "@/components/TripCard";
 import { useTrips } from "@/components/TripsProvider";
 import type { Trip } from "@/lib/types";
@@ -100,6 +101,9 @@ export default function ViajesPage() {
   return (
     <div className="mx-auto flex h-full max-w-[1500px] flex-col gap-5 px-4 py-5 lg:gap-4 lg:px-8 lg:py-7">
       {/* Sin título: los contadores de cada columna ya dicen cuántos hay. "En vivo" vive en la navegación. */}
+
+      {/* La demanda y su porqué: lo que la central mira para saber si está pesado. */}
+      <DemandBar />
 
       {/* Celular: control segmentado. Escritorio: no hace falta, se ven las tres.
           Cada pestaña toma el ancho de su texto, no un tercio fijo. En celulares angostos

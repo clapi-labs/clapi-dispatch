@@ -7,15 +7,12 @@ contrato (docs/ALGORITMO.md) están en evaluar_peticion.
 """
 
 import math
-from datetime import datetime, timedelta, timezone
 
 import calles
 
-ENGINE_VERSION = "2026.11.2"
+ENGINE_VERSION = "2026.11.3"
 
 RADIO_TIERRA_KM = 6371.0
-# Colombia no tiene horario de verano: UTC−5 todo el año, sin depender de tzdata en la imagen.
-HORA_CALI = timezone(timedelta(hours=-5))
 
 # Constantes que se pueden sobrescribir en el campo "config" de cada petición.
 DEFAULTS = {
@@ -43,7 +40,6 @@ DEFAULTS = {
 
     "PESOS": {"pico": (0.70, 0.20, 0.10), "valle": (0.30, 0.10, 0.60)},
     "BETA": {"pico": 0.2, "valle": 0.5},
-    "HORARIO_PICO": ((19, 0), (21, 30)),  # alta demanda de 7:00 a 9:30 p.m., hora de Cali
 }
 
 # Si el cliente no contesta, se le espera esto y luego el pedido vuelve al restaurante. Lo usa
@@ -75,13 +71,6 @@ def haversine_km(a, b):
 def tiempo_haversine(c=DEFAULTS):
     """Función (a, b) -> minutos estimados de viaje en moto entre dos puntos (lat, lon)."""
     return lambda a, b: haversine_km(a, b) * c["FACTOR_RUTA"] / c["VELOCIDAD_KMH"] * 60
-
-
-def modo_por_hora(ahora, c=DEFAULTS):
-    """'pico' dentro de HORARIO_PICO (hora de Cali), 'valle' el resto del día."""
-    momento = datetime.fromtimestamp(ahora, HORA_CALI)
-    inicio, fin = (tuple(h) for h in c["HORARIO_PICO"])
-    return "pico" if inicio <= (momento.hour, momento.minute) < fin else "valle"
 
 
 def pesos(modo, multipedido, c=DEFAULTS):
@@ -301,7 +290,9 @@ def evaluar_peticion(peticion):
     if pedidos not in ("haversine", "osrm"):
         raise ValueError("tiempos debe ser haversine u osrm")  # Google llega en el paso 4
     ahora = float(peticion["ahora"])
-    modo = peticion.get("modo") or modo_por_hora(ahora, c)
+    # El modo lo decide quien llama, con la demanda que mide (docs/ALGORITMO.md, «Demanda»):
+    # alta = pico, baja = valle. Sin modo es valle; la hora no cuenta.
+    modo = peticion.get("modo") or "valle"
     if modo not in c["PESOS"]:
         raise ValueError(f"Modo desconocido: {modo}")
     pedido = peticion["pedido"]

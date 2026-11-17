@@ -1,4 +1,4 @@
-import { assignPendingTrips, purgeOldPositions, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
+import { assignPendingTrips, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, remindCouriers } from "@/bot/notify";
@@ -18,7 +18,8 @@ let lastPurge = 0;
  * Lo que tiene que pasar "cada tanto" aunque nadie esté mirando. Lo llama el
  * worker (scripts/worker.mjs) cada pocos segundos: le da moto a los viajes
  * que quedaron esperando, avisa por WhatsApp, le recuerda al motorizado lo que
- * le falta marcar y corre el engine, que asigna o solo calcula según el modo.
+ * le falta marcar, mide la demanda y corre el engine, que asigna o solo calcula
+ * según el modo.
  * Al final manda al celular de la central las alertas del portal que acaban
  * de pasar (chat que pide ayuda, moto asignada, datáfono sin devolver), aunque nadie tenga el portal
  * abierto.
@@ -28,6 +29,14 @@ let lastPurge = 0;
  */
 export async function POST(request: Request) {
   if (!isInternal(request)) return new Response("Unauthorized", { status: 401 });
+
+  // Primero la demanda: el engine evalúa en este mismo tick con el modo que
+  // sale de ella (alta = pico, baja = valle).
+  try {
+    await runDemand();
+  } catch (error) {
+    console.error("[tick] no se pudo medir la demanda:", error);
+  }
 
   // Con el engine al frente la cola no asigna nada, y al revés (`mode`).
   const assigned = [...(await assignPendingTrips()), ...(await runEngineSafely())];

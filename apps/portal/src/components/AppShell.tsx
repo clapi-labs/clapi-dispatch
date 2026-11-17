@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
+import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, Gauge, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,6 +26,8 @@ const NAV: NavItem[] = [
   { href: "/restaurantes", label: "Restaurantes", short: "Restaurantes", icon: Store },
   // El mapa de zonas de servicio: se dibuja con el mouse o con el dedo.
   { href: "/zonas", label: "Zonas", short: "Zonas", icon: MapPinned },
+  // En el celular se llega desde la barra de demanda del tablero de viajes.
+  { href: "/demanda", label: "Demanda", short: "Demanda", icon: Gauge, desktopOnly: true },
 ];
 
 /** `round` es la de la cabecera del celular: un avatar circular al lado de la campana. */

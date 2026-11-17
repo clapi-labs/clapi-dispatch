@@ -6,6 +6,7 @@ import {
   db,
   dispatchableCourier,
   getBotConfig,
+  getDemand,
   getEngineConfig,
   getRoutingConfig,
   openTripCondition,
@@ -13,7 +14,7 @@ import {
   schema,
   type EngineConfig,
 } from "@dispatch/shared/db";
-import { customerWaitEndsAt, tripPhase, type RouteStop } from "@dispatch/shared";
+import { customerWaitEndsAt, modeForDemand, tripPhase, type DemandLevel, type DemandMetrics, type RouteStop } from "@dispatch/shared";
 
 import { buildEvaluarRequest, type SnapshotCourier } from "@/dispatch/engine-request";
 import { env } from "@/env";
@@ -34,12 +35,23 @@ import { env } from "@/env";
 const MAX_AGE_MS = 3 * 60 * 60_000;
 const ENGINE_TIMEOUT_MS = 3_000;
 
-/** La configuración del engine más el interruptor de km por calle. */
-type EngineRunConfig = EngineConfig & { porCalle: boolean };
+/** La configuración del engine, el interruptor de km por calle y el modo que
+ *  sale de la demanda medida (alta = pico, baja = valle; docs/ALGORITMO.md,
+ *  «Demanda»), con los números que lo decidieron. */
+type EngineRunConfig = EngineConfig & {
+  porCalle: boolean;
+  modo: "pico" | "valle";
+  demand: { level: DemandLevel; metrics: DemandMetrics | null };
+};
 
 async function engineRunConfig(): Promise<EngineRunConfig> {
-  const [engine, routing] = await Promise.all([getEngineConfig(), getRoutingConfig()]);
-  return { ...engine, porCalle: routing.porCalle };
+  const [engine, routing, demand] = await Promise.all([getEngineConfig(), getRoutingConfig(), getDemand()]);
+  return {
+    ...engine,
+    porCalle: routing.porCalle,
+    modo: modeForDemand(demand.level),
+    demand: { level: demand.level, metrics: demand.metrics },
+  };
 }
 
 type EngineStop = { tipo: RouteStop["tipo"]; pedido: number | null };
@@ -150,8 +162,10 @@ async function evaluate(
   config: EngineRunConfig,
 ): Promise<{ result: Evaluated; common: Partial<typeof schema.engineEvaluations.$inferInsert> }> {
   const built = buildEvaluarRequest(trip, couriers, now, config);
+  // Con qué modo se evaluó y la demanda de ese momento, como queda el resto.
+  const asked = { mode: config.modo, demand: config.demand };
   if (!built.ok) {
-    await save(trip.id, { status: "waiting", reason: `Faltan datos: ${built.missing.join(", ")}` });
+    await save(trip.id, { ...asked, status: "waiting", reason: `Faltan datos: ${built.missing.join(", ")}` });
     return { result: null, common: {} };
   }
 
@@ -162,13 +176,14 @@ async function evaluate(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[engine] falló con el viaje ${trip.id}:`, message);
-    await save(trip.id, { status: "waiting", reason: `Engine: ${message}`, request: built.request, evaluations });
+    await save(trip.id, { ...asked, status: "waiting", reason: `Engine: ${message}`, request: built.request, evaluations });
     return { result: null, common: {} };
   }
 
   const faltan = response.despacho.faltan_min;
   const winner = response.ganador === null ? null : Number(response.ganador);
   const common = {
+    ...asked,
     courierId: winner,
     faltanMin: faltan,
     dispatchAt: new Date(response.despacho.despachar_ts * 1000),

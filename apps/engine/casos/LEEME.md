@@ -88,7 +88,7 @@ Copia un caso existente y cámbialo. El formato es este:
 
 | Campo | Qué es |
 |---|---|
-| `config.modo` | `"pico"`, `"valle"` o `"auto"` (pico de 7:00 a 9:30 p.m., hora de Cali). Desde la consola los casos corren a una hora fija, un martes a las 3:00 p.m., así que `"auto"` da valle; conviene fijar el modo |
+| `config.modo` | `"pico"` (demanda alta) o `"valle"` (demanda baja); sin él, pico. La hora no decide el modo: en el sistema lo decide la demanda que mide el bot (docs/ALGORITMO.md, «Demanda») |
 | `config.radio` | Radio de búsqueda en km |
 | `config.multi` | `true` si una moto puede llevar varios pedidos a la vez (hasta 3 en pico y 2 en valle) |
 | `config.motor` | `"haversine"` (línea recta) u `"osrm"` (calles reales; solo en el simulador) |

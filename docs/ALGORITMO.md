@@ -68,12 +68,12 @@ Sobre `simulador/algoritmo.py`, sin cambiar la fórmula del score:
 1. **Recibir `ahora` como parámetro.** Hoy `evaluar` llama a `time.time()` y el resultado depende del reloj; así los casos no son reproducibles.
 2. **Entrada y salida en JSON.** La función `tiempo` no viaja por HTTP: el engine la construye por dentro según `tiempos`.
 3. **Tiempos absolutos.** El pedido y las paradas traen `listo_ts` (hora exacta); el engine calcula los minutos que faltan con `ahora`, como ya hace `para_evaluar` en el simulador.
-4. **Modo por la hora de Cali.** Si no se fuerza `modo`, sale de `ahora` en `America/Bogota`. Hoy `modo_por_hora()` usa la hora local del servidor, que está en Núremberg.
+4. **El modo lo decide la demanda, no la hora.** Antes salía de un horario fijo (pico de 7:00 a 9:30 p.m., hora de Cali). Ahora el bot mide la demanda y manda `modo` en cada petición: alta = `pico`, baja = `valle` (ver «Demanda»). Sin `modo`, el engine usa `valle`; la hora no cuenta.
 5. **Cuota justa recibida por moto** (`especificaciones.md`, sección 4.A), en vez del promedio de entregas del grupo, que asume que todas las motos llevan el mismo tiempo conectadas.
 6. **Minutos sin pedido desde `disponible_desde_ts`**: la última entrega o la conexión, lo más reciente (sección 4.C). Reemplaza `ultimo_pedido_ts`, que falla si la moto nunca ha recibido un pedido.
 7. **Devolver el `plan` de la ganadora**: sus paradas en orden, como datos. Hoy `evaluar` solo da la secuencia como texto y el simulador vuelve a llamar a `mejor_insercion` para obtenerlo.
 8. **Motivo de exclusión con código**, además del texto, para que el bot y las estadísticas no dependan de una frase.
-9. **Constantes configurables**: todas las del inicio del archivo (`PESOS`, `BETA`, `TAU_MIN`, `D50_MIN`, `R_MAX_MIN`, `MARGEN_DESPACHO_MIN`, `MAX_PEDIDOS`, `S_EQUIDAD`, `T_MAX_ESPERA_MIN`, `HORARIO_PICO`...) en el campo opcional `config`. Por defecto, los valores actuales.
+9. **Constantes configurables**: todas las del inicio del archivo (`PESOS`, `BETA`, `TAU_MIN`, `D50_MIN`, `R_MAX_MIN`, `MARGEN_DESPACHO_MIN`, `MAX_PEDIDOS`, `S_EQUIDAD`, `T_MAX_ESPERA_MIN`...) en el campo opcional `config`. Por defecto, los valores actuales.
 10. **`engine_version` en la respuesta**, y se guarda con cada asignación para poder comparar versiones después.
 
 ## Contrato
@@ -85,7 +85,7 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 ```jsonc
 {
   "ahora": 1790000000,
-  "modo": null,                    // pico | valle | null = según la hora de Cali
+  "modo": "pico",                  // pico | valle: lo decide la demanda (ver «Demanda»); sin modo, valle
   "multipedido": true,             // de settings
   "radio_km": 4,                   // de settings
   "pedido": {
@@ -126,7 +126,7 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 
 ```jsonc
 {
-  "engine_version": "2026.11.2",
+  "engine_version": "2026.11.3",
   "modo": "pico",
   "pesos": [0.70, 0.20, 0.10],
   "despacho": {
@@ -182,7 +182,7 @@ Hoy no existe y el engine lo necesita:
 Implementado en `apps/bot/src/dispatch/engine.ts` y corriendo en cada tick del worker, después de la asignación real (`/api/internal/tick`). La cola sigue asignando; el engine calcula al lado y no envía nada.
 
 - **Qué evalúa:** los viajes abiertos de las últimas 3 horas. Mientras faltan minutos para despacharlos, se reevalúan en cada tick con Haversine; cuando el engine diría «ya», se congela la decisión.
-- **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine.
+- **Dónde queda:** tabla `engine_evaluations`, una fila por viaje: `waiting` (aún no es hora, faltan datos o no hay motos, con el motivo en `reason`), `decided` (moto en `courier_id`, hora en `decided_at`) o `expired` (el viaje se cerró o pasaron 3 horas sin decidir). Guarda la última petición y respuesta de `/evaluar`, para explicar la decisión y repetirla con otra versión del engine, y con qué modo se evaluó (`mode`) y la demanda de ese momento (`demand`: nivel y números).
 - **Cómo se activa:** `ENGINE_URL` en el bot (en los compose apunta a `http://engine:3003`) y `settings.engine_config` con `mode = "shadow"`, que es el valor por defecto. Con `mode = "queue"` no corre. Ahí mismo van `radioKm` (4) y `multipedido` (true). Una moto sin reporte de GPS en los últimos 30 segundos va con `sin_senal` y no participa; ese límite es fijo (`NO_SIGNAL_MS` en `packages/shared/src/domain/gps.ts`), el mismo con el que el portal la muestra «sin señal».
 - **Si el engine falla**, se registra en `reason`, se reintenta en el siguiente tick y la asignación real no se entera.
 
@@ -220,6 +220,81 @@ Hoy se asigna directo, sin oferta ni rechazo. Cómo activarlo, cuando llegue el 
 ```sql
 insert into settings (key, value) values ('engine_config', '{"mode":"auto"}')
 on conflict (key) do update set value = settings.value || excluded.value;
+```
+
+## Demanda
+
+El algoritmo trabaja en dos modos. **Pico** prioriza la rapidez y deja llevar hasta 3 pedidos por moto; **valle** reparte el trabajo parejo y deja llevar hasta 2. El modo ya no depende de la hora: lo decide la demanda, que el sistema mide en vivo con lo que está pasando. **Demanda alta = pico, demanda baja = valle.** Los pesos, la capacidad y el resto de las constantes de cada modo no cambian. No hay botón para forzarla, y es una sola para toda la operación (no por zona).
+
+Código: el cálculo, puro y con pruebas, en `packages/shared/src/domain/demand.ts`; la medición en la base y lo que se guarda, en `packages/shared/src/db/demand.ts`. La corre el tick (`/api/internal/tick`) cada 5 s, antes del engine, que evalúa en ese mismo tick con el modo que sale de ella.
+
+### Qué se mide
+
+| Número | Qué cuenta |
+|---|---|
+| **Esperando** | Pedidos pendientes (sin moto) cuya comida está lista o lo estará dentro del horizonte (10 min). Uno sin hora de listo cuenta como listo. Los que tienen la comida para más tarde se muestran aparte y no cuentan: todavía no le piden moto a nadie, y en `auto` el engine los retiene a propósito |
+| **Entraron** | Pedidos creados en la ventana (15 min), sin los cancelados: el ritmo, que avisa antes de que se acumulen |
+| **Motos que cuentan** | Conectadas (disponibles u ocupadas, activas) con el GPS en vivo, las mismas que puede elegir el algoritmo. Si ninguna tiene GPS (operación sin GPS todavía), todas las conectadas, para no marcar alta solo porque falta el GPS |
+| **Libres** | De las que cuentan, las que no llevan ningún pedido. Una ocupada con espacio no cuenta como libre: su espacio depende del modo (3 en pico, 2 en valle), y contarla haría que el modo se midiera a sí mismo |
+
+### La fórmula
+
+En cada medición:
+
+- **Pide subir** si los pedidos esperando llegan a `max(3, 2 × motos libres)`, **o** si los que entraron en 15 min llegan a `max(4, 1 × motos que cuentan)` y quedan pocas libres (la mitad o menos de las que cuentan).
+- **Pide bajar** si los esperando están por debajo de la mitad de su umbral y, además, el ritmo también lo está o hay más de la mitad de las motos libres. Con muchas libres, los pedidos que entran se atienden enseguida aunque la ventana todavía los cuente (sin esta regla, en la prueba con docker compose seguía en alta con nada esperando y 6 de 8 motos libres).
+- **Entre medio** no pide nada: el hueco entre subir y bajar es lo que evita que cambie a cada rato.
+
+El nivel cambia solo si la medición lo pide **sin cortarse**: **3 minutos** para subir y **10 minutos** para bajar. Un momento en el que deja de pedirlo vuelve a empezar la cuenta, y si el tick deja de medir más de un minuto, lo acumulado no cuenta. Bajar tarda más que subir a propósito: una racha de pedidos se atiende enseguida, y un minuto tranquilo en plena hora de comida no es el fin del turno.
+
+Ejemplos con los valores iniciales:
+
+| Situación | Resultado |
+|---|---|
+| 1 pedido esperando, 1 moto libre | No sube: no llega al mínimo de 3 |
+| 5 esperando, 1 libre | Pide subir (5 ≥ 3); a los 3 min seguidos, alta |
+| 4 esperando, 3 libres | Entre medio (4 < 6 para subir, 4 ≥ 3 para bajar): se queda como esté |
+| 4 motos, 2 libres, 5 pedidos entraron en 15 min, ninguno esperando | Pide subir por el ritmo (5 ≥ 4, con la mitad libres) |
+| 8 motos, 6 libres, 8 entraron en 15 min, ninguno esperando | Pide bajar: con tantas libres el ritmo no pesa |
+| En alta: 1 esperando, 2 libres, 1 entró | Pide bajar; a los 10 min seguidos, baja |
+
+**El horario no se usa**, tampoco con pocos datos. Con una sola moto los mínimos (3 esperando, 4 entrando) ya impiden que un pedido suelto la suba, y sin motos conectadas tres pedidos esperando sí es alta, a cualquier hora. Antes de la primera medición es baja.
+
+### Umbrales
+
+Se cambian en el portal, en **Demanda** (`/demanda`), sin desplegar. Se guardan en `settings.demand_config` y el siguiente tick ya los usa:
+
+| Campo | Inicial | Qué es |
+|---|---|---|
+| `waitingPerFree` | 2 | Pedidos esperando por cada moto libre para subir |
+| `minWaiting` | 3 | Mínimo de pedidos esperando para subir |
+| `arrivalsPerCourier` | 1 | Pedidos que entran en la ventana por cada moto que cuenta |
+| `minArrivals` | 4 | Mínimo de pedidos entrando para subir |
+| `windowMin` | 15 | La ventana de los que entran, en minutos |
+| `horizonMin` | 10 | Un pendiente cuenta como esperando si su comida está lista dentro de estos minutos |
+| `riseMin` | 3 | Minutos seguidos pidiendo subir para subir |
+| `fallMin` | 10 | Minutos seguidos pidiendo bajar para bajar |
+
+La fracción para bajar (la mitad del umbral de subida, `FALL_FRACTION`) y la de «pocas motos libres» (la mitad o menos, `FEW_FREE_FRACTION`) son fijas.
+
+### Dónde se ve y qué queda
+
+- **Portal, tablero de viajes:** arriba, una barra con el nivel y el porqué, por ejemplo «Demanda alta · 5 pedidos esperando, 1 moto libre · 7 entraron en 15 min con 3 motos», desde hace cuánto y, si viene cambiando, «Sube a alta en 2 min si sigue así». Si el tick no ha medido en el último minuto, lo dice («sin medir: revisa el worker»). Lleva a `/demanda`.
+- **Portal, `/demanda`:** el nivel y el modo del algoritmo, los cuatro números, qué pide la medición de ahora, los umbrales (con lo que significan con las motos de ahora) y el registro de cambios: hora, si subió o bajó, con qué números y cuánto duró el nivel anterior.
+- **Base:** `demand_state` (una fila: el nivel, desde cuándo, la cuenta en curso y la última medición) y `demand_changes` (cada cambio, con sus números y los umbrales de ese momento, para calibrar con datos reales). Cada evaluación del engine guarda `mode` y `demand` en `engine_evaluations`.
+- **Para el resto del sistema:** `getDemandLevel()` (alta o baja) y `getDemand()` (con su porqué), en `@dispatch/shared/db`. Los usarán los regresos al restaurante y el reclamo de un restaurante.
+
+Calibrar con lo que pasó:
+
+```sql
+select at at time zone 'America/Bogota' as hora, previous || ' → ' || level as cambio,
+       metrics->>'waiting' as esperando, metrics->>'free' as libres,
+       metrics->>'arrivals' as entraron, metrics->>'counted' as motos
+from demand_changes order by at desc limit 50;
+
+-- Con qué modo salieron las evaluaciones de hoy
+select mode, demand->>'level' as demanda, count(*)
+from engine_evaluations where updated_at > now() - interval '1 day' group by 1, 2;
 ```
 
 ## Cómo se prueba
