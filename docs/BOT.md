@@ -113,7 +113,7 @@ Cada mensaje que el bot envía cuesta (mensajes de servicio en Colombia: unos US
 |---|---|---|
 | Restaurante | Cotización (con lo que falte y el botón) | No |
 | Restaurante | Servicio motorizado confirmado: quién va (solo el nombre; nunca el teléfono del domiciliario: la agencia es la intermediaria) | No |
-| Restaurante | Quién va (solo si la moto se asigna después de confirmar) | Sí: `notifyRestaurantOnAssign` (encendido). Con el algoritmo es lo normal, porque espera a que la comida casi esté |
+| Restaurante | Quién va (solo si la moto se asigna después de confirmar) | Sí: `notifyRestaurantOnAssign` (apagado por defecto) |
 | Restaurante | Entregado, con la hora real | Sí: `settings.bot_config.notifyRestaurantOnDelivery` (encendido). El de portería sale siempre |
 | Motorizado | Mensaje 1: a dónde ir a recoger, con «Recogí», «Llevo datáfono» y «Quedé debiendo» | No |
 | Motorizado | Mensaje 2: a dónde entregar, con «Entregado», «En portería» y «Cliente no contesta» | No |

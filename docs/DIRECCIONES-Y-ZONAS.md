@@ -7,6 +7,9 @@
   - el que está en una vía con otro número que la escrita («Cra 94A #42-64» para «Carrera 97 # 42-10»), aunque coincida la placa;
   - el parcial (`partial_match`) cuando el texto no trae vía y placa: con solo un nombre («Valle del Lili», «Univalle sede Meléndez») Google adivina un lugar parecido. Por eso los lugares que Google marca parcial (Unicentro, la Javeriana) pasan a la central;
   - la dirección que Google ubica en dos lugares a más de 500 m («Cl 52 # 3-29»): no se elige, decide la central.
+- **La puerta va aparte, y lo decide el código** (`splitDoor` en `packages/shared/src/domain/extraction.ts`, con sus pruebas en `address-door.test.ts`): la torre, el bloque, el interior, la manzana, el apartamento, la casa, el piso, la oficina y el local salen de `direccionEntrega` completos y van a `detalleDireccion` («Unidad Reserva campestre, Torre 4 apto 803» → dirección «Unidad Reserva campestre», puerta «Torre 4 apto 803»), aunque el modelo los deje en la dirección. Una palabra sin número es un nombre y se queda («Edificio Torre Alta», «Casa Blanca»). Al mapa tampoco va nunca la puerta (`addressForMap`): con la torre y el apartamento, Google devolvía el mismo punto de Reserva Campestre pero marcado parcial, y el bot lo descartaba y escalaba el pedido.
+- **Conjuntos y lugares con nombre** (`resolveGeocode`, `placeNameVariants`): si Google no encuentra un lugar que empieza con «unidad», «conjunto», «urbanización», «condominio»… («unidad de reserva campestre»), se vuelve a buscar sin el conector («unidad reserva campestre») y sin la palabra que lo anuncia («reserva campestre»), hasta 2 consultas más y solo si la primera falla. Cada forma pasa por las mismas reglas de arriba: un parcial sin vía y placa sigue sin valer, así que «Valle del Lili», «Bochalema» y «Univalle sede Meléndez» (también «Conjunto Bochalema» o «Unidad Valle del Lili») siguen pasando a la central. Una dirección con números no se reescribe.
+- **Preguntar el precio a un conjunto por su nombre** («hola buenas que cuesta hasta la unidad de reserva campestre ?») es una cotización, no un mensaje confuso: el prompt lo explica con ese ejemplo y, si el modelo igual lo marca confuso o no devuelve la dirección, el código la toma del mensaje (`rescuePriceQuestion`). Antes escalaba a la central.
 - **Pin de WhatsApp:** coordenadas exactas, sin costo.
 - **Recogida:** la del restaurante registrado, sin volver a geocodificar. Si no está registrado, hoy se ubica lo que escribió como origen. **Decidido:** la recogida de un restaurante nuevo la verifica la central a mano, no Google ni Places; el flujo está por definir ([PLAN](PLAN.md) B-3).
 - **Registrar restaurantes:** en el portal, menú **Restaurantes** (nombre, WhatsApp, dirección, detalle para el motorizado y coordenadas). La dirección y las coordenadas se copian de Google Maps: se busca el local por su nombre, la dirección es la de su ficha y las coordenadas salen del clic derecho sobre el pin (en el celular, manteniendo presionado). También acepta el enlace largo de Google Maps. No usa la API de Google: el punto es el que se marca, y el formulario no guarda coordenadas fuera de Cali y Jamundí.
@@ -27,20 +30,25 @@ Idea para después (no decidida): un geocodificador propio con los datos de Open
 
 Qué tan bien ubica el bot una dirección escrita, medido contra **puntos reales verificados en Google Maps**, no contra lo que devuelve la misma API. Mide todo el camino: el texto que escribe el restaurante, lo que va al mapa (`geocode.ts`), el punto que acepta o rechaza y la cobertura (`coverage.ts`).
 
-**Los casos** (`apps/bot/direcciones/casos.json`, 105):
+**Los casos** (`apps/bot/direcciones/casos.json`, 152):
 
 | Tipo | Casos | Qué prueban |
 |---|---|---|
-| `estandar` | 53 | Direcciones completas: «Cra 97 # 45-11 local 102», «Cl 48 Bis # 92-27», «Cl 40 # 46B-15, Mariano Ramos» |
+| `estandar` | 53 | Direcciones completas: «Cra 97 # 45-11 local 102» (la puerta aparte), «Cl 48 Bis # 92-27», «Cl 40 # 46B-15, Mariano Ramos» |
 | `coloquial` | 16 | Como llegan por WhatsApp: «cra97#45-11 loc 102», «kra 95a 42 141», «Carerra 98 # 42-55», «Cl 45 #97a-15 torre 2 apto 502», con indicaciones mezcladas |
-| `esquina` | 5 | «Calle 42 con Carrera 85C»: un punto exacto sin placa |
+| `esquina` | 9 | «Calle 42 con Carrera 85C»: un punto exacto sin placa |
 | `lugar` | 13 | Lugares conocidos del norte, oeste, centro, oriente, Jamundí y Yumbo (Chipichape, Unicentro, La Ermita, Único…), por su nombre |
-| `trampa` | 7 | La misma placa en Cali y en Jamundí o Yumbo («Calle 30 #1-15 jamundi», el caso de 6256a75), Candelaria y Palmira, «Vía Cali - Jamundí» |
+| `conjunto` | 16 | Reserva Campestre (el caso real de staging) en 10 formas: «Unidad Reserva campestre, Torre 4 Apto 803», «unidad de reserva campestre», con bloque y casa, la puerta dicha primero; otros conjuntos y edificios con puerta («Edificio Torre Alta apto 1203») |
+| `variante` | 12 | La misma dirección verificada escrita de otra forma: «cra 95a #42-141», «Carrera 95 A No. 42 - 141», «CRA 83C 48A 08», «Cll 48 Bis #92-27», «KRA 85 #43-76», con piso, oficina, interior o casa |
+| `tipeo` | 4 | «Carerra 97», «kra 98», «Cale 42», con torre |
+| `municipio` | 4 | Jamundí, Yumbo y Candelaria, con y sin conjunto: se busca en su municipio |
+| `trampa` | 14 | La misma placa en Cali y en Jamundí o Yumbo («Calle 30 #1-15 jamundi», el caso de 6256a75), Candelaria y Palmira, «Vía Cali - Jamundí»; lo genérico («Conjunto residencial», «Torre 4 apto 803» sola) y los nombres que no deben reabrirse al quitar «conjunto» o «unidad» («Conjunto Bochalema», «Unidad Valle del Lili», «Unidad de Univalle sede Meléndez») |
 | `incompleta` | 5 | «la 42 con 83», «Cra 86», «760004, Cali», «Cra 84A, El Ingenio»: no hay una puerta |
 | `solo-barrio` | 6 | «Valle del Lili», «Ciudad Pacífica», «Alfaguara, Jamundí»: el centro de un barrio no es una puerta |
 
 Cada caso dice qué se espera (`ubicar`, `escalar`: no debe inventar un punto, o `cualquiera`: puede pasarla a la central pero nunca ubicarla fuera de su municipio), su municipio y, si lo tiene, su **punto verificado**:
 
+- **Casos con `exigido`** (33): los conjuntos conocidos y las direcciones claras que **tienen** que ubicarse bien. Si uno pasa a la central, queda lejos o cae a más de 150 m de su punto, la medición sale con error, igual que con un caso grave. Los casos nuevos no tienen un punto verificado propio: las variantes de escritura reutilizan el de la dirección original (el mismo lugar, ya verificado por la central) y los conjuntos llevan un **`sector`**, los barrios de la IDESC (`barrios.json`) donde tienen que caer. El punto del bot vale si queda dentro del sector o a 1 km de su borde («Dentro del sector esperado»); más lejos es «Lejos», grave. No mide la precisión (no hay pin), solo que no salte a otro lado: cuando alguien verifique el pin de Reserva Campestre en Google Maps, se carga con `bot:direcciones:referencia` y el caso pasa a medirse por metros.
 - **70 puntos verificados** salen de la hoja de restaurantes socios: la central copió cada uno del pin de Google Maps (clic derecho) al registrarlos. Son direcciones reales de la operación, todas en el sur (Valle del Lili, Caney, Ciudadela Comfandi, El Ingenio, Bochalema, Ciudad Meléndez) y una en Mariano Ramos. Se cruzaron con los bordes de la IDESC: cada punto cae en el barrio que le corresponde. Para no tener 7 casos iguales, los restaurantes con la misma dirección (Fusión Plaza, Chill Plaza) cuentan una vez.
 - **16 puntos verificados a mano en Google Maps** (17 de noviembre de 2026) para el resto de la ciudad: los 13 lugares, y tres direcciones que salen de sus fichas («Cl 52 # 3-29», Único; «Cra 100 # 5-169», Unicentro; «Cl 5 # 36-08, San Fernando», el HUV). Se buscó cada lugar y se miró que el pin cayera sobre él en el mapa. En los lugares grandes (universidades, zoológico, estadio) el punto es el pin del lugar, no la portería: un error de 150 a 300 m ahí puede ser solo otra entrada, y su nota lo dice.
 - Un caso sin punto verificado (`referencia: null`) se mide, pero no entra en el porcentaje hasta que alguien lo verifique y lo cargue (abajo).
@@ -67,16 +75,17 @@ Cada caso dice qué se espera (`ubicar`, `escalar`: no debe inventar un punto, o
 
 **En local y en CI**, sin red, con `npm test` (`address-bench.test.ts`):
 - Los casos están bien armados, cada punto verificado de Cali cae en un barrio de Cali (o a menos de 1 km, como el zoológico) y los de Jamundí y Yumbo fuera de ellos.
-- Para cada caso, lo que se decide antes de llamar a Google: que busque en su municipio (sin pegarle «Cali» a una de Jamundí), que confirme con el restaurante las que no dicen el tipo de vía (`ambiguousAddress`) y que la torre o el apto no vayan al mapa.
-- El juicio de cada resultado, el resumen y el caso de 6256a75 de punta a punta, con la respuesta de Google simulada.
+- Para cada caso, lo que se decide antes de llamar a Google: que busque en su municipio (sin pegarle «Cali» a una de Jamundí), que confirme con el restaurante las que no dicen el tipo de vía (`ambiguousAddress`) y que la torre o el apto no vayan al mapa: la puerta que separa el código del texto es la que dice el caso (`detalle`).
+- El juicio de cada resultado (con punto verificado y con sector), el resumen y el caso de 6256a75 de punta a punta, con la respuesta de Google simulada.
+- Los 10 casos de Reserva Campestre pasan por `resolveGeocode` con un Google simulado que reproduce lo de staging (el mismo punto, parcial con la torre, el apto o «de») y quedan ubicados; con ese mismo Google, las trampas siguen sin ubicarse (`address-bench-conjuntos.test.ts`, `geocode-places.test.ts`). Esas respuestas son de prueba, no de Google: la prueba de verdad es la corrida de abajo.
 
 **Contra Google de verdad, en el servidor** (la llave solo sirve desde su IP):
 ```bash
-/opt/dispatch/measure-addresses.sh                 # todos los casos (unas 100 geocodificaciones, dentro de las gratis)
+/opt/dispatch/measure-addresses.sh                 # todos los casos (unas 160 geocodificaciones, dentro de las gratis)
 /opt/dispatch/measure-addresses.sh --extraccion    # además lee cada texto con el modelo, como en una conversación (gasta OpenAI)
 /opt/dispatch/measure-addresses.sh --solo trampa-01,coloquial-02
 ```
-Usa la imagen de migraciones con la llave del `.env` y las zonas de esa base. No escribe en la base ni manda mensajes. Deja `informe.md` y `resultados.json` en `/opt/dispatch/mediciones/direcciones-<fecha>/` y sale con error si hay algún caso grave. `measure-addresses.sh` no viaja con el despliegue: se copia una vez, como `deploy.sh` ([OPERACION](OPERACION.md), «Cambios en `deploy.sh`»). Desde un computador: `npm run bot:direcciones:medir`, que con la llave restringida responde que se corra en el servidor.
+Usa la imagen de migraciones con la llave del `.env` y las zonas de esa base. No escribe en la base ni manda mensajes. Deja `informe.md` y `resultados.json` en `/opt/dispatch/mediciones/direcciones-<fecha>/` y sale con error si hay algún caso grave o algún caso exigido que no se ubique. Cada consulta es la misma que hace el bot (`resolveGeocode`): sin la puerta y, si falla, con las otras formas de nombrar el lugar; el informe dice cuando un caso se ubicó «como» otra forma. `measure-addresses.sh` no viaja con el despliegue: se copia una vez, como `deploy.sh` ([OPERACION](OPERACION.md), «Cambios en `deploy.sh`»). Desde un computador: `npm run bot:direcciones:medir`, que con la llave restringida responde que se corra en el servidor.
 
 **Verificar un punto:** buscar el lugar en Google Maps y **comprobar en el mapa** que el pin está donde debe (la puerta, el edificio, la esquina correcta), no solo aceptar el primer resultado. `resultados.json` trae el punto que dio el bot, para comparar. Después:
 ```bash
@@ -91,6 +100,7 @@ Agregar un caso: editarlo en `casos.json`; `npm test` revisa que esté bien arma
 | 17 nov. 2026 | Local, sin red | — | — | — | La revisión sin red destapó que el bot pedía confirmar «cra97#45-11» (vía pegada al número) y «Carerra 98 …» (tipeo) como si no dijeran si es calle o carrera. Corregido en `ambiguousAddress`. |
 | 17 nov. 2026 | Staging, antes de corregir (77 zonas) | 81,4 % (70 de 86) | 7 m / 97 m | 6 | Graves: «Valle del Lili» y «Bochalema» solos daban un punto (la clínica, un local), «Univalle sede Meléndez» caía en San Fernando, «Cl 52 # 3-29» en otro sector a 4 km (Google la ubica en dos lugares), y «Ciudad Pacífica» y «Cra 98 # 42» se esperaban sin punto. Además, «Carrera 97 # 42-10» caía en la Cra 94A. |
 | 17 nov. 2026 | Staging, corregido (77 zonas) | 79,1 % (68 de 86) | 7 m / 70 m, máx. 289 m | **0** | Corregido en `geocode.ts` (reglas de arriba). Las esquinas pasaron de escalar a exactas. El acierto baja porque ahora escala lo dudoso en vez de dar un punto: 17 pasan a la central teniendo punto (abajo). Cobertura distinta de la real: 0. Con `--extraccion` (el modelo lee el texto, corrida previa al último ajuste de «kra 95a 42 141»): 77,9 %, igual que sin el modelo en esa corrida, y 0 graves. |
+| 18 nov. 2026 | Local, sin red | — | — | — | #86: la puerta sale del texto por código (`splitDoor`), el mapa nunca recibe torre ni apto, los conjuntos con «unidad de…» se reintentan con otras formas del nombre, y preguntar el precio a un conjunto ya no escala. 152 casos (47 nuevos, 33 exigidos). **Falta la corrida en staging** con los casos nuevos: ahí se ve cómo responde Google de verdad a cada variante de Reserva Campestre. |
 
 **Casos de borde conocidos** (corrida corregida):
 - **«Cra 83C # 37-31»** (Don Parra): Google da un `ROOFTOP` de esa misma placa a 289 m del pin que copió la central. El único fallo; hay que revisar con la central cuál de los dos puntos es el local.
