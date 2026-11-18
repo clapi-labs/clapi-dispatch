@@ -150,14 +150,12 @@ describe("POST /api/internal/tick (Postgres)", { skip: integrationSkip }, () => 
       assert.equal((await db.select().from(schema.couriers).where(eq(schema.couriers.id, w.courier.id)))[0].status, "busy");
       assert.deepEqual((await evaluationOf(trip.id)).status, "decided");
 
-      // Avisos: mensaje 1 al motorizado y «va X» al restaurante, citando su pedido.
+      // Avisos: mensaje 1 al motorizado. Al restaurante, el aviso extra de «va X» está apagado por defecto.
       const [ticket] = sentTo(w.courier.phone);
       assert.match(plain(ticket.text), /Pedro, tienes un nuevo pedido P-\d+/);
       assert.deepEqual(ticket.buttons.map((b) => b.id), [`picked:${trip.id}`, `pickdebt:datafono:${trip.id}`, `pickdebt:plata:${trip.id}`]);
-      const [notice] = sentTo(w.restaurantConversation.phone);
-      assert.equal(notice.text, `🛵 Pedido ${trip.code}: va Pedro Gómez.`);
-      assert.equal(notice.replyTo, trip.sourceWaMessageId);
-      assert.equal(outbox.length, 2);
+      assert.equal(sentTo(w.restaurantConversation.phone).length, 0);
+      assert.equal(outbox.length, 1);
 
       // Latido y demanda.
       const beat = await heartbeat.lastWorkerTick();
@@ -165,6 +163,16 @@ describe("POST /api/internal/tick (Postgres)", { skip: integrationSkip }, () => 
       const [demand] = await db.select().from(schema.demandState);
       assert.ok(demand.measuredAt, "midió la demanda");
       assert.equal(errors.mock.callCount(), 0, "sin errores");
+    });
+
+    it("con el aviso extra encendido, el restaurante también recibe «va X», citando su pedido", async () => {
+      const w = await world({ courier: liveCourier() });
+      await db.insert(schema.settings).values({ key: "bot_config", value: { notifyRestaurantOnAssign: true } });
+      const trip = await pendingTrip(w);
+      await run();
+      const [notice] = sentTo(w.restaurantConversation.phone);
+      assert.equal(notice.text, `🛵 Pedido ${trip.code}: va Pedro Gómez.`);
+      assert.equal(notice.replyTo, trip.sourceWaMessageId);
     });
 
     it("una segunda vuelta no repite nada: ni asigna, ni avisa, ni vuelve a sonar", async () => {
@@ -345,6 +353,7 @@ describe("POST /api/internal/tick (Postgres)", { skip: integrationSkip }, () => 
   describe("concurrencia: dos ticks a la vez no asignan dos veces el mismo viaje", () => {
     it("dos ticks, un pedido y dos motos: una sola asignación y un solo aviso", async () => {
       const w = await world({ courier: liveCourier() });
+      await db.insert(schema.settings).values({ key: "bot_config", value: { notifyRestaurantOnAssign: true } });
       await createCourier({ name: "Luis Pérez", ...liveCourier() });
       const trip = await pendingTrip(w);
 

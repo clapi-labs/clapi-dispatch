@@ -256,8 +256,9 @@ describe("notify.ts: avisos y tick (Postgres)", { skip: integrationSkip }, () =>
       assert.ok(!ticket.text.includes("Marta"), "todavía sin los datos del cliente");
     });
 
-    it("al restaurante se le dice quién va, citando su pedido, y sin el número del domiciliario", async () => {
+    it("con el aviso extra encendido, al restaurante se le dice quién va, citando su pedido, y sin el número del domiciliario", async () => {
       const w = await world();
+      await setBotConfig({ notifyRestaurantOnAssign: true });
       const { trip: t } = await assignedTrip(w);
       await notify.notifyAssigned(t.id);
       const [msg] = toRestaurant(w);
@@ -275,9 +276,8 @@ describe("notify.ts: avisos y tick (Postgres)", { skip: integrationSkip }, () =>
       assert.match(text, /Va Pedro Gómez\./);
     });
 
-    it("si la agencia apagó el aviso de asignación, el restaurante no recibe nada; al confirmar, sí", async () => {
+    it("por defecto el aviso extra de asignación está apagado: el restaurante no recibe nada; al confirmar, sí", async () => {
       const w = await world();
-      await setBotConfig({ notifyRestaurantOnAssign: false });
       const { trip: t } = await assignedTrip(w);
       await notify.notifyAssigned(t.id);
       assert.equal(toRestaurant(w).length, 0);

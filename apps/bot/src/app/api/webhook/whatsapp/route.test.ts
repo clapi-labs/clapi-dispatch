@@ -352,7 +352,8 @@ describe("/api/webhook/whatsapp (Postgres)", { skip: integrationSkip }, () => {
       const w = await world();
       const t = await assignedTrip(w);
       const notify = await import("@/bot/notify");
-      await notify.notifyAssigned(t.trip.id);
+      // Al confirmar, el restaurante también recibe un mensaje (el aviso extra de asignación está apagado por defecto).
+      await notify.notifyAssigned(t.trip.id, { atConfirmation: true });
       const ticket = sentTo(w.courier.phone)[0];
       outbox.length = 0;
       return { w, trip: t.trip, ticket };
