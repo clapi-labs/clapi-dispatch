@@ -153,7 +153,6 @@ Con qué km se cobra el domicilio (`deliveryDistance` y `quoteByDistance` en `pa
 - **El portal muestra esos mismos km**, solo el número («7,2 km»), en la tarjeta del viaje y en la consulta de cobertura («Sí, se hace») junto al precio; de dónde salieron se ve en `route_source`. Los viajes anteriores, sin `route_km`, se siguen mostrando en línea recta × 1,3.
 - **El engine** mide los minutos de viaje con la misma fuente ([ALGORITMO](ALGORITMO.md), «Cómo calcula los tiempos»): precio y asignación miden igual.
 - **Siguen en línea recta:** los 300 m de «cerca de una zona» (abajo), el radio del engine y el ETA que se le da al restaurante.
-- El tope de km por calles de la agencia (`maxKm`) se compara con los km de la cotización: por calle si está encendido.
 
 **Cuánto cambia** en un servidor, con sus restaurantes y zonas: `compare-distances.sh` ([OPERACION](OPERACION.md), «Mapa de calles (OSRM)»).
 
@@ -206,7 +205,7 @@ En el portal: menú **Zonas** (`/zonas`, que abre `apps/portal/public/zonas/mapa
 - **Editar, renombrar o borrar una zona guardada:** tocarla, en el mapa o en la lista. **Borrar zona** pide confirmación. Cancelar con cambios sin guardar pide un segundo toque.
 - **Zoom:** se acerca hasta el nivel 21 (la escala marca unos 5 m: se ve la cuadra y, donde OpenStreetMap las tiene, las casas; de 19 en adelante se amplía la imagen) y se aleja hasta el 9. Se mueve sin límite, para marcar zonas en las afueras.
 - **Probar:** una dirección escrita como la mandaría el restaurante (el portal le pide la ubicación al bot, `POST /api/internal/geocode`, con el mismo Google) o **Probar un punto** con un clic. Responde **Hay servicio**, **Cerca del borde: decide la central** (con la distancia), **Sin servicio** (con la zona más cercana) o **Todavía no hay zonas** (`POST /api/zonas/probar`). Como la llave de Google solo funciona desde el servidor, en local la dirección cae en el punto simulado (`GEOCODE_SIMULADO=true`).
-- **Probar desde un restaurante:** se elige un restaurante (con ubicación) arriba de «Probar una dirección», y la prueba trae además la **cotización real**, la misma de `quoteByDistance`: km (y si son por calle), precio de la tabla, ajuste de la zona y total. Si el punto queda **fuera** de las zonas, o fuera del mapa de calles, dice que el bot no lo toma y no da precio; **cerca del borde**, da el precio y avisa que el bot se lo pregunta a la central; si pasa del tope de km de la agencia, también lo dice. No crea pedidos ni manda mensajes. Escribir una dirección gasta una consulta de geocodificación; tocar el mapa no.
+- **Probar desde un restaurante:** se elige un restaurante (con ubicación) arriba de «Probar una dirección», y la prueba trae además la **cotización real**, la misma de `quoteByDistance`: km, precio de la tabla, ajuste de la zona y total. Si el punto queda **fuera** de las zonas, o fuera del mapa de calles, dice que el bot no lo toma y no da precio; **cerca del borde**, da el precio y avisa que el bot se lo pregunta a la central. No crea pedidos ni manda mensajes. Escribir una dirección gasta una consulta de geocodificación; tocar el mapa no.
 - Cada cambio se guarda al momento; la lista se vuelve a leer cada 20 s y al volver a la pestaña.
 - Los barrios **no dan ni quitan servicio** por sí solos: solo sirven para crear zonas.
 
@@ -254,7 +253,6 @@ En `order.ts`, con la entrega ubicada y antes de cotizar, cada entrega sin preci
 
 - **La consulta de cobertura** usa el mismo panel que la consulta de dirección (`consultaAsesor` con `motivo: "cobertura"`, motivo «Consulta de cobertura: …» en el portal). La central ve la dirección, a cuántos metros de qué zona queda, los km de la cotización (por calle, si está encendido) y lo que vale (tabla por km más el ajuste de esa zona), y responde **Sí, se hace** (con ese precio o el que ponga) o **No se hace**. El bot retoma: el pedido con el botón de confirmar, o «no manejamos domicilio» y esa entrega se quita. Lo aplica `answerAdvisorQuery` en `apps/bot/src/bot/advisor.ts`.
 - Con varias entregas, cada una por su lado: las de fuera se quitan con su aviso, las de cerca van juntas en una consulta y las de dentro esperan con su precio.
-- El tope de km por calles (`maxKm`) sigue aparte: se revisa después de las zonas.
 - **Sin coordenadas no hay revisión:** una dirección que el mapa no ubicó y la central validó a mano no tiene punto.
 - Si cambia la dirección de una entrega, se vuelve a revisar. Si cambia la recogida, también: todo se vuelve a cotizar.
 

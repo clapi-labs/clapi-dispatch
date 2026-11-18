@@ -752,7 +752,6 @@ select { font: inherit; width: 100%; border: 1px solid var(--line); border-radiu
       ...row("Total", pesos(q.total), "total"));
     box.append(dl);
     if (r.kind === "cerca") box.append(el("p", { className: "status", textContent: "Cerca del borde: el bot le pregunta a la central antes de aceptar este precio." }));
-    if (q.overMaxKm) box.append(el("p", { className: "status err", textContent: `Pasa del tope de ${q.maxKm} km de la agencia: el bot dice que no hay cobertura.` }));
     return box;
   }
 

@@ -260,9 +260,8 @@ function summaryOf(quoted: DeliveryDraft[]) {
 }
 
 /** Lo que cuesta una entrega: la tabla por km desde la recogida más el ajuste
- *  de la zona de la entrega. `outOfRange` si pasa del tope de la agencia;
- *  `precio` null si la tabla por km está vacía. */
-async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig, zones: ServiceZone[]) {
+ *  de la zona de la entrega; `precio` null si la tabla por km está vacía. */
+async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, zones: ServiceZone[]) {
   const quote = await quoteByDistance(pickup, delivery, { zones });
   const b = quote.breakdown;
   return {
@@ -271,7 +270,6 @@ async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { l
     fuente: quote.source,
     routable: quote.routable,
     desglose: b ? { tabla: b.table, ajuste: b.adjustment, zona: b.zone?.name ?? null } : null,
-    outOfRange: config.maxKm !== null && quote.km > config.maxKm,
   };
 }
 
@@ -732,7 +730,6 @@ export async function handleRestaurant(ctx: Context) {
   // las zonas de servicio: fuera y lejos no se pide; cerca del borde lo
   // decide la central. Sin zonas cargadas no se restringe nada.
   const zones = deliveries.some((d) => !d.cotizacion) ? await listServiceZones() : [];
-  const outOfRange: { delivery: DeliveryDraft; km: number }[] = [];
   const noService: DeliveryDraft[] = [];
   const noRoute: DeliveryDraft[] = [];
   const nearEdge: NearEdge[] = [];
@@ -744,7 +741,7 @@ export async function handleRestaurant(ctx: Context) {
       noService.push(d);
       continue;
     }
-    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config, zones);
+    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, zones);
     if (!quote.routable) {
       noRoute.push(d);
       continue;
@@ -752,10 +749,6 @@ export async function handleRestaurant(ctx: Context) {
     if (quote.precio === null) {
       await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
       return;
-    }
-    if (quote.outOfRange) {
-      outOfRange.push({ delivery: d, km: quote.km! });
-      continue;
     }
     if (coverage.kind === "cerca") {
       nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km, fuente: quote.fuente, desglose: quote.desglose });
@@ -768,14 +761,9 @@ export async function handleRestaurant(ctx: Context) {
     await askAdvisor(ctx, draft, noRoute, "no_route");
     return;
   }
-  const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];
+  const dropped = noService;
   if (dropped.length) draft.entregas = draft.entregas.filter((d) => !dropped.includes(d));
-  const coverageNote = [
-    noServiceText(noService.map(deliveryLabel)),
-    ...outOfRange.map((o) => `Hasta ${deliveryLabel(o.delivery)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const coverageNote = noServiceText(noService.map(deliveryLabel)) ?? "";
   if (nearEdge.length) {
     await askCoverage(ctx, draft, nearEdge, coverageNote);
     return;
