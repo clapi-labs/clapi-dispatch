@@ -1,77 +1,33 @@
 import assert from "node:assert/strict";
-import { after, before, beforeEach, describe, it } from "node:test";
+import { after, beforeEach, describe, it } from "node:test";
 
 import { eq } from "drizzle-orm";
 
+import * as client from "./client";
+import * as config from "./engine-config";
+import * as schema from "./schema";
+import { closeTestDatabase, createConversation, createCourier, createTrip, integrationSkip, resetDatabase } from "./test-db";
+import * as life from "./trip-lifecycle";
+
 /**
  * Pruebas contra un Postgres de verdad, para el ciclo de vida del viaje y la
- * configuración del engine. Solo corren con `TEST_DATABASE_URL` (una base ya
- * migrada, de usar y tirar: se vacían sus tablas); sin ella se saltan, así que
- * `npm test` y CI no las necesitan.
- *
- *   docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test \
- *     -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine
- *   DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate
- *   TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm test
+ * configuración del engine. Usan la base de `TEST_DATABASE_URL` (ya migrada, de
+ * usar y tirar: se vacía entera; ver `test-db.ts`); sin ella se saltan, y en CI
+ * (`REQUIRE_TEST_DATABASE=1`) fallan en vez de saltarse. Para correrlas en
+ * local: `docs/OPERACION.md`, «Pruebas de integración».
  */
-const url = process.env.TEST_DATABASE_URL;
-const skip = !url ? "falta TEST_DATABASE_URL" : false;
-
-if (url) {
-  // Se vacían tablas: solo contra una base que se llame «test».
-  if (!/\/[^/?]*test[^/?]*(\?|$)/i.test(url)) throw new Error("TEST_DATABASE_URL tiene que apuntar a una base cuyo nombre contenga «test»");
-  process.env.DATABASE_URL = url;
-}
-
-type Lifecycle = typeof import("./trip-lifecycle");
-type Client = typeof import("./client");
-type Config = typeof import("./engine-config");
-type Schema = typeof import("./schema");
-
-describe("ciclo de vida del viaje (Postgres)", { skip }, () => {
-  let life: Lifecycle;
-  let client: Client;
-  let config: Config;
-  let schema: Schema;
+describe("ciclo de vida del viaje (Postgres)", { skip: integrationSkip }, () => {
   let conversationId: number;
 
-  before(async () => {
-    life = await import("./trip-lifecycle");
-    client = await import("./client");
-    config = await import("./engine-config");
-    schema = await import("./schema");
-  });
-
-  after(async () => {
-    await (client.db as unknown as { $client?: { end?: () => Promise<void> } }).$client?.end?.();
-  });
+  after(closeTestDatabase);
 
   beforeEach(async () => {
-    const { db } = client;
-    await db.delete(schema.settings);
-    await db.delete(schema.engineEvaluations);
-    await db.delete(schema.assignments);
-    await db.delete(schema.courierRoutes);
-    await db.delete(schema.trips);
-    await db.delete(schema.couriers);
-    await db.delete(schema.conversations);
-    const [conversation] = await db.insert(schema.conversations).values({ phone: "573000000000" }).returning({ id: schema.conversations.id });
-    conversationId = conversation.id;
+    await resetDatabase();
+    conversationId = (await createConversation({ phone: "573000000000" })).id;
   });
 
-  async function courier(status: "available" | "busy" | "offline" | "paused" = "available", name = "Moto") {
-    const [row] = await client.db.insert(schema.couriers).values({ name, phone: `57${Math.random().toString().slice(2, 12)}`, status }).returning();
-    return row;
-  }
-
-  let n = 0;
-  async function trip(status: "pending" | "assigned" | "en_route" = "pending") {
-    const [row] = await client.db
-      .insert(schema.trips)
-      .values({ code: `T${++n}`, status, conversationId, originRestaurantName: "Resto", deliveryAddress: "Calle 1 # 2-3" })
-      .returning();
-    return row;
-  }
+  const courier = (status: "available" | "busy" | "offline" | "paused" = "available", name = "Moto") => createCourier({ name, status });
+  const trip = (status: "pending" | "assigned" | "en_route" = "pending") => createTrip({ status, conversationId });
 
   const tripStatus = async (id: number) => (await client.db.query.trips.findFirst({ where: (t, { eq }) => eq(t.id, id) }))!.status;
   const courierRow = async (id: number) => (await client.db.query.couriers.findFirst({ where: (c, { eq }) => eq(c.id, id) }))!;
