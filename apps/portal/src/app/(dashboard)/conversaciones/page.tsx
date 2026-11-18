@@ -14,7 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { AdvisorQueryPanel } from "@/components/AdvisorQueryPanel";
@@ -29,6 +29,7 @@ import { useBusiness } from "@/lib/business";
 import { formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary } from "@/lib/types";
 import { useLive } from "@/lib/live";
+import { createSendQueue } from "@/lib/send-queue";
 
 function timeLabel(iso: string) {
   const d = new Date(iso);
@@ -108,7 +109,7 @@ function Quote({ quote, contactName, onClick }: { quote: NonNullable<ChatMessage
  * hay botón: se mantiene presionada la burbuja. `onMenu` recibe el botón para
  * anclar el menú, o nada.
  */
-function Bubble({
+const Bubble = memo(function Bubble({
   message,
   contactName,
   highlighted,
@@ -124,6 +125,7 @@ function Bubble({
   onQuote: (messageId: number) => void;
 }) {
   const mine = message.role !== "restaurant";
+  const time = useMemo(() => messageTime(message.createdAt), [message.createdAt]);
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touched = useRef(false);
 
@@ -133,7 +135,14 @@ function Bubble({
   }
 
   return (
-    <div id={`msg-${message.id}`} className={`group flex scroll-my-24 items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+    // `content-visibility: auto`: el navegador no pinta ni calcula las burbujas que están
+    // fuera de pantalla. Con un hilo de miles de mensajes, sin esto cada tecla cuesta
+    // ~45 ms de pintado aunque React no toque nada. `shrink-0`: una burbuja omitida no
+    // tiene altura mínima y, sin él, el hilo (flex en columna) la encogería.
+    <div
+      id={`msg-${message.id}`}
+      className={`group flex shrink-0 scroll-my-24 items-center gap-1 [contain-intrinsic-size:auto_64px] [content-visibility:auto] ${mine ? "flex-row-reverse" : ""}`}
+    >
       <div
         onPointerDown={(e) => {
           touched.current = e.pointerType === "touch";
@@ -172,10 +181,10 @@ function Bubble({
             sitio al final de la última línea; si no cabe, salta sola a una línea nueva. */}
         {message.text}
         <span aria-hidden className="invisible ml-2 inline-block whitespace-nowrap text-[10px] leading-none">
-          {messageTime(message.createdAt)}
+          {time}
         </span>
         <span className={`absolute bottom-1.5 right-3 whitespace-nowrap text-[10px] leading-none ${mine ? "text-ink-2/80" : "text-ink-3"}`}>
-          {messageTime(message.createdAt)}
+          {time}
         </span>
       </div>
       <button
@@ -188,6 +197,137 @@ function Bubble({
         <MoreVertical size={16} />
       </button>
     </div>
+  );
+});
+
+/**
+ * El historial. Va aparte y memoizado: solo se vuelve a pintar cuando cambian
+ * los mensajes, la cita iluminada o el contacto, nunca por lo que se escribe
+ * en la caja ni por un sondeo que trae lo mismo.
+ */
+const Thread = memo(function Thread({
+  thread,
+  contactName,
+  highlight,
+  onMenu,
+  onQuote,
+  bottomRef,
+}: {
+  thread: ChatMessage[];
+  contactName: string;
+  highlight: number | null;
+  onMenu: (message: ChatMessage, anchor: DOMRect | null) => void;
+  onQuote: (messageId: number) => void;
+  bottomRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  // La etiqueta del día se calcula una vez por mensaje, no en cada pintada.
+  const days = useMemo(() => thread.map((m) => dayLabel(m.createdAt)), [thread]);
+  return (
+    <>
+      {thread.map((m, i) => (
+        <Fragment key={m.id}>
+          {(i === 0 || days[i - 1] !== days[i]) && (
+            <p className="my-1 self-center rounded-lg bg-surface/90 px-3 py-1 text-[11px] font-medium text-ink-2 shadow-sm first-letter:uppercase">
+              {days[i]}
+            </p>
+          )}
+          <Bubble message={m} contactName={contactName} highlighted={highlight === m.id} onMenu={onMenu} onQuote={onQuote} />
+        </Fragment>
+      ))}
+      <div ref={bottomRef} />
+    </>
+  );
+});
+
+/**
+ * La caja de texto y el envío. El borrador vive acá, no en la página: teclear
+ * solo pinta este componente. Al enviar, la caja se vacía de una vez y el envío
+ * sigue en segundo plano (en orden); si falla, el texto vuelve a la caja siempre
+ * que no se haya empezado a escribir otro mensaje. La caja nunca se bloquea.
+ */
+function Composer({
+  conversationId,
+  inputRef,
+  onSent,
+  onResume,
+}: {
+  conversationId: number;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  onSent: () => void;
+  /** Con "Devolver al bot" en el pie; sin él, nada. */
+  onResume: (() => void) | null;
+}) {
+  const [draftText, setDraftText] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const queue = useRef(
+    createSendQueue(async (text) => {
+      const res = await fetch(`/api/conversations/${conversationId}`, { method: "POST", body: JSON.stringify({ action: "send", text }) });
+      if (res.ok) return { ok: true };
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, reason: data.reason };
+    }),
+  );
+
+  // La caja crece con lo que se escribe o se pega (un pedido de varias líneas), hasta su tope.
+  // Solo se toca la altura cuando cambia: al crecer, basta con leer `scrollHeight`;
+  // volver a "auto" en cada tecla invalida el diseño de toda la página.
+  const lastLength = useRef(0);
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const shrinking = draftText.length < lastLength.current;
+    lastLength.current = draftText.length;
+    if (shrinking) el.style.height = "auto";
+    else if (el.scrollHeight <= el.clientHeight) return;
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draftText, inputRef]);
+
+  function send(e: React.SyntheticEvent) {
+    e.preventDefault();
+    const text = draftText.trim();
+    if (!text) return;
+    setDraftText("");
+    setSendError(null);
+    queue.current(text, {
+      onFail: (unsent, reason) => {
+        setSendError(sendErrorText(reason));
+        setDraftText((current) => (current ? current : unsent));
+      },
+      onDone: onSent,
+    });
+  }
+
+  return (
+    <form onSubmit={send} className="relative border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
+      {sendError && <p className="mb-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{sendError}</p>}
+      {/* Flota sobre el hilo, a la altura del botón de enviar; el hilo le deja espacio abajo. */}
+      {onResume && (
+        <button type="button" onClick={onResume} className={`absolute bottom-full right-3 z-10 mb-2 flex lg:right-5 ${INTERVENE}`}>
+          <RotateCcw size={13} /> Devolver al bot
+        </button>
+      )}
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={inputRef}
+          value={draftText}
+          onChange={(e) => setDraftText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) send(e);
+          }}
+          rows={1}
+          placeholder="Escribe como la central…"
+          className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-sunken px-3.5 py-2.5 text-sm leading-5 outline-none focus:ring-2 focus:ring-clapi/30"
+        />
+        <button
+          type="submit"
+          disabled={!draftText.trim()}
+          aria-label="Enviar"
+          className="ease-ui flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-clapi text-white disabled:opacity-40"
+        >
+          <SendHorizontal size={16} />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -207,12 +347,19 @@ export default function ConversacionesPage() {
   // Al llegar desde un teléfono de otra pantalla (#tel=57300…) se abre ese chat
   // en cuanto carga la lista. El número no se queda en la barra de direcciones.
   const wanted = useRef<string | null>(null);
+  const lastList = useRef("");
+  const lastThread = useRef("");
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
     if (!res.ok) return;
-    const data: ConversationSummary[] = await res.json();
-    setList(data);
+    const raw = await res.text();
+    const data: ConversationSummary[] = JSON.parse(raw);
+    // Un sondeo que trae lo mismo no repinta nada.
+    if (raw !== lastList.current) {
+      lastList.current = raw;
+      setList(data);
+    }
     setLoaded(true);
     if (wanted.current) {
       const phone = wanted.current;
@@ -222,6 +369,7 @@ export default function ConversacionesPage() {
         tabRef.current = "all";
         setTab("all");
         lastCount.current = 0;
+        lastThread.current = "";
         setThread([]);
         setSelectedId(target.id);
       } else {
@@ -237,7 +385,11 @@ export default function ConversacionesPage() {
 
   const loadThread = useCallback(async (id: number) => {
     const res = await fetch(`/api/conversations/${id}`, { cache: "no-store" });
-    if (res.ok) setThread(await res.json());
+    if (!res.ok) return;
+    const raw = await res.text();
+    if (raw === lastThread.current) return;
+    lastThread.current = raw;
+    setThread(JSON.parse(raw));
   }, []);
 
   // El número también puede llegar con la pantalla ya abierta: al tocar una
@@ -275,7 +427,11 @@ export default function ConversacionesPage() {
   // Bajar al último mensaje solo cuando llega uno nuevo, no en cada sondeo.
   useEffect(() => {
     if (thread.length !== lastCount.current) {
-      bottomRef.current?.scrollIntoView({ behavior: lastCount.current === 0 ? "auto" : "smooth" });
+      const first = lastCount.current === 0;
+      bottomRef.current?.scrollIntoView({ behavior: first ? "auto" : "smooth" });
+      // Las burbujas fuera de pantalla miden un estimado hasta que se pintan: al abrir el
+      // chat, un segundo ajuste ya con las del final pintadas deja el hilo realmente abajo.
+      if (first) requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "auto" }));
       lastCount.current = thread.length;
     }
   }, [thread]);
@@ -305,21 +461,16 @@ export default function ConversacionesPage() {
   // directo, como un WhatsApp normal, sin intervenir uno por uno.
   const { paused: businessPaused } = useBusiness();
 
-  const [draftText, setDraftText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  // La caja crece con lo que se escribe o se pega (un pedido de varias líneas), hasta su tope.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [draftText]);
 
   const [menu, setMenu] = useState<{ message: ChatMessage; anchor: DOMRect | null } | null>(null);
   const [forwarding, setForwarding] = useState<ChatMessage | null>(null);
+
+  const openMenu = useCallback(
+    // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
+    (message: ChatMessage, anchor: DOMRect | null) => setMenu({ message, anchor: isDesktop() ? anchor : null }),
+    [setMenu],
+  );
 
   useEffect(() => {
     if (!notice) return;
@@ -349,26 +500,13 @@ export default function ConversacionesPage() {
     loadList();
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const text = draftText.trim();
-    if (!selected || !text || sending) return;
-    setSending(true);
-    setSendError(null);
-    const res = await fetch(`/api/conversations/${selected.id}`, { method: "POST", body: JSON.stringify({ action: "send", text }) });
-    setSending(false);
-    if (res.ok) {
-      setDraftText("");
-      loadThread(selected.id);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setSendError(sendErrorText(data.reason));
-      loadThread(selected.id);
-    }
-  }
+  const afterSend = useCallback(() => {
+    if (selectedId !== null) loadThread(selectedId);
+  }, [selectedId, loadThread]);
 
   function open(id: number | null) {
     lastCount.current = 0;
+    lastThread.current = "";
     setThread([]);
     setSelectedId(id);
   }
@@ -539,68 +677,24 @@ export default function ConversacionesPage() {
 
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
               <div className={`no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 pt-4 lg:px-6 ${selected.botPaused && !businessPaused ? "pb-14" : "pb-4"}`}>
-                {thread.map((m, i) => {
-                  const day = dayLabel(m.createdAt);
-                  const newDay = i === 0 || dayLabel(thread[i - 1].createdAt) !== day;
-                  return (
-                    <Fragment key={m.id}>
-                      {newDay && (
-                        <p className="my-1 self-center rounded-lg bg-surface/90 px-3 py-1 text-[11px] font-medium text-ink-2 shadow-sm first-letter:uppercase">
-                          {day}
-                        </p>
-                      )}
-                      <Bubble
-                        message={m}
-                        contactName={name(selected)}
-                        highlighted={highlight === m.id}
-                        // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
-                        onMenu={(message, anchor) => setMenu({ message, anchor: isDesktop() ? anchor : null })}
-                        onQuote={goToMessage}
-                      />
-                    </Fragment>
-                  );
-                })}
-                <div ref={bottomRef} />
+                <Thread
+                  thread={thread}
+                  contactName={name(selected)}
+                  highlight={highlight}
+                  onMenu={openMenu}
+                  onQuote={goToMessage}
+                  bottomRef={bottomRef}
+                />
               </div>
 
               {selected.botPaused || businessPaused ? (
-                <form onSubmit={send} className="relative border-t border-line bg-surface px-3 pb-3 pt-2 lg:px-5">
-                  {sendError && <p className="mb-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{sendError}</p>}
-                  {/* Flota sobre el hilo, a la altura del botón de enviar; el hilo le deja espacio abajo. */}
-                  {selected.botPaused && !businessPaused && (
-                    <button
-                      type="button"
-                      onClick={() => act("resume")}
-                      className={`absolute bottom-full right-3 z-10 mb-2 flex lg:right-5 ${INTERVENE}`}
-                    >
-                      <RotateCcw size={13} /> Devolver al bot
-                    </button>
-                  )}
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      ref={inputRef}
-                      value={draftText}
-                      onChange={(e) => setDraftText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          send(e);
-                        }
-                      }}
-                      rows={1}
-                      placeholder="Escribe como la central…"
-                      className="ease-ui max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-sunken px-3.5 py-2.5 text-sm leading-5 outline-none focus:ring-2 focus:ring-clapi/30"
-                    />
-                    <button
-                      type="submit"
-                      disabled={sending || !draftText.trim()}
-                      aria-label="Enviar"
-                      className="ease-ui flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-clapi text-white disabled:opacity-40"
-                    >
-                      <SendHorizontal size={16} />
-                    </button>
-                  </div>
-                </form>
+                <Composer
+                  key={selected.id}
+                  conversationId={selected.id}
+                  inputRef={inputRef}
+                  onSent={afterSend}
+                  onResume={selected.botPaused && !businessPaused ? () => void act("resume") : null}
+                />
               ) : (
                 <div className="flex items-center justify-center gap-2 border-t border-line bg-surface px-3 pb-3 pt-2 text-sm text-ink-3 lg:px-5">
                   <Bot size={16} className="shrink-0 text-clapi" />
