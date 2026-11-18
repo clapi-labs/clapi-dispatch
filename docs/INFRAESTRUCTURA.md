@@ -10,7 +10,7 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | HTTPS automático (Caddy + Let's Encrypt) | Hecho |
 | Portal con login, bot, worker, Postgres | Hecho, funcionando en staging |
 | Migraciones versionadas (Drizzle) | Hecho |
-| CI (lint, tipos, build, migraciones) | Hecho, corre en PR hacia `main`. Falta en PR hacia `dev` y con `npm test` ([PLAN](PLAN.md) I-4) |
+| CI (lint, tipos, pruebas, build, migraciones) | Hecho, corre en todo PR hacia `dev` y `main`, y `dev` exige que pasen sus tres jobs para mezclar ([PLAN](PLAN.md) I-4) |
 | Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
 | Despliegue automático desde GitHub | **Pendiente**: hoy se despliega a mano, ver `OPERACION.md` ([PLAN](PLAN.md) I-3) |
 | Servidor de producción (separado de staging) | Pendiente ([PLAN](PLAN.md) I-5) |
@@ -97,7 +97,7 @@ flowchart LR
 
     STG -- "el equipo prueba" --> OK{Funciona}
     OK -- sí --> PR[PR de dev a main]
-    PR --> CI["ci.yml: lint, tipos, build, migraciones"]
+    PR --> CI["ci.yml: lint, tipos, pruebas, build, migraciones"]
     CI -- merge --> MAIN[Rama main]
     MAIN -- "botón: desplegar el mismo hash probado" --> GHCR
     GHCR -- "deploy.sh deploy hash" --> PRD
@@ -332,7 +332,7 @@ Dentro de `en_route` y `delivered`, la fase (sin leer, va a recoger, en recogida
 
 ```mermaid
 flowchart LR
-    PR[Pull request a main] --> CI["ci.yml: lint, tipos, build, migraciones, deriva del esquema"]
+    PR[Pull request a dev o main] --> CI["ci.yml: lint, tipos, pruebas, build, migraciones, deriva del esquema"]
     PUSH[Push a dev o main] --> IMG["images.yml: construye y publica en GHCR con el hash"]
     IMG --> GHCR[(GHCR)]
     IMG -- "en dev, si todas las imágenes salieron" --> DEP["deploy-staging.yml: SSH como deploy, deploy.sh deploy hash"]
@@ -343,7 +343,7 @@ flowchart LR
 
 | Workflow | Cuándo corre | Qué hace |
 |---|---|---|
-| `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed. Además, los casos y las pruebas del contrato del engine. Todavía no corre `npm test` ni en PR hacia `dev` ([PLAN](PLAN.md) I-4) |
+| `ci.yml` | PR hacia `dev` o `main`, y push a `main` | Tres jobs: `checks` (lint, typecheck, `npm test` con las pruebas de `packages/shared`, `apps/bot` y `apps/portal`, y build), `engine` (los casos y las pruebas del contrato, en Python) y `migrations` (base vacía aplicada dos veces, que `schema.ts` no tenga cambios sin migración, y el seed). Sin red ni secretos. Al hacer merge en `dev` corre `images.yml`, no CI ([PLAN](PLAN.md) I-4) |
 | `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker`, `engine` y los publica en GHCR con el hash y el nombre de la rama |
 | `deploy-staging.yml` | Lo llama `images.yml` al publicar las imágenes de un push a `dev`; también manual (con un hash opcional) | Entra por SSH como `deploy` (llave restringida) a staging y ejecuta `deploy <hash>`; después comprueba que `https://bot.staging.dispatch.clapi.solutions/api/health` responda 200 `{"ok":true}`. Un despliegue a la vez (`concurrency`) y, si `deploy.sh` falla, el trabajo falla y staging vuelve a la versión anterior |
 

@@ -18,6 +18,7 @@ Automatización de domicilios para una agencia de logística B2B: los restaurant
 | [`docs/BOT.md`](docs/BOT.md) | La conversación con restaurantes y motorizados: flujo, reglas y decisiones |
 | [`docs/FLUJO-DOMICILIARIO.md`](docs/FLUJO-DOMICILIARIO.md) | Mensajes al domiciliario, estados del servicio, recordatorios y GPS |
 | [`docs/DIRECCIONES-Y-ZONAS.md`](docs/DIRECCIONES-Y-ZONAS.md) | Cómo se ubican las direcciones, las zonas de servicio y los barrios del mapa |
+| [`docs/CAPACIDAD-CONVERSACIONES.md`](docs/CAPACIDAD-CONVERSACIONES.md) | Conversaciones a 500 chats al día, imágenes y carga del servidor: informe y mediciones |
 | [`docs/ALGORITMO.md`](docs/ALGORITMO.md) | El engine de asignación: contrato, modos y pruebas |
 | [`docs/CONTRATO-BOT-DESPACHO.md`](docs/CONTRATO-BOT-DESPACHO.md) | Qué hace el bot y qué hace el despacho |
 | [`docs/INTERVENCION-MANUAL.md`](docs/INTERVENCION-MANUAL.md) | Qué hace la central cuando algo sale mal |
