@@ -29,6 +29,7 @@ import { useBusiness } from "@/lib/business";
 import { formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary } from "@/lib/types";
 import { useLive } from "@/lib/live";
+import { createSendQueue } from "@/lib/send-queue";
 
 function timeLabel(iso: string) {
   const d = new Date(iso);
@@ -251,7 +252,14 @@ function Composer({
 }) {
   const [draftText, setDraftText] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const queue = useRef(
+    createSendQueue(async (text) => {
+      const res = await fetch(`/api/conversations/${conversationId}`, { method: "POST", body: JSON.stringify({ action: "send", text }) });
+      if (res.ok) return { ok: true };
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, reason: data.reason };
+    }),
+  );
 
   // La caja crece con lo que se escribe o se pega (un pedido de varias líneas), hasta su tope.
   useLayoutEffect(() => {
@@ -267,22 +275,12 @@ function Composer({
     if (!text) return;
     setDraftText("");
     setSendError(null);
-    queue.current = queue.current.then(async () => {
-      try {
-        const res = await fetch(`/api/conversations/${conversationId}`, {
-          method: "POST",
-          body: JSON.stringify({ action: "send", text }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setSendError(sendErrorText(data.reason));
-          setDraftText((current) => (current ? current : text));
-        }
-      } catch {
-        setSendError(sendErrorText(undefined));
-        setDraftText((current) => (current ? current : text));
-      }
-      onSent();
+    queue.current(text, {
+      onFail: (unsent, reason) => {
+        setSendError(sendErrorText(reason));
+        setDraftText((current) => (current ? current : unsent));
+      },
+      onDone: onSent,
     });
   }
 
