@@ -5,8 +5,10 @@ import {
   closedNoticeDue,
   countFields,
   emptyDelivery,
+  emptyDraft,
   fullAddress,
   isOpen,
+  isStaleDraft,
   mergeTripFields,
   missingFields,
   namedAsDestination,
@@ -14,6 +16,7 @@ import {
   normalizeName,
   parseDebtClaim,
   removeDeliveries,
+  shouldStaySilentAfterQuote,
   type DeliveryDraft,
   type DoubtfulField,
   type Interpretation,
@@ -98,7 +101,8 @@ type Context = {
 };
 
 async function save(ctx: Context, draft: OrderDraft | null, failedAttempts = 0) {
-  await updateConversation(ctx.conversation.id, { draft, failedAttempts });
+  const stamped = draft ? { ...draft, actualizadoEn: ctx.message.timestamp.toISOString() } : null;
+  await updateConversation(ctx.conversation.id, { draft: stamped, failedAttempts });
 }
 
 /** Google caído: el borrador se guarda (el asesor lo ve en el portal) y la
@@ -260,9 +264,8 @@ function summaryOf(quoted: DeliveryDraft[]) {
 }
 
 /** Lo que cuesta una entrega: la tabla por km desde la recogida más el ajuste
- *  de la zona de la entrega. `outOfRange` si pasa del tope de la agencia;
- *  `precio` null si la tabla por km está vacía. */
-async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, config: BotConfig, zones: ServiceZone[]) {
+ *  de la zona de la entrega; `precio` null si la tabla por km está vacía. */
+async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { lat: number; lng: number }, zones: ServiceZone[]) {
   const quote = await quoteByDistance(pickup, delivery, { zones });
   const b = quote.breakdown;
   return {
@@ -271,7 +274,6 @@ async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { l
     fuente: quote.source,
     routable: quote.routable,
     desglose: b ? { tabla: b.table, ajuste: b.adjustment, zona: b.zone?.name ?? null } : null,
-    outOfRange: config.maxKm !== null && quote.km > config.maxKm,
   };
 }
 
@@ -406,7 +408,11 @@ function placePin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">
 }
 
 export async function handleRestaurant(ctx: Context) {
-  const { conversation, message } = ctx;
+  const { message } = ctx;
+  const rawKnown = normalizeDraft(ctx.conversation.draft);
+  const stale = isStaleDraft(rawKnown, message.timestamp);
+  const conversation = stale ? { ...ctx.conversation, draft: null, failedAttempts: 0 } : ctx.conversation;
+  if (stale) ctx = { ...ctx, conversation };
   let { restaurant } = ctx;
   const config = await getBotConfig();
   // Se mide con la hora en que el restaurante envió el mensaje.
@@ -414,12 +420,14 @@ export async function handleRestaurant(ctx: Context) {
   const now = message.timestamp;
   const open = isOpen(now, hoursFor(restaurant, hours));
 
-  const known = normalizeDraft(conversation.draft);
+  const known = stale ? emptyDraft() : rawKnown;
   if (restaurant) known.origenRestaurante = restaurant.name;
   let draft: OrderDraft = structuredClone(known);
   let confirms = false;
   let fromImage = false;
   let saidName: string | null = null;
+  let query: "estado" | "cobertura" | null = null;
+  let intent: "cotizar" | "pedir" | null = null;
 
   // Lo que trae el turno: el texto (con sus fotos), los pines y los botones
   // que mandó seguido (`bot/turns.ts`). Un mensaje suelto es un turno de uno.
@@ -489,6 +497,8 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     const extraction = await interpretMessage(text, draft, images);
+    query = extraction.query;
+    intent = extraction.intent;
     const claim = extraction.claim ?? parseDebtClaim(text);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
     // escala y el borrador queda como estaba. Si era un reclamo claro, igual se atiende.
@@ -551,7 +561,10 @@ export async function handleRestaurant(ctx: Context) {
       await answerStatus(conversation, message.phone, quoted);
       return;
     }
-    const asksAddress = !pins.length && !extraction.fields.entregas.some((e) => e.direccionEntrega) && !before.entregas.some((e) => e.direccionEntrega);
+    const asksAddress =
+      !pins.length &&
+      !extraction.fields.entregas.some((e) => e.direccionEntrega) &&
+      (!before.entregas.some((e) => e.direccionEntrega) || before.etapa === "cotizado");
     if (extraction.query === "cobertura" && asksAddress) {
       if (!open) {
         await closedForOrders(ctx, hours.opensAt, now);
@@ -585,7 +598,7 @@ export async function handleRestaurant(ctx: Context) {
     // es otra cotización, no un segundo domicilio. Se empieza de nuevo con lo
     // que trae este mensaje; la recogida se conserva.
     let fields = extraction.fields;
-    if (before.soloPrecio && !extraction.confirms) {
+    if ((before.soloPrecio || priceOnly) && !extraction.confirms) {
       const fresh = fields.entregas.filter((e) => e.direccionEntrega && !before.entregas.some((k) => k.direccionEntrega === e.direccionEntrega));
       if (fresh.length) {
         draft = { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null };
@@ -732,7 +745,6 @@ export async function handleRestaurant(ctx: Context) {
   // las zonas de servicio: fuera y lejos no se pide; cerca del borde lo
   // decide la central. Sin zonas cargadas no se restringe nada.
   const zones = deliveries.some((d) => !d.cotizacion) ? await listServiceZones() : [];
-  const outOfRange: { delivery: DeliveryDraft; km: number }[] = [];
   const noService: DeliveryDraft[] = [];
   const noRoute: DeliveryDraft[] = [];
   const nearEdge: NearEdge[] = [];
@@ -744,7 +756,7 @@ export async function handleRestaurant(ctx: Context) {
       noService.push(d);
       continue;
     }
-    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, config, zones);
+    const quote = await quoteDelivery(pickupLocation, d.ubicacionEntrega!, zones);
     if (!quote.routable) {
       noRoute.push(d);
       continue;
@@ -752,10 +764,6 @@ export async function handleRestaurant(ctx: Context) {
     if (quote.precio === null) {
       await escalate(ctx, "La tabla de tarifas por km está vacía: no hay con qué cotizar. Llénala en el portal (Tarifas).");
       return;
-    }
-    if (quote.outOfRange) {
-      outOfRange.push({ delivery: d, km: quote.km! });
-      continue;
     }
     if (coverage.kind === "cerca") {
       nearEdge.push({ delivery: d, zone: coverage.zone, meters: coverage.meters, precio: quote.precio, km: quote.km, fuente: quote.fuente, desglose: quote.desglose });
@@ -768,14 +776,9 @@ export async function handleRestaurant(ctx: Context) {
     await askAdvisor(ctx, draft, noRoute, "no_route");
     return;
   }
-  const dropped = [...noService, ...outOfRange.map((o) => o.delivery)];
+  const dropped = noService;
   if (dropped.length) draft.entregas = draft.entregas.filter((d) => !dropped.includes(d));
-  const coverageNote = [
-    noServiceText(noService.map(deliveryLabel)),
-    ...outOfRange.map((o) => `Hasta ${deliveryLabel(o.delivery)} no tenemos cobertura 🙏 (${o.km} km, llegamos hasta ${config.maxKm} km).`),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const coverageNote = noServiceText(noService.map(deliveryLabel)) ?? "";
   if (nearEdge.length) {
     await askCoverage(ctx, draft, nearEdge, coverageNote);
     return;
@@ -794,10 +797,9 @@ export async function handleRestaurant(ctx: Context) {
   const accepted = confirms && draft.resumenMostrado === summaryOf(quoted);
   if (!accepted) {
     const priceChanged = newQuote || dropped.length > 0;
-    // Solo había preguntado el precio y no decidió mandarlo («gracias», «ok»):
-    // no se le insiste ni cuenta como intento. El precio queda guardado por si
-    // después dice «dale» o manda los datos.
-    if (!priceChanged && draft.soloPrecio) {
+    // Solo calla si YA se le había mostrado este precio (`before.soloPrecio`) y respondió
+    // algo neutro («gracias», «ok»), sin preguntar cobertura ni saludar otra vez.
+    if (shouldStaySilentAfterQuote({ hadPriceBefore: !!before.soloPrecio, priceChanged, progressed, query, intent, text })) {
       await save(ctx, draft);
       return;
     }
@@ -808,8 +810,8 @@ export async function handleRestaurant(ctx: Context) {
     const reason = reply.summary ? "sin confirmar el servicio" : "sin los datos que faltan";
     if (priceChanged) await save(ctx, draft);
     else if (!(await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos ${reason}.`))) return;
-    const text = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
-    await say(conversation.id, message.phone, text, { replyTo, buttons: reply.buttons });
+    const replyText = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
+    await say(conversation.id, message.phone, replyText, { replyTo, buttons: reply.buttons });
     return;
   }
 

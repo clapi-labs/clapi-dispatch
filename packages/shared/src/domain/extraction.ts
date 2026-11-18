@@ -153,7 +153,49 @@ export type OrderDraft = {
   /** Ya se le recordó que debe confirmarlo antes de la hora límite: sale una
    *  sola vez por pedido. */
   recordatorioCierre?: boolean;
+  /** Última vez que este borrador recibió datos del restaurante o de la central. */
+  actualizadoEn?: string | null;
 };
+
+/** Tiempo máximo que un borrador abandonado sin asesor sigue activo antes de
+ *  empezar de cero cuando el restaurante vuelva a escribir. */
+export const DRAFT_TTL_MS = 60 * 60_000;
+
+/** Un borrador viejo y sin consulta abierta no debe secuestrar un mensaje nuevo horas después. */
+export function isStaleDraft(draft: OrderDraft, now: Date): boolean {
+  if (!draft.entregas.length && !draft.origenRestaurante && !draft.soloPrecio) return false;
+  if (draft.consultaAsesor || draft.preguntaIdentidad) return false;
+  const stamps = [draft.actualizadoEn, ...draft.entregas.map((d) => d.listoDesde)]
+    .map((s) => (s ? Date.parse(s) : NaN))
+    .filter(Number.isFinite);
+  if (!stamps.length) return false;
+  return now.getTime() - Math.max(...stamps) > DRAFT_TTL_MS;
+}
+
+const GREETING_ONLY_RE = /^\s*(?:hola|buen(?:os|as)(?:\s+(?:d[ií]as|tardes|noches))?|saludos)\b[\s.!?,]*$/iu;
+
+/**
+ * Calla solo cuando YA se le mostró este precio antes (`hadPriceBefore`) y el
+ * restaurante respondió algo neutro («ok», «gracias») sin pedir nada nuevo,
+ * preguntar ni saludar otra vez.
+ */
+export function shouldStaySilentAfterQuote(params: {
+  hadPriceBefore: boolean;
+  priceChanged: boolean;
+  progressed: boolean;
+  query: string | null;
+  intent: "cotizar" | "pedir" | null;
+  text: string;
+}): boolean {
+  return (
+    !params.priceChanged &&
+    params.hadPriceBefore &&
+    !params.progressed &&
+    !params.query &&
+    params.intent === null &&
+    !GREETING_ONLY_RE.test(params.text)
+  );
+}
 
 /** Lo que devuelve el modelo por mensaje. */
 export type Interpretation = {
@@ -240,7 +282,7 @@ export function missingFields(delivery: DeliveryDraft, required: OrderFieldKey[]
 /** Palabras que dicen que en esa dirección vive más de una familia, así que
  *  hace falta la torre, el apartamento o la casa para llegar a la puerta. */
 const MULTI_UNIT_WORDS =
-  /\b(conjunto|conj|unidad(?!\s+(deportiva|m[eé]dica|de\b))|edificio|edif|edf|torres?|bloques?|apto|apartamentos?|condominio|multifamiliar(es)?|residencias)\b/iu;
+  /\b(conjunto|conj|unidad(?!\s+(deportiva|m[eé]dica|de\s+(cuidados?|urgencias?|salud|servicios?|rehabilitaci[oó]n|di[aá]lisis|oncolog[ií]a|maternidad|quemados|trasplantes?|hospitalizaci[oó]n)\b))|edificio|edif|edf|torres?|bloques?|apto|apartamentos?|condominio|multifamiliar(es)?|residencias)\b/iu;
 
 /** «apto 302», «torre 2», «casa 14», «bloque C»: la puerta ya viene en el texto. */
 const UNIT_NUMBER = /\b(apto|apartamento|torre|bloque|casa|interior|int)\b\.?\s*(n[°º.o]?\s*)?#?\s*([a-z]?\d+|[a-z]\b)/iu;
@@ -268,6 +310,169 @@ export function ambiguousAddress(address: string | null | undefined): boolean {
   // «Conjunto Bosques del Lili, 3» o «Unicentro local 12»: el número no es de la calle.
   const street = address.replace(/\b(local|apto|apartamento|torre|bloque|casa|piso|oficina|of|interior|int)\b\.?\s*#?\s*\w+/giu, "");
   return /\d/.test(street) && !ROAD_TYPE.test(street);
+}
+
+// ---------------------------------------------------------------------------
+// La puerta (torre, apto, casa…) aparte de la dirección que va al mapa
+// ---------------------------------------------------------------------------
+
+/** Lo que identifica una puerta dentro de un conjunto, edificio o calle:
+ *  «Torre 4», «Apto 803», «Bloque C», «Casa 14», «Local 5», «Piso 3». */
+const DOOR_WORD = String.raw`(?:interior|torre|bloque|bl|manzana|mz|apartamento|apto|apt|ap|casa|piso|oficina|ofc|of|local|loc|lote|int)`;
+/** Lo que sigue a la palabra: un número («4», «803», «12B», «4-803», «C202») o una
+ *  sola letra en mayúscula («Torre A»). «Torre Alta» o «Casa Blanca» no: es un nombre. */
+const DOOR_ID = String.raw`(?:n[°º]\.?\s*|no\.?\s*|#\s*)?(\p{L}?\p{N}{1,4}\p{L}?(?:\s*-\s*\p{N}{1,4})?|\p{Lu})`;
+const DOOR_RE = new RegExp(String.raw`(?<![\p{L}\p{N}])(${DOOR_WORD})(?!\p{L})\.?\s*${DOOR_ID}(?![\p{L}\p{N}])`, "giu");
+
+/** Los que cuentan como conjunto o edificio: con ellos, la dirección es de varias familias. */
+const MULTI_UNIT_DOOR = /^(torre|bloque|bl|interior|int|apartamento|apto|apt|ap)$/iu;
+
+const squashText = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const TRIM_EDGES = /^[\s,;.\-–]+|[\s,;.\-–]+$/g;
+
+/**
+ * Separa la puerta de la dirección: «Unidad Reserva campestre, Torre 4 Apto
+ * 803» → dirección «Unidad Reserva campestre», puerta «Torre 4 Apto 803». La
+ * puerta es lo que el motorizado usa adentro; al mapa solo va el conjunto, el
+ * edificio o la calle. No depende de lo que haya hecho el modelo.
+ *
+ * Una palabra de puerta sin número («Edificio Torre Alta», «Casa Blanca») es
+ * un nombre y se queda. Con `all`, también una puerta al comienzo («Local 3,
+ * Cra 50 # 10-20»): para buscar en el mapa, donde nunca ayuda; al guardar la
+ * entrega se deja como llegó. Si no queda dirección, no separa nada.
+ */
+export function splitDoor(address: string | null | undefined, { all = false } = {}): { direccion: string; detalle: string | null; multiUnit: boolean } {
+  const text = (address ?? "").replace(/\s+/g, " ").trim();
+  const none = { direccion: text, detalle: null, multiUnit: false };
+  if (!text) return none;
+
+  const found = [...text.matchAll(DOOR_RE)].filter((m) => {
+    const id = m[2] ?? "";
+    // Una sola letra solo si va en mayúscula («Torre A»): «casa a la esquina» no es una puerta.
+    return !(id.length === 1 && /\p{L}/u.test(id) && id !== id.toUpperCase());
+  });
+  if (!found.length) return none;
+
+  // Las puertas pegadas («Torre 4, Apto 803») son una sola.
+  const runs: { start: number; end: number; parts: string[]; words: string[] }[] = [];
+  for (const m of found) {
+    const start = m.index!;
+    const end = start + m[0].length;
+    const last = runs[runs.length - 1];
+    if (last && /^[\s,.\-–]*$/.test(text.slice(last.end, start))) {
+      last.end = end;
+      last.parts.push(m[0]);
+      last.words.push(m[1]);
+    } else runs.push({ start, end, parts: [m[0]], words: [m[1]] });
+  }
+
+  // Al comienzo, «Torre 2 del Conjunto…» o «Local 3, Cra 50…» es parte del nombre o de la
+  // dirección; «Torre 4 Apto 803, Unidad Reserva campestre» no: es la puerta, dicha primero.
+  const leadingDoor = (r: (typeof runs)[number]) => r.words.some((w) => MULTI_UNIT_DOOR.test(w)) && !/^[\s,]*(?:de|del)\s/iu.test(text.slice(r.end));
+  const taken = runs.filter((r) => all || r.start > 0 || leadingDoor(r));
+  if (!taken.length) return none;
+
+  let rest = "";
+  let at = 0;
+  for (const r of taken) {
+    rest += text.slice(at, r.start);
+    at = r.end;
+  }
+  rest += text.slice(at);
+  rest = rest
+    .replace(/\s+([,;])/g, "$1")
+    .replace(/([,;])\s*(?:[,;]\s*)+/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .replace(TRIM_EDGES, "")
+    .replace(/^(?:de|del|la|el)\s+/iu, "")
+    // «Cra 5 # 4-3 y» / «Cra 5 # 4-3 en»: lo que quedó colgando.
+    .replace(/\s+(?:y|en|de|del|con|para|al?)$/iu, "");
+  // Tiene que quedar una dirección: palabras («Unidad Reserva») o un número largo, no solo «# 4».
+  if (!/\p{L}{2,}/u.test(rest) && !/\p{N}{3,}/u.test(rest)) return none;
+
+  const detail = taken
+    .flatMap((r) => r.parts)
+    // «apto803» → «apto 803»
+    .map((p) => p.replace(TRIM_EDGES, "").replace(/^(\p{L}+)(?=\p{N})/u, "$1 "))
+    .join(" ");
+  const detalle = detail ? detail.charAt(0).toUpperCase() + detail.slice(1) : null;
+  return { direccion: rest, detalle, multiUnit: taken.some((r) => r.words.some((w) => MULTI_UNIT_DOOR.test(w))) };
+}
+
+/** Las dos puertas, sin repetir lo que ya dice la otra: «Apto 803» y «Torre 4 Apto 803» es la segunda. */
+function joinDoors(known: string | null | undefined, found: string | null): string | null {
+  if (!found) return known?.trim() || null;
+  if (!known?.trim()) return found;
+  if (squashText(known).includes(squashText(found))) return known.trim();
+  if (squashText(found).includes(squashText(known))) return found;
+  return `${found} ${known.trim()}`;
+}
+
+/**
+ * La torre, el apartamento o la casa que el modelo dejó dentro de
+ * `direccionEntrega` pasan completos a `detalleDireccion` (sin repetirse si ya
+ * estaban ahí). La dirección conserva el conjunto, el edificio o la calle.
+ */
+export function separateDoor<F extends Pick<DeliveryFields, "direccionEntrega" | "detalleDireccion" | "esConjunto">>(fields: F): F {
+  const split = splitDoor(fields.direccionEntrega);
+  if (!split.detalle) return fields;
+  return {
+    ...fields,
+    direccionEntrega: split.direccion,
+    detalleDireccion: joinDoors(fields.detalleDireccion, split.detalle),
+    esConjunto: fields.esConjunto ?? (split.multiUnit ? true : null),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Preguntar el precio a un conjunto o lugar por su nombre
+// ---------------------------------------------------------------------------
+
+/** Lo que dice que lo que sigue es un conjunto o un lugar y no una calle. */
+const PLACE_WORD = String.raw`(?:unidad|conjunto|conj|edificio|edif|edf|condominio|urbanizaci[oó]n|agrupaci[oó]n|ciudadela|torres|residencial|centro\s+comercial|c\.?\s?c\.?)(?![\p{L}\p{N}])`;
+const NAMED_PLACE = new RegExp(String.raw`^${PLACE_WORD}`, "iu");
+const PRICE_TO_PLACE = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:hasta|para|a|al)\s+(?:la\s+|el\s+|los\s+|las\s+)?(?=${PLACE_WORD})(.+?)\s*[?¿!.,]*$`, "iu");
+
+/** «qué cuesta hasta…», «cuánto vale a…», «precio hasta…», «cuánto cobran para…». */
+const PRICE_ASK =
+  /(?<![\p{L}\p{N}])(?:(?:cu[aá]nto|qu[eé]|cu[aá]l)\s+(?:cuesta|vale|cobran|cobra|sale|ser[ií]a|es\s+(?:el\s+)?(?:precio|valor))|precio|valor\s+del\s+domicilio|cot[ií]za(?:me|r|ci[oó]n)?)(?![\p{L}\p{N}])/iu;
+
+/**
+ * El conjunto o lugar por el que solo se pregunta el precio, con su nombre:
+ * «hola buenas que cuesta hasta la unidad de reserva campestre ?» → «Unidad de
+ * reserva campestre». `null` si no es una pregunta de precio a un lugar con nombre
+ * (a una calle con número la lee el modelo sin problema).
+ */
+export function priceQuestionPlace(text: string | null | undefined): string | null {
+  const flat = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!flat || !PRICE_ASK.test(flat)) return null;
+  const place = PRICE_TO_PLACE.exec(flat)?.[1]?.replace(/[?¿!]+/g, "").trim();
+  if (!place || !NAMED_PLACE.test(place) || place.split(" ").length < 2) return null;
+  return place.charAt(0).toUpperCase() + place.slice(1);
+}
+
+/**
+ * El modelo a veces marca «confuso» (o no devuelve la dirección) cuando solo se
+ * pregunta el precio a un conjunto por su nombre: una cotización normal. Si el
+ * mensaje lo es y trae un lugar con nombre, la entrega es ese lugar y no hay
+ * nada confuso. No toca nada si el modelo sí leyó una dirección y no dudó.
+ */
+export function rescuePriceQuestion(
+  text: string,
+  entregas: Interpretation["entregas"],
+  confused: boolean,
+): { entregas: Interpretation["entregas"]; confused: boolean; rescued: boolean } {
+  const place = priceQuestionPlace(text);
+  if (!place) return { entregas, confused, rescued: false };
+  const hasAddress = entregas.some((e) => e.direccionEntrega);
+  if (hasAddress) return { entregas, confused: false, rescued: confused };
+  const blank = entregas.findIndex((e) => !e.direccionEntrega);
+  const next = [...entregas];
+  const found = { ...(blank >= 0 ? next[blank] : emptyDelivery()), direccionEntrega: place, esConjunto: true };
+  if (blank >= 0) next[blank] = found;
+  else next.push(found);
+  return { entregas: next, confused: false, rescued: true };
 }
 
 /** La dirección tal como la lee el motorizado: calle y, si hay, torre y apto. */
@@ -379,7 +584,8 @@ const STREET = /\b(calle|cl|carrera|cra|kr|cr|avenida|av|diagonal|dg|transversal
  */
 function doorAsDetail(fields: DeliveryFields): DeliveryFields {
   const address = fields.direccionEntrega?.trim();
-  const moved = !address || !DOOR_ONLY.test(address) || STREET.test(address) ? fields : { ...fields, direccionEntrega: null, detalleDireccion: fields.detalleDireccion ?? address };
+  const only = !address || !DOOR_ONLY.test(address) || STREET.test(address) ? fields : { ...fields, direccionEntrega: null, detalleDireccion: fields.detalleDireccion ?? address };
+  const moved = separateDoor(only);
   // Y la puerta repetida en las notas («Para Torre 4 apto 902») no le dice nada nuevo al domiciliario.
   const door = moved.detalleDireccion ? normalizeName(moved.detalleDireccion) : null;
   const note = moved.notas ? normalizeName(moved.notas).replace(/^(para|en|a)\s+(la\s+|el\s+)?/, "") : null;
@@ -456,7 +662,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "nombreRestaurante": string | null,   // el nombre del NEGOCIO QUE ESCRIBE, solo si el mensaje nuevo se identifica así a propósito ("soy de Pizza Nona", "habla Donde Lucho", "te escribo de Sushi Ya"), sin dirección. null si el mensaje no dice que el negocio es quien escribe: un nombre tras "domi", "domicilio", "moto", "llevar", "a", "para" o "al lado de" es a dónde va el pedido o una referencia ("domi para Café Luna, Calle 3 # 4-5", "domicilio a Café Luna", "al lado de Café Luna"), o si es el de una persona o del cliente. Ante la duda, null
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados; también la dirección o el lugar por el que solo pregunta el precio
     {
-      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio, barrio y municipio si dice otro distinto de Cali ("Jamundí", "Yumbo", "Candelaria"); SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
+      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio, barrio y municipio si dice otro distinto de Cali ("Jamundí", "Yumbo", "Candelaria", "Palmira"); SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
@@ -490,6 +696,7 @@ Reglas:
 - El tiempo de preparación dicho sin señalar una entrega ("en 10", "ya están los 2") aplica a todas las entregas que no lo tengan.
 - Preguntar el precio ("¿qué vale a…?", "¿cuánto a…?", "¿domis acá?") es una cotización normal: la dirección o el lugar SIEMPRE va en "entregas", aunque no traiga nada más, y no es confuso. Sin ella no hay con qué cotizar.
   Ejemplo: "¿Cuánto a la Cra 98 # 45-30 Valle del Lili?" → "entregas": [{"direccionEntrega": "Cra 98 # 45-30, Valle del Lili", el resto null}], "intencion": "cotizar", "consulta": null.
+  Un conjunto, unidad, edificio o lugar conocido, solo con su nombre, es una dirección válida para cotizar (sin torre ni apto: eso se pide después, al pedir): "hola buenas que cuesta hasta la unidad de reserva campestre ?" → "entregas": [{"direccionEntrega": "Unidad Reserva Campestre", "esConjunto": true, el resto null}], "intencion": "cotizar", "confuso": false.
 - Una línea "(Ubicación de WhatsApp: X)" es un pin que el restaurante mandó en ese punto del mensaje: es la dirección de la entrega de la que habla junto a él ("a esta", "para esta dirección", "aquí"). Usa X tal cual como su "direccionEntrega"; si esa entrega ya tenía una dirección escrita, el pin es su ubicación: deja la escrita.
 - Un lugar conocido sirve como dirección de entrega: "Clínica Farallones", "Centro Comercial Aquarela, local 12", "Unicentro". Guárdalo tal cual.
 - "Ya está pagado", "pagó por Nequi/transferencia", "pago Bancolombia", "Daviplata", "pagado a través de Rappi", "pagó con tarjeta por la página" o "total a cobrar $0" = "transferencia" (y "valorACobrar" null: no se le cobra nada al cliente).
@@ -499,6 +706,7 @@ Reglas:
 - "listoEnMinutos": "en 10", "listo en 15", "sale en 15 min" = ese número. "Ya está", "ya está listo", "pueden venir", "ya sale" = 0. Si da un rango ("10 a 15 min"), usa el menor. Si da una hora ("lista a las 7:40"), calcula los minutos desde la "Hora actual" que te paso. Si no dice nada del tiempo, null: nunca lo supongas.
 - "detalleDireccion": SOLO lo que identifica la puerta (torre, bloque, interior, apartamento, casa, piso, oficina, local, o un código como "C202"); el barrio y las indicaciones ("dejar en portería") nunca van ahí. Copia completos la torre Y el apartamento: "Torre 1 apto 604" → "Torre 1 apto 604", nunca solo "Apto 604".  Si llega después en un mensaje suelto ("torre 2 apto 301", "casa 14"), va a la entrega que no lo tenga. No lo repitas en "direccionEntrega" ni en "notas" (si ya va en "valorACobrar" o "metodoPago", tampoco en notas), pero no quites de "direccionEntrega" nada más: el nombre del conjunto o edificio y el barrio se quedan ahí.
   Ejemplo: "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio" → direccionEntrega "Calle 5 # 66-20, Edificio Torre Alta, El Refugio", detalleDireccion "Apto 1203", esConjunto true.
+  Ejemplo con un conjunto por su nombre: "Unidad Reserva campestre, Torre 4 Apto 803" → direccionEntrega "Unidad Reserva campestre", detalleDireccion "Torre 4 Apto 803" (completo: la torre Y el apartamento), esConjunto true. La torre, el bloque, el interior, la manzana, el apartamento, la casa, el piso, la oficina y el local NUNCA se quedan en "direccionEntrega"; «Torre Alta» o «Casa Blanca» (sin número) sí, porque son el nombre del edificio.
 - Puntos de referencia y descripciones del lugar ("frente a la panadería El Sebas", "al lado hay un puesto de arepas", "casa esquinera de rejas negras", "aquí me encuentro yo") NO van en "direccionEntrega": van en "notas", completos y bien redactados, porque son lo que el domiciliario usa para encontrar el sitio. Nunca los resumas ni los descartes.
   Ejemplo: "A nombre de Laura Gómez mi número 3001234567 dirección es por toda la 42 con 83E -15 panadería el Sebas. El punto de referencia es la panadería y justo al lado hay un puesto de arepas de choclo en toda una esquina. aquí me encuentro yo" → direccionEntrega "La 42 con 83E-15" (no dice si es calle o carrera: no lo inventes), nombreCliente "Laura Gómez", telefonoCliente "3001234567", notas "Punto de referencia: panadería El Sebas · Justo al lado hay un puesto de arepas de choclo, en la esquina · El cliente espera ahí".
 - "esConjunto": true si la dirección nombra un conjunto, unidad residencial, edificio, condominio, torres o urbanización cerrada ("Conjunto Bosques del Lili", "Unidad Alameda", "Edificio Ceibas", "Torres de Comfandi"). false si es una casa en una calle, un local o un lugar público (clínica, centro comercial, universidad). También true si el restaurante menciona torre, bloque o apartamento aunque no dé el número. null si no se sabe. Conserva el valor ya capturado si el mensaje no dice nada nuevo de la dirección.
@@ -512,7 +720,7 @@ Reglas:
 - Nunca inventes un valor: lo que no sepas va en null.
 - "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), un dato que no queda claro a qué entrega pertenece, o algo que no cuadra: una dirección sin tipo de vía ("la 42 con 83", no se sabe si es calle o carrera) o a medias (sin el número de la casa), dos teléfonos o dos nombres para el mismo cliente, un barrio que no corresponde a la dirección, o un dato distinto del ya capturado sin decir que es una corrección. Ante la duda, márcalo: el restaurante confirma antes de pedir la moto, y es mejor preguntar que mandar al domiciliario a otro lado. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
-- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"); ese lugar también va en "entregas". En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
+- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿tienen servicio hasta Palmira?", "¿cubren Pance?"); ese lugar también va en "entregas". En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "reclamo": cuando el restaurante reclama que un domiciliario le devuelva su datáfono o le traiga la plata de pedidos anteriores, o avisa que ya va a cerrar ("¿a qué hora me traen la plata?", "necesito el datáfono", "ya vamos a cerrar, necesito la plata", "no me han devuelto el datáfono", "ya vamos a cerrar"). "motivo": "plata" si pide su plata/efectivo, "datafono" si pide su datáfono, o null si dice que va a cerrar o pide cuadrar sin especificar cuál. "cierra": true si dice que ya va a cerrar o está cerrando. NO es reclamo que un pedido nuevo diga "llevar datáfono" o "paga en efectivo" (eso es el metodoPago del cliente). Si en el mismo mensaje pide un domicilio y además hace un reclamo, llena TANTO "entregas"/"intencion" como "reclamo". Si no reclama nada ni avisa que cierra, null.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto (salvo que sea un "reclamo" de plata o datáfono), o se contradice sin aclarar cuál dato es el bueno. Saludos, reclamos de plata/datáfono, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;

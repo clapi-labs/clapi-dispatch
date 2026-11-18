@@ -78,15 +78,17 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - Si el despliegue falla, staging sigue en la versión anterior y el fallo se ve en Actions.
 - La llave usada es la de despliegue restringida (solo puede correr `deploy.sh`), guardada como secreto de GitHub.
 
-**Dónde mirar:** `.github/workflows/images.yml`, `deploy/deploy.sh`, `docs/INFRAESTRUCTURA.md` («CI/CD»).
+**Hecho en el código (#81), falta activarlo:** `deploy-staging.yml` (llamado por `images.yml` en `dev` y también manual con un hash), con concurrencia, comprobación de `/api/health` y la huella del servidor fijada. **Para activarlo:** cargar `STAGING_SSH_KEY` y `STAGING_SSH_KNOWN_HOSTS` (OPERACION.md, «Desplegar a staging») y haber cerrado I-4 (#77), para no desplegar sin CI en los PR. Se da por terminada al ver un merge real a `dev` quedar en `/opt/dispatch/.tag`.
+
+**Dónde mirar:** `.github/workflows/images.yml`, `.github/workflows/deploy-staging.yml`, `deploy/deploy.sh`, `docs/INFRAESTRUCTURA.md` («CI/CD»).
 
 ### I-4 · CI en cada PR a `dev`, con las pruebas · Infra · S
 
-**Objetivo:** que nada roto llegue a `dev`. Hoy CI solo corre en PR a `main` y no corre `npm test`.
+**Objetivo:** que nada roto llegue a `dev`. CI corre en todo PR a `dev` y a `main`, con `npm test` (incluye `apps/portal`), y `dev` exige que pasen `checks`, `engine` y `migrations` para mezclar.
 
 **Éxito:**
-- Todo PR a `dev` (y a `main`) corre lint, tipos, build, migraciones y `npm test`.
-- Una prueba rota a propósito en un PR de ensayo bloquea el merge (protección de rama en `dev`).
+- ~~Todo PR a `dev` (y a `main`) corre lint, tipos, build, migraciones y `npm test`.~~ Hecho.
+- Una prueba rota a propósito en un PR de ensayo bloquea el merge (protección de rama en `dev`, activa desde el 17 de noviembre de 2026; no obliga a los administradores ni exige revisiones).
 
 **Dónde mirar:** `.github/workflows/ci.yml`, script `test` del `package.json` raíz.
 
@@ -266,7 +268,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Éxito:**
 - El portal se instala como app (ícono de Clapi, pantalla completa) y recibe notificaciones push (Android con Chrome; iPhone con iOS 16.4 o más, instalado en la pantalla de inicio).
-- Suenan las alertas que ya tiene el portal: chat que pide ayuda (incluye novedad de un motorizado y consulta de dirección) y moto asignada. Al tocar la notificación abre ese chat o ese pedido.
+- Suenan solo los bloqueos reales y las emergencias, en dos niveles (ver [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md), «Alertas al celular»): 🟠 naranja (chat de restaurante, cliente que no contesta, reclamos y datáfonos) y 🔴 rojo (chat de motorizado, emergencia en Flota, moto que no recoge, entrega o devolución estancada). La operación normal (moto asignada, pedido sin moto, «Voy en camino», salida de la entrega) no avisa al celular. Al tocar la notificación abre ese chat o ese pedido.
 - El portal muestra si las notificaciones están activas o bloqueadas en ese celular.
 - En el celular instalado la sesión dura 30 días y se puede cerrar a distancia.
 - Probado en un Android real con el celular bloqueado y el portal cerrado; en un iPhone, cuando haya uno.

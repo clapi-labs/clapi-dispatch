@@ -1,5 +1,5 @@
 import { NEAR_ZONE_M, serviceVerdictAt } from "@dispatch/shared";
-import { db, getBotConfig, listServiceZones, quoteByDistance, schema, type Quote } from "@dispatch/shared/db";
+import { db, listServiceZones, quoteByDistance, schema, type Quote } from "@dispatch/shared/db";
 import { eq } from "drizzle-orm";
 
 import { askBot } from "@/lib/bot";
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     // la tiene el bot. Si no responde, se mide aquí con OSRM (sin Google).
     const viaBot = await askBot<Quote>("/api/internal/quote", { pickup, point });
     if (!viaBot.ok) console.warn(`[portal] el bot no cotizó (${viaBot.reason}): se mide con OSRM local`);
-    const [q, config] = await Promise.all([viaBot.ok ? viaBot.data : quoteByDistance(pickup, point, { zones }), getBotConfig()]);
+    const q = viaBot.ok ? viaBot.data : await quoteByDistance(pickup, point, { zones });
     quote = {
       restaurant: restaurantName,
       pickup,
@@ -79,8 +79,6 @@ export async function POST(request: Request) {
       adjustment: q.breakdown?.adjustment ?? 0,
       zone: q.breakdown?.zone ?? null,
       total: q.price,
-      maxKm: config.maxKm,
-      overMaxKm: config.maxKm !== null && q.km > config.maxKm,
     };
   }
   return Response.json({

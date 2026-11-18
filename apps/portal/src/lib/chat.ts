@@ -1,9 +1,10 @@
 import { formatPhone, phoneDigits } from "@/lib/format";
 import type { ConversationSummary } from "@/lib/types";
 
-/** Al motorizado se le ve con su nombre de Flota, no con el de su WhatsApp. */
+/** Al motorizado se le ve con su nombre de Flota y al restaurante registrado
+ *  con su nombre en Restaurantes, no con el de su WhatsApp. */
 export function conversationName(c: ConversationSummary) {
-  return c.courierName || c.displayName || formatPhone(c.phone);
+  return c.courierName || c.restaurantName || c.displayName || formatPhone(c.phone);
 }
 
 /**

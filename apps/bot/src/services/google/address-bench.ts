@@ -1,7 +1,9 @@
 import {
   ambiguousAddress,
+  distanceToRingM,
   haversineKm,
   insideRing,
+  splitDoor,
   serviceVerdictAt,
   type LatLngPoint,
   type ServiceZoneShape,
@@ -45,10 +47,23 @@ export type AddressCase = {
   dudosa?: boolean;
   /** El punto real, verificado en Google Maps. Sin él, el caso no entra en el porcentaje. */
   referencia: Reference | null;
+  /**
+   * Para un caso sin punto verificado: el sector donde tiene que caer, con el
+   * nombre del barrio como está en `barrios.json` (bordes de la IDESC). Si el
+   * punto del bot queda a más de `SECTOR_TOLERANCE_M` de todos, es «lejos».
+   * No mide la precisión (no hay punto), solo que no salte a otro lado.
+   */
+  sector?: string[];
+  /** Tiene que ubicarse y a una distancia buena (exacto o aceptable, o con sector, dentro de él):
+   *  si no, la medición falla. Los casos de conjuntos conocidos y las direcciones claras. */
+  exigido?: boolean;
   nota?: string;
 };
 
 export const caseAddress = (c: AddressCase) => c.direccion ?? c.texto;
+
+/** Un caso con `sector` acepta un punto hasta aquí del borde de esos barrios. */
+export const SECTOR_TOLERANCE_M = 1_000;
 
 /** Hasta aquí, la puerta o la de al lado. */
 export const EXACT_M = 50;
@@ -80,6 +95,11 @@ export function validateCases(file: unknown): string[] {
       if (!r.fuente?.trim() || !r.verificado?.trim()) errors.push(`${at}: la referencia no dice de dónde salió ni quién la verificó`);
       if (c.esperado === "escalar") errors.push(`${at}: un caso para escalar no tiene punto de referencia`);
     }
+    if (c.sector !== undefined && (!Array.isArray(c.sector) || !c.sector.length || c.sector.some((n) => typeof n !== "string" || !n.trim()))) {
+      errors.push(`${at}: «sector» es una lista de nombres de barrio`);
+    }
+    if (c.exigido && c.esperado === "escalar") errors.push(`${at}: un caso para escalar no se exige ubicar`);
+    if (c.exigido && !c.referencia && !c.sector?.length) errors.push(`${at}: un caso exigido sin punto verificado necesita un «sector»`);
   }
   return errors;
 }
@@ -98,11 +118,16 @@ export function offlineProblems(c: AddressCase): string[] {
   const query = buildGeocodeQuery(address);
   if (c.municipio !== "cali" && /,\s*cali,/iu.test(query)) problems.push(`le pega Cali a una dirección de ${c.municipio}: «${query}»`);
   if (ambiguousAddress(address) !== !!c.dudosa) problems.push(c.dudosa ? "no la marca como dudosa" : "la marca como dudosa sin serlo");
+  const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (c.detalle) {
-    const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (squash(address).includes(squash(c.detalle))) problems.push("la puerta quedó en la dirección que va al mapa");
     if (!squash(c.texto).includes(squash(c.detalle))) problems.push("la puerta no está en el texto");
   }
+  // La separación que hace el código, sin el modelo: la dirección que va al mapa no trae puerta, y la
+  // puerta que sale del texto es la esperada. (Las indicaciones, como «frente al parque», las separa el modelo.)
+  if (splitDoor(address, { all: true }).detalle) problems.push(`la dirección que va al mapa todavía trae la puerta: «${address}»`);
+  const found = splitDoor(c.texto).detalle;
+  if (found && squash(found) !== squash(c.detalle ?? "")) problems.push(`del texto se separa la puerta «${found}» y el caso espera «${c.detalle ?? ""}»`);
   return problems;
 }
 
@@ -123,7 +148,15 @@ export function caliBarrioAt(point: LatLngPoint, barrios: Barrio[]): string | nu
 }
 
 /** Lo que devolvió Google para el caso, para mostrarlo en el informe. */
-export type GoogleSeen = { status: string; formatted: string | null; locationType: string | null; partial: boolean; results: number };
+export type GoogleSeen = {
+  status: string;
+  formatted: string | null;
+  locationType: string | null;
+  partial: boolean;
+  results: number;
+  /** El nombre con que se encontró, si no fue el escrito (`resolveGeocode`). */
+  via?: string | null;
+};
 
 export type Located = {
   outcome: GeocodeOutcome;
@@ -134,7 +167,7 @@ export type Located = {
 
 /** Lo que decide el bot con una respuesta de Google (`interpretGeocode`, lo
  *  mismo que al cotizar), y lo que Google dijo de su primer resultado. */
-export function locatedFromGoogle(data: GoogleGeocodeResponse, address: string, extracted: string | null = null): Located {
+export function locatedFromGoogle(data: GoogleGeocodeResponse, address: string, extracted: string | null = null, via: string | null = null): Located {
   const first = data.results?.[0];
   return {
     outcome: interpretGeocode(data, address),
@@ -144,6 +177,7 @@ export function locatedFromGoogle(data: GoogleGeocodeResponse, address: string, 
       locationType: first?.geometry.location_type ?? null,
       partial: !!first?.partial_match,
       results: data.results?.length ?? 0,
+      via,
     },
     extracted,
   };
@@ -166,6 +200,8 @@ export type Verdict =
   | "escalo"
   /** No había un punto (o no se pedía) y pasó a la central. */
   | "escalo_bien"
+  /** La ubicó dentro del sector esperado, pero falta el punto verificado para medirla. */
+  | "en_sector"
   /** La ubicó, pero falta el punto verificado para medirla. */
   | "sin_referencia"
   /** Google no respondió o la llave no sirve: no se pudo medir. */
@@ -185,6 +221,8 @@ export type CaseResult = {
   esperado: Expected;
   /** Tiene punto verificado en Google Maps. */
   verified: boolean;
+  /** Tenía que ubicarse y bien (`exigido` en el caso). */
+  required: boolean;
   verdict: Verdict;
   /** Del punto del bot al verificado. */
   meters: number | null;
@@ -198,6 +236,18 @@ export type CaseResult = {
   google: GoogleSeen | null;
   extracted: string | null;
 };
+
+/** Metros del punto al borde del barrio más cercano de esa lista (0 si está dentro). Infinito si ningún nombre existe. */
+export function distanceToSectorM(point: LatLngPoint, names: string[], barrios: Barrio[]): number {
+  const wanted = names.map(plainName);
+  let best = Number.POSITIVE_INFINITY;
+  for (const b of barrios) {
+    if (wanted.includes(plainName(b.nombre))) best = Math.min(best, insideRing(point, b.ring) ? 0 : distanceToRingM(point, b.ring));
+  }
+  return best;
+}
+
+export const plainName = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 
 const coverageKind = (point: LatLngPoint, zones: ServiceZoneShape[]): CoverageKind => serviceVerdictAt(point, zones).kind;
 
@@ -218,6 +268,7 @@ export function judgeCase(c: AddressCase, located: Located, ctx: { barrios: Barr
     direccion: located.extracted ?? caseAddress(c),
     esperado: c.esperado,
     verified: !!c.referencia,
+    required: !!c.exigido,
     google: located.google ?? null,
     extracted: located.extracted ?? null,
   };
@@ -235,9 +286,13 @@ export function judgeCase(c: AddressCase, located: Located, ctx: { barrios: Barr
   const ref = c.referencia;
   const meters = ref ? Math.round(haversineKm(point, ref) * 1000) : null;
 
+  // Sin punto verificado, el sector: a cuántos metros del borde de los barrios donde tiene que caer.
+  const sectorM = c.sector?.length ? distanceToSectorM(point, c.sector, ctx.barrios) : null;
+
   let verdict: Verdict;
   if (c.municipio !== "cali" && barrio) verdict = "otro_municipio";
   else if (c.esperado === "escalar") verdict = "falso_positivo";
+  else if (meters === null && sectorM !== null) verdict = sectorM <= SECTOR_TOLERANCE_M ? "en_sector" : "lejos";
   else if (meters === null) verdict = "sin_referencia";
   else if (meters <= EXACT_M) verdict = "exacto";
   else if (meters <= ACCEPTABLE_M) verdict = "aceptable";
@@ -273,12 +328,16 @@ export type Summary = {
   p90M: number | null;
   maxM: number | null;
   serious: CaseResult[];
+  /** Los exigidos que no se ubicaron bien: pasó a la central, quedó lejos o no se pudo medir. */
+  requiredMisses: CaseResult[];
   coverageProblems: CaseResult[];
 };
 
+const GOOD: Verdict[] = ["exacto", "aceptable", "en_sector"];
+
 export function summarize(results: CaseResult[]): Summary {
   const counts = Object.fromEntries(
-    (["exacto", "aceptable", "fallo", "lejos", "otro_municipio", "falso_positivo", "escalo", "escalo_bien", "sin_referencia", "error"] as Verdict[]).map((v) => [v, 0]),
+    (["exacto", "aceptable", "en_sector", "fallo", "lejos", "otro_municipio", "falso_positivo", "escalo", "escalo_bien", "sin_referencia", "error"] as Verdict[]).map((v) => [v, 0]),
   ) as Record<Verdict, number>;
   for (const r of results) counts[r.verdict]++;
   // Los que debía ubicar y tienen punto verificado. Si no la ubicó, cuenta
@@ -296,6 +355,7 @@ export function summarize(results: CaseResult[]): Summary {
     p90M: percentile(errors, 90),
     maxM: errors.length ? errors[errors.length - 1] : null,
     serious: results.filter((r) => SERIOUS.includes(r.verdict)),
+    requiredMisses: results.filter((r) => r.required && !GOOD.includes(r.verdict)),
     coverageProblems: results.filter((r) => r.coverageProblem),
   };
 }
@@ -303,6 +363,7 @@ export function summarize(results: CaseResult[]): Summary {
 const VERDICT_LABEL: Record<Verdict, string> = {
   exacto: "Exacto (≤ 50 m)",
   aceptable: "Aceptable (≤ 150 m)",
+  en_sector: "Dentro del sector esperado (sin punto verificado)",
   fallo: "Fallo (> 150 m)",
   lejos: "Lejos (> 500 m)",
   otro_municipio: "Otro municipio",
@@ -329,15 +390,18 @@ export function renderReport(results: CaseResult[], meta: { fecha: string; servi
   lines.push(`- **Acierto: ${s.hitRate === null ? "—" : `${pct(s.hitRate)} (${s.hits} de ${s.measurable})`}** a 150 m o menos del punto real.`);
   lines.push(`- Error de lo que ubicó: mediana ${m(s.medianM)}, 90 % ${m(s.p90M)}, máximo ${m(s.maxM)}.`);
   lines.push(`- Graves (otro sector, otro municipio o punto inventado): **${s.serious.length}**. Cobertura distinta de la real: **${s.coverageProblems.length}**.`);
+  const required = results.filter((r) => r.required).length;
+  if (required) lines.push(`- Exigidos (conjuntos y direcciones claras que tienen que ubicarse): ${required - s.requiredMisses.length} de ${required}. Fallan: **${s.requiredMisses.length}**.`);
   lines.push("");
   lines.push("| Resultado | Casos |");
   lines.push("|---|---|");
   for (const [v, n] of Object.entries(s.counts)) if (n) lines.push(`| ${VERDICT_LABEL[v as Verdict]} | ${n} |`);
   lines.push("");
-  if (s.serious.length || s.coverageProblems.length) {
+  const review = [...new Set([...s.serious, ...s.requiredMisses, ...s.coverageProblems])];
+  if (review.length) {
     lines.push("## Para revisar");
     lines.push("");
-    for (const r of [...s.serious, ...s.coverageProblems.filter((r) => !s.serious.includes(r))]) {
+    for (const r of review) {
       const why = [VERDICT_LABEL[r.verdict], r.meters !== null ? `a ${r.meters} m` : null, r.coverageProblem, r.google?.formatted ? `Google: «${r.google.formatted}» (${r.google.locationType})` : null]
         .filter(Boolean)
         .join(" · ");
@@ -350,7 +414,9 @@ export function renderReport(results: CaseResult[], meta: { fecha: string; servi
   lines.push(`| Caso | Texto | ${meta.extraccion ? "Leída | " : ""}Resultado | Error | Barrio (IDESC) | Cobertura | Google |`);
   lines.push(`|---|---|${meta.extraccion ? "---|" : ""}---|---|---|---|---|`);
   for (const r of results) {
-    const google = r.google ? `${r.google.status}${r.google.locationType ? ` ${r.google.locationType}` : ""}${r.google.partial ? " parcial" : ""}` : "—";
+    const google = r.google
+      ? `${r.google.status}${r.google.locationType ? ` ${r.google.locationType}` : ""}${r.google.partial ? " parcial" : ""}${r.google.via ? ` (como «${cell(r.google.via)}»)` : ""}`
+      : "—";
     const coverage = r.coverage ? (r.coverage.referencia && r.coverage.referencia !== r.coverage.sistema ? `${r.coverage.sistema} (real: ${r.coverage.referencia})` : r.coverage.sistema) : "—";
     lines.push(
       `| ${r.id} | ${cell(r.texto)} | ${meta.extraccion ? `${cell(r.extracted)} | ` : ""}${VERDICT_LABEL[r.verdict]} | ${m(r.meters)} | ${cell(r.barrio)} | ${coverage} | ${google} |`,

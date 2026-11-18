@@ -14,9 +14,6 @@ export const BOT_CONFIG_KEY = "bot_config";
 export type BotConfig = {
   /** Lo que hace falta para crear el viaje después de confirmar. */
   requiredFields: OrderFieldKey[];
-  /** Distancia máxima por calles desde el restaurante; más lejos no hay
-   *  cobertura. `null` = sin tope. */
-  maxKm: number | null;
   /** Avisarle al restaurante cuando el motorizado entrega. Cada aviso es un
    *  mensaje cobrado: la agencia decide si lo vale. El de portería sale
    *  siempre, porque el restaurante tiene que avisarle a su cliente. */
@@ -63,7 +60,6 @@ export type BotConfig = {
 
 export const DEFAULT_BOT_CONFIG: BotConfig = {
   requiredFields: DEFAULT_REQUIRED_FIELDS,
-  maxKm: 15,
   notifyRestaurantOnDelivery: true,
   confirmDeliveryToCourier: true,
   notifyRestaurantOnAssign: true,
@@ -90,7 +86,6 @@ export async function getBotConfig(): Promise<BotConfig> {
   const saved = (row?.value ?? {}) as Partial<BotConfig>;
   return {
     requiredFields: Array.isArray(saved.requiredFields) ? saved.requiredFields : DEFAULT_BOT_CONFIG.requiredFields,
-    maxKm: saved.maxKm === null || typeof saved.maxKm === "number" ? saved.maxKm : DEFAULT_BOT_CONFIG.maxKm,
     notifyRestaurantOnDelivery:
       typeof saved.notifyRestaurantOnDelivery === "boolean" ? saved.notifyRestaurantOnDelivery : DEFAULT_BOT_CONFIG.notifyRestaurantOnDelivery,
     confirmDeliveryToCourier:

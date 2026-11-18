@@ -55,6 +55,9 @@ export type Trip = {
   finishedAt?: string | null;
   /** Desde cuándo sale en rojo si sigue en esa fase. */
   alertAt?: string | null;
+  /** El bloqueo real del viaje (el que avisa al celular) y desde cuándo. */
+  blockageKind?: "customer_no_answer" | "pickup_late" | "delivery_late" | "return_late" | null;
+  blockageAt?: string | null;
   /** Con el engine asignando: por qué sigue pendiente, y cuándo se despacha. */
   dispatchNote?: string | null;
   dispatchAt?: string | null;
@@ -199,6 +202,8 @@ export type ConversationSummary = {
   displayName: string | null;
   kind: ConversationKind;
   courierName: string | null;
+  restaurantName?: string | null;
+  photo?: string | null;
   botPaused: boolean;
   escalationReason: string | null;
   draft: DraftFields | null;

@@ -1,8 +1,7 @@
 "use client";
 
 import type { DemandConfig, DemandLevel, DemandMetrics, DemandSignal } from "@dispatch/shared/domain/demand";
-import { ChevronRight, Gauge } from "lucide-react";
-import Link from "next/link";
+import { Gauge } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { durationLabel } from "@/lib/format";
@@ -64,8 +63,7 @@ export function pendingLabel(pending: DemandData["pending"]) {
 
 /**
  * Arriba del tablero de viajes: si la demanda está alta o baja y por qué
- * («Demanda alta: 5 pedidos esperando, 1 moto libre»). Lleva a /demanda, con
- * el registro de cambios y los umbrales.
+ * («Demanda alta: 5 pedidos esperando, 1 moto libre»).
  */
 export function DemandBar() {
   const { data } = useDemand();
@@ -76,10 +74,10 @@ export function DemandBar() {
   const stale = !data.measuredAt || now - Date.parse(data.measuredAt) > STALE_MS;
   const pending = pendingLabel(data.pending);
   return (
-    <Link
-      href="/demanda"
-      className="ease-ui card flex min-w-0 items-center gap-3 px-4 py-2.5 text-sm can-hover:hover:bg-clapi-soft/40"
-      aria-label={`${level.label}: ${data.now.summary}. Ver la demanda`}
+    <div
+      role="status"
+      className="card flex min-w-0 items-center gap-3 px-4 py-2.5 text-sm"
+      aria-label={`${level.label}: ${data.now.summary}`}
     >
       <span className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${level.tone}`}>
         <Gauge size={13} /> {level.label}
@@ -90,7 +88,6 @@ export function DemandBar() {
         {pending && <span className="font-medium text-ink"> · {pending}</span>}
         {stale && <span className="text-danger"> · sin medir: revisa el worker</span>}
       </span>
-      <ChevronRight size={16} className="shrink-0 text-ink-3" />
-    </Link>
+    </div>
   );
 }
