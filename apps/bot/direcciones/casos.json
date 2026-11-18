@@ -15,6 +15,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cra 97 # 45-11 local 102",
+      "direccion": "Cra 97 # 45-11",
+      "detalle": "Local 102",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -30,6 +32,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cl 45 # 97A-15 local 102",
+      "direccion": "Cl 45 # 97A-15",
+      "detalle": "Local 102",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -420,6 +424,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cra 92 # 42-100 local 101",
+      "direccion": "Cra 92 # 42-100",
+      "detalle": "Local 101",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -450,6 +456,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cl 45 # 84-06 local 1",
+      "direccion": "Cl 45 # 84-06",
+      "detalle": "Local 1",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -585,6 +593,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cra 96A # 45-11 local 102",
+      "direccion": "Cra 96A # 45-11",
+      "detalle": "Local 102",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -690,6 +700,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cra 86 # 38-111 local 11, Altos del Caney",
+      "direccion": "Cra 86 # 38-111, Altos del Caney",
+      "detalle": "Local 11",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -750,6 +762,8 @@
       "zona": "sur",
       "tipo": "estandar",
       "texto": "Cra 96A # 45-11 local 101",
+      "direccion": "Cra 96A # 45-11",
+      "detalle": "Local 101",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -829,7 +843,8 @@
       "zona": "sur",
       "tipo": "coloquial",
       "texto": "cra97#45-11 loc 102",
-      "direccion": "cra97 # 45-11 loc 102",
+      "direccion": "cra97 # 45-11",
+      "detalle": "loc 102",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -875,6 +890,8 @@
       "zona": "sur",
       "tipo": "coloquial",
       "texto": "calle 48 # 106-83 local 17 bochalema",
+      "direccion": "calle 48 # 106-83 bochalema",
+      "detalle": "Local 17",
       "esperado": "ubicar",
       "municipio": "cali",
       "referencia": {
@@ -1507,6 +1524,700 @@
         "fuente": "Pin del lugar en Google Maps, comprobado sobre el mapa (ficha del lugar)",
         "verificado": "2026-11-17"
       }
+    },
+    {
+      "id": "conjunto-01",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Unidad Reserva campestre, Torre 4 Apto 803",
+      "direccion": "Unidad Reserva campestre",
+      "detalle": "Torre 4 Apto 803",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true,
+      "nota": "caso real de staging (#86): Google da Cra. 122 #5-18, Barrio Pance, ROOFTOP; con la torre y el apto lo marcaba parcial"
+    },
+    {
+      "id": "conjunto-02",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "unidad de reserva campestre",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true,
+      "nota": "caso real de staging (#86): Google da Cra. 122 #5-18, Barrio Pance, ROOFTOP; con la torre y el apto lo marcaba parcial; con «de» también era parcial"
+    },
+    {
+      "id": "conjunto-03",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Unidad de Reserva Campestre Torre 2 Apto 1101",
+      "direccion": "Unidad de Reserva Campestre",
+      "detalle": "Torre 2 Apto 1101",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-04",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Reserva Campestre, Cali",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-05",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Conjunto Reserva Campestre torre 1 apto 305",
+      "direccion": "Conjunto Reserva Campestre",
+      "detalle": "torre 1 apto 305",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-06",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "reserva campestre torre 4 apto 803 pance",
+      "direccion": "reserva campestre pance",
+      "detalle": "torre 4 apto 803",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-07",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Torre 4 Apto 803, Unidad Reserva campestre",
+      "direccion": "Unidad Reserva campestre",
+      "detalle": "Torre 4 Apto 803",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true,
+      "nota": "la puerta dicha primero"
+    },
+    {
+      "id": "conjunto-08",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Reserva Campestre bloque C apto 202",
+      "direccion": "Reserva Campestre",
+      "detalle": "bloque C apto 202",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-09",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "la unidad reserva campestre, Pance",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-10",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Conjunto residencial Reserva Campestre, apto 1203 torre 3",
+      "direccion": "Conjunto residencial Reserva Campestre",
+      "detalle": "apto 1203 torre 3",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Parcelaciones Pance",
+        "Urbanizacion Rio Lili"
+      ],
+      "exigido": true
+    },
+    {
+      "id": "conjunto-11",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Conjunto Bosques del Lili, Torre 2 apto 502",
+      "direccion": "Conjunto Bosques del Lili",
+      "detalle": "Torre 2 apto 502",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "sector": [
+        "Lili",
+        "Urbanizacion Rio Lili",
+        "Urbanizacion Ciudad Jardin",
+        "Las Vegas del Lili"
+      ]
+    },
+    {
+      "id": "conjunto-12",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio",
+      "direccion": "Calle 5 # 66-20, Edificio Torre Alta, El Refugio",
+      "detalle": "apto 1203",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "«Torre Alta» es el nombre del edificio: no se separa"
+    },
+    {
+      "id": "conjunto-13",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Edificio Ceibas Torre A apto 301",
+      "direccion": "Edificio Ceibas",
+      "detalle": "Torre A apto 301",
+      "esperado": "cualquiera",
+      "municipio": "cali",
+      "referencia": null
+    },
+    {
+      "id": "conjunto-14",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Cra 98 # 42-105 Fusion Plaza, local 5 piso 2",
+      "direccion": "Cra 98 # 42-105 Fusion Plaza",
+      "detalle": "local 5 piso 2",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371178,
+        "lng": -76.518976,
+        "lugar": "Grill Republic (mismo punto que estandar-25)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "conjunto-15",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "Cl 45 # 97A-15 torre 2, apto 502",
+      "direccion": "Cl 45 # 97A-15",
+      "detalle": "torre 2 apto 502",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371805,
+        "lng": -76.518795,
+        "lugar": "Antojitos Mi Tierra Caribe (mismo punto que estandar-02)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "conjunto-16",
+      "zona": "sur",
+      "tipo": "conjunto",
+      "texto": "carrera 94a no. 48a-70 senderos conjunto casa 14",
+      "direccion": "carrera 94a no. 48a-70 senderos conjunto",
+      "detalle": "casa 14",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.374506,
+        "lng": -76.514327,
+        "lugar": "Droguería Hellen (mismo punto que estandar-20)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-01",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "cra 95a #42-141",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373697,
+        "lng": -76.519031,
+        "lugar": "Arepas de Choclo (mismo punto que estandar-04)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-02",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Carrera 95 A No. 42 - 141",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373697,
+        "lng": -76.519031,
+        "lugar": "Arepas de Choclo (mismo punto que estandar-04)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-03",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "CRA 83C 48A 08",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.383549,
+        "lng": -76.515256,
+        "lugar": "Arepalandia (mismo punto que estandar-03)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-04",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Calle 45 No. 97A - 15 Local 102",
+      "direccion": "Calle 45 No. 97A - 15",
+      "detalle": "Local 102",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371805,
+        "lng": -76.518795,
+        "lugar": "Antojitos Mi Tierra Caribe (mismo punto que estandar-02)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-05",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Cll 48 Bis #92-27",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.37621,
+        "lng": -76.515799,
+        "lugar": "Benditarepa (mismo punto que estandar-09)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-06",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Cl. 42 # 81-15, Caney",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387181,
+        "lng": -76.519974,
+        "lugar": "Capri Delicias (mismo punto que estandar-10)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-07",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Calle 48 # 106-83 Bochalema, casa 2",
+      "direccion": "Calle 48 # 106-83 Bochalema",
+      "detalle": "casa 2",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.36103,
+        "lng": -76.516069,
+        "lugar": "Dihuk (mismo punto que estandar-17)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-08",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Cra. 98 # 42-55, apto 301",
+      "direccion": "Cra. 98 # 42-55",
+      "detalle": "apto 301",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371031,
+        "lng": -76.519521,
+        "lugar": "Dorilocos co (mismo punto que estandar-19)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-09",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Carrera 97 # 42-10 Calicanto, oficina 204",
+      "direccion": "Carrera 97 # 42-10 Calicanto",
+      "detalle": "oficina 204",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372105,
+        "lng": -76.520156,
+        "lugar": "Córner Valle del Lili (mismo punto que estandar-13)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-10",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "KRA 85 #43-76",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.38184,
+        "lng": -76.518458,
+        "lugar": "D'amore (mismo punto que estandar-14)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-11",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Cl 56 # 85C1-78 piso 2",
+      "direccion": "Cl 56 # 85C1-78",
+      "detalle": "piso 2",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.379618,
+        "lng": -76.508033,
+        "lugar": "Hunter Grill (mismo punto que estandar-29)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "via-12",
+      "zona": "sur",
+      "tipo": "variante",
+      "texto": "Cra 83 # 38-2, interior 3",
+      "direccion": "Cra 83 # 38-2",
+      "detalle": "interior 3",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.385698,
+        "lng": -76.520377,
+        "lugar": "La Cocina de Alba (mismo punto que estandar-33)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "cruce-01",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "calle 42 con cra 85 c",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.380331,
+        "lng": -76.520903,
+        "lugar": "Bambú Burguer (mismo punto que esquina-01)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "cruce-02",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Carrera 92 con Calle 48A",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.376599,
+        "lng": -76.515384,
+        "lugar": "Fritanga Senderos (mismo punto que esquina-02)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "cruce-03",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "cra 97A con cl 45 calicanto, local 3",
+      "direccion": "cra 97A con cl 45 calicanto",
+      "detalle": "local 3",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371737,
+        "lng": -76.518986,
+        "lugar": "Súper Droguería Store (mismo punto que esquina-04)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "cruce-04",
+      "zona": "sur",
+      "tipo": "esquina",
+      "texto": "Cl 42 con Cra 85C, apto 2",
+      "direccion": "Cl 42 con Cra 85C",
+      "detalle": "apto 2",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.380331,
+        "lng": -76.520903,
+        "lugar": "Bambú Burguer (mismo punto que esquina-01)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "tipeo-01",
+      "zona": "sur",
+      "tipo": "tipeo",
+      "texto": "Carerra 97 # 42-10 calicanto",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.372105,
+        "lng": -76.520156,
+        "lugar": "Córner Valle del Lili (mismo punto que estandar-13)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "tipeo-02",
+      "zona": "sur",
+      "tipo": "tipeo",
+      "texto": "kra 98 # 42-55",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.371031,
+        "lng": -76.519521,
+        "lugar": "Dorilocos co (mismo punto que estandar-19)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "tipeo-03",
+      "zona": "sur",
+      "tipo": "tipeo",
+      "texto": "Cale 42 # 81-15",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.387181,
+        "lng": -76.519974,
+        "lugar": "Capri Delicias (mismo punto que estandar-10)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "tipeo-04",
+      "zona": "sur",
+      "tipo": "tipeo",
+      "texto": "cra 95a # 42 - 141 torre 1",
+      "direccion": "cra 95a # 42 - 141",
+      "detalle": "torre 1",
+      "esperado": "ubicar",
+      "municipio": "cali",
+      "referencia": {
+        "lat": 3.373697,
+        "lng": -76.519031,
+        "lugar": "Arepas de Choclo (mismo punto que estandar-04)",
+        "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
+        "verificado": "por la central, al registrar el restaurante"
+      },
+      "exigido": true
+    },
+    {
+      "id": "vecino-01",
+      "zona": "jamundi",
+      "tipo": "municipio",
+      "texto": "Calle 12 # 10-20 Jamundí",
+      "esperado": "cualquiera",
+      "municipio": "jamundi",
+      "referencia": null
+    },
+    {
+      "id": "vecino-02",
+      "zona": "yumbo",
+      "tipo": "municipio",
+      "texto": "Cra 8 # 5-30, Yumbo",
+      "esperado": "cualquiera",
+      "municipio": "yumbo",
+      "referencia": null
+    },
+    {
+      "id": "vecino-03",
+      "zona": "candelaria",
+      "tipo": "municipio",
+      "texto": "Calle 9 # 8-15, Candelaria",
+      "esperado": "cualquiera",
+      "municipio": "candelaria",
+      "referencia": null
+    },
+    {
+      "id": "vecino-04",
+      "zona": "jamundi",
+      "tipo": "municipio",
+      "texto": "Conjunto Alfaguara Torre 2 apto 301, Jamundí",
+      "direccion": "Conjunto Alfaguara, Jamundí",
+      "detalle": "Torre 2 apto 301",
+      "esperado": "cualquiera",
+      "municipio": "jamundi",
+      "referencia": null
+    },
+    {
+      "id": "trampa-20",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Conjunto Bochalema",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "quitar «conjunto» deja «Bochalema», que Google da como un local del barrio: no se ubica"
+    },
+    {
+      "id": "trampa-21",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Unidad Valle del Lili",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null
+    },
+    {
+      "id": "trampa-22",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Conjunto residencial",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null
+    },
+    {
+      "id": "trampa-23",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Torre 4 apto 803, Bochalema",
+      "direccion": "Bochalema",
+      "detalle": "Torre 4 apto 803",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null
+    },
+    {
+      "id": "trampa-24",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Unidad de Univalle sede Meléndez",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null,
+      "nota": "Google daba la sede de San Fernando"
+    },
+    {
+      "id": "trampa-25",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Pance",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null
+    },
+    {
+      "id": "trampa-26",
+      "zona": "sur",
+      "tipo": "trampa",
+      "texto": "Meléndez",
+      "esperado": "escalar",
+      "municipio": "cali",
+      "referencia": null
     }
   ]
 }
