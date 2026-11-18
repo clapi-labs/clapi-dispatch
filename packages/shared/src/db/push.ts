@@ -3,15 +3,21 @@ import { generateVAPIDKeys, sendNotification, WebPushError } from "web-push";
 
 import {
   ALERT_TTL_S,
+  CHAT_HELP_COOLDOWN_MIN,
   chatHelpMessage,
+  courierEmergencyMessage,
+  customerNoAnswerMessage,
   datafonoClosingMessage,
   datafonoLateMessage,
   debtClaimMessage,
+  deliveryStalledMessage,
   isFresh,
+  pickupLateMessage,
   pushTopic,
   TAKEOVER_REASON,
-  tripAssignedMessage,
+  tripBlockage,
   type PushMessage,
+  type TripBlockage,
 } from "../domain/alerts";
 import { datafonoLateAt, matchRestaurant } from "../domain/return-debts";
 import { formatClock, isOpen, lastOpening } from "../domain/service-hours";
@@ -23,6 +29,7 @@ import { getServiceHours, hoursFor } from "./service-hours";
 import {
   assignments,
   conversations,
+  couriers,
   messages,
   portalSessions,
   pushAlertState,
@@ -35,8 +42,11 @@ import {
 /**
  * Alertas al celular (docs/INTERVENCION-MANUAL.md, «Alertas al celular»).
  *
- * El portal abierto suena cuando algo entra en una condición: un chat empieza
- * a pedir ayuda, un viaje queda con moto. Con el portal cerrado eso lo vigila
+ * Solo avisa lo que necesita a la central (bloqueos reales y emergencias), no
+ * la operación normal: una moto asignada, un pedido que espera moto o un «Voy
+ * en camino» sin tocar se ven en el tablero y no suenan en el celular.
+ * Naranja (`attention`) pide atención; rojo (`critical`) es una emergencia o un
+ * bloqueo grave en la calle. Con el portal cerrado eso lo vigila
  * el tick del bot (`runPushAlerts`, cada 5 s): cada fuente de abajo dice qué
  * cumple hoy su condición, y lo que entra por primera vez se manda como
  * notificación a todos los celulares que activaron las alertas.
@@ -66,6 +76,19 @@ export function needsHelpCondition() {
     eq(conversations.botPaused, true),
     sql`${conversations.escalationReason} is distinct from ${TAKEOVER_REASON}`,
     sql`coalesce(${lastRole}, '') <> 'agent'`,
+  )!;
+}
+
+/** `needsHelpCondition` para el celular: además, sin los mensajes que llegan
+ *  justo después de que la central escribió. Si el restaurante o el motorizado
+ *  contesta «ok gracias» dentro del enfriamiento, el operador ya está en el
+ *  chat y no hace falta avisar; el chat se sigue viendo en el portal. */
+export function chatHelpPushCondition() {
+  return and(
+    needsHelpCondition(),
+    sql`not exists (select 1 from ${messages} m
+      where m.conversation_id = ${conversations.id} and m.role = 'agent'
+        and m.created_at > ${conversations.lastMessageAt} - make_interval(mins => ${CHAT_HELP_COOLDOWN_MIN}))`,
   )!;
 }
 
@@ -106,40 +129,96 @@ const chatHelp: AlertSource<{
         at: conversations.lastMessageAt,
       })
       .from(conversations)
-      .where(needsHelpCondition()),
+      .where(chatHelpPushCondition()),
   ref: (c) => c.id,
   at: (c) => c.at,
-  message: (c) => chatHelpMessage({ id: c.id, phone: c.phone, name: c.courierName ?? c.restaurantName ?? c.displayName, reason: c.reason, lastText: c.lastText, at: c.at }),
+  message: (c) => chatHelpMessage({ id: c.id, phone: c.phone, name: c.courierName ?? c.restaurantName ?? c.displayName, reason: c.reason, lastText: c.lastText, at: c.at, courier: c.courierName !== null }),
 };
 
-const tripAssigned: AlertSource<{
+const courierEmergency: AlertSource<{ id: number; name: string; at: Date }> = {
+  kind: "courier_emergency",
+  // La emergencia se marca desde Flota: la moto queda en «Pausado». El estado
+  // no guarda desde cuándo, así que `at` es ahora y `isFresh` lo deja pasar.
+  current: async () => {
+    // Si el motorizado reportó una novedad por su chat, el bot lo pausa y
+    // escala ese chat: ya avisa `chat_help`. Aquí solo la emergencia marcada a
+    // mano en Flota, para no mandar dos avisos por lo mismo.
+    const rows = await db
+      .select({ id: couriers.id, name: couriers.name })
+      .from(couriers)
+      .where(
+        and(
+          eq(couriers.active, true),
+          eq(couriers.status, "paused"),
+          sql`not exists (select 1 from ${conversations}
+            where right(regexp_replace(${conversations.phone}, '\\D', '', 'g'), 10) = right(regexp_replace(${couriers.phone}, '\\D', '', 'g'), 10)
+              and ${conversations.botPaused}
+              and ${conversations.escalationReason} is distinct from ${TAKEOVER_REASON})`,
+        ),
+      );
+    const now = new Date();
+    return rows.map((r) => ({ ...r, at: now }));
+  },
+  ref: (c) => c.id,
+  at: (c) => c.at,
+  message: (c) => courierEmergencyMessage(c),
+};
+
+type TripAlertRow = {
   id: number;
   code: string;
   restaurant: string;
   deliveryAddress: string;
   courierName: string;
-  at: Date;
-}> = {
-  kind: "trip_assigned",
-  // Como en el portal: tiene moto y ya no está pendiente. Solo lo del último
-  // día, que es lo que el tablero tiene a la vista.
-  current: () =>
-    db
-      .select({
-        id: trips.id,
-        code: trips.code,
-        restaurant: trips.originRestaurantName,
-        deliveryAddress: trips.deliveryAddress,
-        courierName: assignments.courierName,
-        at: assignments.assignedAt,
-      })
-      .from(trips)
-      .innerJoin(assignments, eq(assignments.tripId, trips.id))
-      .where(and(sql`${trips.status} <> 'pending'`, gt(assignments.assignedAt, sql`now() - interval '1 day'`))),
-  ref: (t) => t.id,
-  at: (t) => t.at,
-  message: (t) => tripAssignedMessage(t),
+  blockage: TripBlockage;
+  minutes: number;
 };
+
+/** Viajes con moto que se atascaron. Cada tipo de bloqueo es su propia fuente
+ *  (su propio `kind`): un viaje que pasa de uno a otro vuelve a avisar. */
+function tripBlockages(kind: TripBlockage["kind"], build: (row: TripAlertRow) => PushMessage): AlertSource<TripAlertRow> {
+  return {
+    kind,
+    current: async () => {
+      const [config, rows] = await Promise.all([
+        getBotConfig(),
+        db
+          .select({
+            id: trips.id,
+            code: trips.code,
+            restaurant: trips.originRestaurantName,
+            deliveryAddress: trips.deliveryAddress,
+            courierName: assignments.courierName,
+            status: trips.status,
+            assignedAt: assignments.assignedAt,
+            readyAt: trips.readyAt,
+            pickedUpAt: assignments.pickedUpAt,
+            customerWaitAt: assignments.customerWaitAt,
+            undeliveredAt: assignments.undeliveredAt,
+            deliveredAt: assignments.deliveredAt,
+          })
+          .from(trips)
+          .innerJoin(assignments, eq(assignments.tripId, trips.id))
+          .where(inArray(trips.status, ["assigned", "en_route"])),
+      ]);
+      const now = Date.now();
+      return rows.flatMap((r) => {
+        const blockage = tripBlockage(r, config);
+        if (blockage?.kind !== kind || blockage.at.getTime() > now) return [];
+        const minutes = kind === "return_late" ? config.returnAlertMinutes : config.deliveryAlertMinutes;
+        return [{ id: r.id, code: r.code, restaurant: r.restaurant, deliveryAddress: r.deliveryAddress, courierName: r.courierName, blockage, minutes }];
+      });
+    },
+    ref: (t) => t.id,
+    at: (t) => t.blockage.at,
+    message: build,
+  };
+}
+
+const customerNoAnswer = tripBlockages("customer_no_answer", (t) => customerNoAnswerMessage({ ...t, at: t.blockage.at }));
+const pickupLate = tripBlockages("pickup_late", (t) => pickupLateMessage({ ...t, at: t.blockage.at }));
+const deliveryLate = tripBlockages("delivery_late", (t) => deliveryStalledMessage({ ...t, returning: false, at: t.blockage.at }));
+const returnLate = tripBlockages("return_late", (t) => deliveryStalledMessage({ ...t, returning: true, at: t.blockage.at }));
 
 const datafonoLate: AlertSource<{ id: number; courierName: string; restaurant: string; tripCode: string | null; minutes: number; at: Date }> = {
   kind: "datafono_late",
@@ -214,7 +293,17 @@ const datafonoClosing: AlertSource<{
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ALERT_SOURCES: AlertSource<any>[] = [chatHelp, tripAssigned, datafonoLate, debtClaim, datafonoClosing];
+export const ALERT_SOURCES: AlertSource<any>[] = [
+  chatHelp,
+  courierEmergency,
+  customerNoAnswer,
+  pickupLate,
+  deliveryLate,
+  returnLate,
+  datafonoLate,
+  debtClaim,
+  datafonoClosing,
+];
 
 /**
  * Marca como dentro de la condición `refs` y devuelve las que acaban de
@@ -278,6 +367,8 @@ async function cleanupOnceAnHour() {
   if (Date.now() - lastCleanup < 60 * 60 * 1000) return;
   lastCleanup = Date.now();
   await db.delete(portalSessions).where(lt(portalSessions.expiresAt, sql`now()`));
+  // Esta fuente ya no existe: sus filas activas se quedarían para siempre.
+  await db.delete(pushAlertState).where(eq(pushAlertState.kind, "trip_assigned"));
   await db
     .delete(pushAlertState)
     .where(and(eq(pushAlertState.active, false), lt(pushAlertState.changedAt, sql`now() - interval '3 days'`)));

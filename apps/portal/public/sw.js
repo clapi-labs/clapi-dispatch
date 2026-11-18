@@ -6,6 +6,13 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
+// Cómo se ve y se siente cada nivel (PushMessage.severity en @dispatch/shared):
+// naranja pide atención; rojo es una emergencia y no se va hasta que la toquen.
+const LEVELS = {
+  attention: { icon: "/icons/alert-orange-192.png", vibrate: [200, 100, 200], requireInteraction: false },
+  critical: { icon: "/icons/alert-red-192.png", vibrate: [350, 120, 350, 120, 450], requireInteraction: true },
+};
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -14,6 +21,7 @@ self.addEventListener("push", (event) => {
     data = { body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "Clapi";
+  const level = LEVELS[data.severity] || LEVELS.attention;
   // Siempre se muestra: iPhone retira el permiso si un aviso llega sin notificación.
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -21,10 +29,11 @@ self.addEventListener("push", (event) => {
       // Una por chat o pedido: la nueva reemplaza a la anterior y vuelve a sonar.
       tag: data.tag || undefined,
       renotify: Boolean(data.tag),
-      icon: "/icons/icon-192.png",
+      icon: level.icon,
       badge: "/icons/badge-96.png",
       timestamp: data.at || Date.now(),
-      vibrate: [200, 100, 200],
+      vibrate: level.vibrate,
+      requireInteraction: level.requireInteraction,
       data: { url: data.url || "/viajes" },
     }),
   );
