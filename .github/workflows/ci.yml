@@ -78,8 +78,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:migrate
-      # Todas las *.integration.test.ts, de a una: comparten la base y la vacían.
-      - run: npm run test:integration
+      # Todas las pruebas, con la base: las *.integration.test.ts y las que se saltan
+      # sin ella (bot/order.test.ts). De a una: comparten la base y la vacían.
+      - run: npm test
 
   migrations:
     name: Migraciones
