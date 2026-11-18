@@ -1,10 +1,10 @@
 name: CI
 
-# Solo en PRs hacia main y en main: mientras se trabaja directo en dev no hay
-# espera. Las imágenes se construyen al hacer merge (images.yml).
+# En todo PR hacia dev o main, y en el push a main. Al hacer merge en dev o main
+# se construyen las imágenes (images.yml).
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
     branches: [main]
 
