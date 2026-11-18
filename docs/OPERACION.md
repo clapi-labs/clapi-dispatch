@@ -74,7 +74,7 @@ Seguimiento: pestaña *Actions* del repositorio.
 
 ### Pruebas de integración
 
-Las `*.integration.test.ts` y las del bot `order.test.ts` (máquina de estados del restaurante), `courier.test.ts` (flujo del motorizado), `notify.test.ts` (avisos y tick) e `intake.test.ts` (a quién va cada mensaje), con OpenAI, WhatsApp y Google simulados, corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
+Las `*.integration.test.ts` y las del bot `order.test.ts` (máquina de estados del restaurante), `courier.test.ts` (flujo del motorizado), `notify.test.ts` (avisos y tick), `intake.test.ts` (a quién va cada mensaje), `dispatch/engine.test.ts` y `app/api/internal/tick/route.test.ts` (asignación y tick, con un engine de mentiras) y las de los webhooks `app/api/webhook/whatsapp/route.test.ts` y `app/api/gps/route.test.ts`, con OpenAI, WhatsApp y Google simulados, corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
 
 ```bash
 docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine && DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate && TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm test
