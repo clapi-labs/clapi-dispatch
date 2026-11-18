@@ -62,7 +62,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   requiredFields: DEFAULT_REQUIRED_FIELDS,
   notifyRestaurantOnDelivery: true,
   confirmDeliveryToCourier: true,
-  notifyRestaurantOnAssign: true,
+  notifyRestaurantOnAssign: false,
   pickupButtonAfterGoing: false,
   seenReminderMinutes: 3,
   seenAlertMinutes: 6,
