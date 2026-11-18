@@ -144,7 +144,7 @@ describe("POST /api/internal/tick (Postgres)", { skip: integrationSkip }, () => 
       const body = await run();
 
       assert.deepEqual(body.assigned, [trip.id]);
-      assert.equal(body.alerted, 1, "la asignación de este mismo tick ya suena en el celular de la central");
+      assert.equal(body.alerted, 0, "una asignación de rutina no suena en el celular: solo los bloqueos reales (#85)");
       assert.equal((await getTrip(trip.id)).status, "en_route");
       assert.equal((await getAssignment(trip.id)).courierId, w.courier.id);
       assert.equal((await db.select().from(schema.couriers).where(eq(schema.couriers.id, w.courier.id)))[0].status, "busy");
@@ -396,11 +396,21 @@ describe("POST /api/internal/tick (Postgres)", { skip: integrationSkip }, () => 
       assert.equal(outbox.filter((m) => /nuevo pedido/.test(m.text)).length, 6, "un mensaje 1 por pedido, ni uno más");
     });
 
-    it("las alertas al celular tampoco se duplican entre ticks paralelos", async () => {
-      const w = await world({ courier: liveCourier() });
-      await pendingTrip(w);
+    it("las alertas al celular tampoco se duplican entre ticks paralelos (un chat que pide ayuda)", async () => {
+      const w = await world();
+      await db.update(schema.conversations).set({ botPaused: true, escalationReason: "Novedad de Pedro Gómez: Se accidentó", lastMessageAt: new Date() }).where(eq(schema.conversations.id, w.courierConversation.id));
       const results = await Promise.all([run(), run(), run()]);
+      assert.equal(results.reduce((sum, r) => sum + r.alerted, 0), 1, "suena una sola vez");
+      assert.equal((await run()).alerted, 0, "y no vuelve a sonar mientras siga igual");
+    });
+
+    it("un bloqueo real (el pedido lleva rato sin recogerse) suena una sola vez, en el tick que lo ve", async () => {
+      const w = await world({ courier: liveCourier() });
+      const { trip } = await assignedTrip(w);
+      await setAssignment(trip.id, { assignedAt: minutesAgo(11), seenAt: minutesAgo(9) });
+      const results = await Promise.all([run(), run()]);
       assert.equal(results.reduce((sum, r) => sum + r.alerted, 0), 1);
+      assert.equal((await run()).alerted, 0);
     });
   });
 
