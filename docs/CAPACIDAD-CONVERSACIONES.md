@@ -205,3 +205,18 @@ Pegar el resultado en esta sección. Sin eso, la conclusión sobre «cuánto mar
 - A 500 chats al día, el almacenamiento y las consultas aguantan; lo primero que falla es la vista previa de la bandeja (H1) y el hilo completo descargado en cada aviso (H2). Ambos son arreglos pequeños y van en issues aparte.
 - Las imágenes son lo que cambiaría el disco y los backups: no guardarlas en Postgres; usar almacenamiento de objetos.
 - La carga real de los contenedores en staging queda por medir (sin acceso SSH desde esta máquina); el comando está arriba.
+
+---
+
+## Pendiente de verificar (no se pudo hacer al cerrar el #82)
+
+Dos cosas quedaron sin hacer. Se anotan aquí con el paso exacto para cerrarlas.
+
+**1. Prueba de la caja de texto en un navegador real.** Hay pruebas automáticas de la cola de envío (`apps/portal/src/lib/send-queue.test.ts`), pero ninguna de que teclear no repinta la bandeja ni el hilo. El intento de abrir el portal en Chrome desde la herramienta de automatización falló (sin grupo de pestañas disponible). Para hacerla a mano:
+
+1. Levantar el portal con una base local (`npm run dev:portal`) con ~100 chats y uno con ~3.000 mensajes, con el bot pausado en ese chat para que aparezca la caja.
+2. En las herramientas de desarrollo del navegador, pestaña Performance, grabar escribiendo un párrafo largo y rápido.
+3. Esperado: sin tareas largas (más de 50 ms) por tecla y sin repintado de las burbujas; con la red en «Slow 3G», la caja sigue respondiendo y solo el envío demora.
+4. Repetir en un celular (también con el teclado en pantalla).
+
+**2. Carga real de los contenedores en staging.** El SSH a staging fue rechazado (`Permission denied (publickey)`) desde la máquina donde se hizo el informe. Los comandos están en la sección 4; falta pegar la salida en reposo y en una hora de actividad.
