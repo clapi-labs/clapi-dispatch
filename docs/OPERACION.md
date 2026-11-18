@@ -74,13 +74,13 @@ Seguimiento: pestaña *Actions* del repositorio.
 
 ### Pruebas de integración
 
-Las `*.integration.test.ts` corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
+Las `*.integration.test.ts` y `apps/bot/src/bot/order.test.ts` (la máquina de estados del restaurante, con OpenAI, WhatsApp y Google simulados) corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
 
 ```bash
-docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine && DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate && TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run test:integration
+docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine && DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate && TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm test
 ```
 
-Sin `TEST_DATABASE_URL` se saltan (`npm test` no las necesita). En CI las corre el job `integration` con `REQUIRE_TEST_DATABASE=1`: si falta la base, fallan en vez de saltarse.
+`npm run test:integration` corre solo las `*.integration.test.ts`. Sin `TEST_DATABASE_URL` todas se saltan (`npm test` no la necesita). En CI las corre el job `integration` (`npm test` con la base) con `REQUIRE_TEST_DATABASE=1`: si falta la base, fallan en vez de saltarse.
 
 ## 3. Desplegar a staging
 
