@@ -65,8 +65,8 @@ Crea las cuentas que falten, actualiza llaves, elimina las que ya no estén y re
 ## 2. Flujo de trabajo y CI
 
 1. Cada tarea en su propia rama desde `dev` actualizado (`feat/…`, `fix/…`, `docs/…`, `chore/…`), con un PR hacia `dev` que otra persona revisa. Commits en español, en el estilo del historial (ver `CLAUDE.md`).
-2. Antes del PR, en tu equipo: `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`. CI todavía no corre en los PR hacia `dev` ([PLAN](PLAN.md) I-4).
-3. **Push a `dev` o `main`** (el merge del PR) → `images.yml` construye y publica las imágenes en GHCR con el hash del commit. **Esto no despliega nada.**
+2. Antes del PR, en tu equipo: `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`. CI todavía no corre en los PR hacia `dev` ([PLAN](PLAN.md) I-4, #77).
+3. **Push a `dev`** (el merge del PR) → `images.yml` construye y publica las imágenes en GHCR con el hash del commit y, si todas salieron, `deploy-staging.yml` lo despliega a staging solo (sección 3). **Push a `main`**: solo publica las imágenes; **no despliega nada**.
 4. **PR de `dev` hacia `main`** → `ci.yml` corre lint, tipos, build, migraciones y la comprobación de esquema. Debe quedar en verde.
 5. Cambios de esquema: edita `packages/shared/src/db/schema.ts`, corre `npm run db:generate` y commitea la migración nueva en `packages/shared/drizzle/`. Si falta, el CI falla.
 
@@ -74,7 +74,30 @@ Seguimiento: pestaña *Actions* del repositorio.
 
 ## 3. Desplegar a staging
 
-Hoy el despliegue es **manual** (el automático está pendiente, ver `INFRAESTRUCTURA.md`).
+### Automático
+
+Cada merge a `dev` se despliega solo: cuando `images.yml` termina en verde, su trabajo **Staging** (`deploy-staging.yml`) entra por SSH como el usuario `deploy` y ejecuta `deploy <hash>` con el hash exacto que se construyó; luego comprueba que `https://bot.staging.dispatch.clapi.solutions/api/health` responda 200 `{"ok":true}`. Se sigue en la pestaña *Actions*. Si algo falla, el trabajo queda en rojo y staging vuelve a la versión anterior (`cat /opt/dispatch/.tag` lo confirma).
+
+**Desplegar o volver atrás a mano desde GitHub:** Actions → *Desplegar a staging* → *Run workflow*, con el hash de 40 caracteres (vacío = el último de la rama elegida). Las imágenes de ese hash tienen que estar en GHCR, es decir, el commit tiene que haber pasado por `images.yml` en `dev`.
+
+**Configuración única (administrador).** En *Settings → Secrets and variables → Actions* (o en el entorno `staging`):
+
+| Secreto | Qué es |
+|---|---|
+| `STAGING_SSH_KEY` | La llave **privada** que corresponde a `deploy_public_key` de `infra/staging/terraform.tfvars` (usuario `deploy`) |
+| `STAGING_SSH_KNOWN_HOSTS` | La huella del servidor, para no confiar en lo que conteste la red |
+
+Variables opcionales: `STAGING_HOST` (por defecto `staging.dispatch.clapi.solutions`) y `STAGING_HEALTH_URL`.
+
+La huella se obtiene desde una red de confianza, y se compara con la del servidor entrando una vez como administrador (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`):
+```bash
+ssh-keyscan -t ed25519 staging.dispatch.clapi.solutions   # pega la línea completa en STAGING_SSH_KNOWN_HOSTS
+```
+Si se recrea el servidor, la huella cambia y hay que volver a cargarla.
+
+**Si nadie conserva la llave privada de `deploy`:** generar un par nuevo (`ssh-keygen -t ed25519 -f deploy_key -N "" -C "github-actions-deploy"`), guardar la privada en `STAGING_SSH_KEY`, borrarla del equipo, y poner la pública en `deploy_public_key` de `infra/staging/terraform.tfvars`. Cloud-init solo corre al crear el servidor, así que en el existente hay que actualizar a mano `/home/deploy/.ssh/authorized_keys` conservando el prefijo `command="/opt/dispatch/deploy.sh",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ` delante de la llave nueva. La llave `deploy` solo puede ejecutar `deploy.sh`; no se usa ni root ni un administrador desde Actions.
+
+### A mano
 
 1. Haz push a `dev` y espera a que `images.yml` termine en verde (así las imágenes de ese commit ya existen).
 2. Copia el hash completo (40 caracteres): `git rev-parse HEAD`.
@@ -99,7 +122,7 @@ Qué hace `deploy.sh`, en orden:
 Versión activa: `cat /opt/dispatch/.tag`. Estado: `docker ps`. Para los contenedores usa `docker` y no `docker compose`: el compose necesita `IMAGE_TAG`, que solo pone `deploy.sh`.
 
 ### Volver atrás
-Desplegar el hash anterior: `./deploy.sh deploy <hash-anterior>`. Cuidado: las migraciones no se revierten. Por eso deben ser compatibles con la versión previa (cambios de esquema en dos pasos).
+Desplegar el hash anterior: desde Actions (*Desplegar a staging*, con ese hash) o con `./deploy.sh deploy <hash-anterior>`. Cuidado: las migraciones no se revierten. Por eso deben ser compatibles con la versión previa (cambios de esquema en dos pasos).
 
 ### Cambios en `compose.yml` o `Caddyfile`
 Se aplican solos: viajan con el commit que despliegas.

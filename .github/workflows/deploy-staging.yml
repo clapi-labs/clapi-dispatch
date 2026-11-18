@@ -1,0 +1,98 @@
+name: Desplegar a staging
+
+# Despliega un commit a staging por SSH, con la llave restringida del usuario
+# `deploy` (solo puede ejecutar /opt/dispatch/deploy.sh). Lo llama images.yml
+# cuando las imágenes de un push a dev quedaron publicadas, y también se puede
+# correr a mano desde Actions con un hash (para re-desplegar o volver atrás).
+#
+# Las imágenes del hash tienen que existir en GHCR: salen de images.yml en dev.
+# Producción no se despliega desde acá (docs/INFRAESTRUCTURA.md, I-5).
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Hash completo (40 caracteres) del commit a desplegar"
+        type: string
+        required: false
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Hash completo (40 caracteres) del commit a desplegar; vacío = el último de la rama elegida"
+        type: string
+        required: false
+
+# Un despliegue a la vez; los que lleguen en el medio esperan (no se cancela uno en curso).
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Desplegar a staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://staging.dispatch.clapi.solutions
+    env:
+      STAGING_HOST: ${{ vars.STAGING_HOST || 'staging.dispatch.clapi.solutions' }}
+      HEALTH_URL: ${{ vars.STAGING_HEALTH_URL || 'https://bot.staging.dispatch.clapi.solutions/api/health' }}
+      INPUT_SHA: ${{ inputs.sha }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Validar el hash y los secretos
+        run: |
+          SHA="${INPUT_SHA:-$GITHUB_SHA}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::El hash debe ser de 40 caracteres hexadecimales en minúscula (recibido: '$SHA')."
+            exit 1
+          fi
+          for name in SSH_KEY KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Falta el secreto STAGING_${name} (docs/OPERACION.md, «Desplegar a staging»)."
+              exit 1
+            fi
+          done
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+
+      - name: Preparar SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # La huella del servidor viene fijada en el secreto: no se confía en lo que conteste la red.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Desplegar ${{ inputs.sha || github.sha }}
+        run: |
+          # `deploy` valida el hash otra vez, aplica migraciones, cambia las apps y,
+          # si algo no queda sano, vuelve solo a la versión anterior (y sale con error).
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "deploy@${STAGING_HOST}" "deploy ${SHA}"
+
+      - name: Comprobar que staging responde
+        run: |
+          # /api/health recuerda su respuesta 10 s y el worker tarda en dar su primer latido.
+          body="$(curl -fsS --max-time 10 --retry 12 --retry-delay 5 --retry-all-errors "$HEALTH_URL")"
+          echo "$body"
+          echo "$body" | grep -q '"ok":true'
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Staging"
+            echo "- Commit: \`${SHA:-sin validar}\`"
+            echo "- Resultado: ${{ job.status }}"
+            echo "- Salud: ${HEALTH_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Borrar la llave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

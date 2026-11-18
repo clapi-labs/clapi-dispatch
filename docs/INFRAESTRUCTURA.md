@@ -73,13 +73,13 @@ flowchart TB
 
     REPO --> GHCR
     GHCR -- pull --> VPS
-    REPO -. "deploy.sh por SSH" .-> VPS
+    REPO -- "deploy-staging.yml: deploy.sh por SSH" --> VPS
     DEV -- "SSH personal" --> VPS
 
     classDef pendiente stroke-dasharray: 5 5
 ```
 
-Las líneas punteadas son lo que falta: el GPS de motos reales, los tiempos de Google en el engine y el despliegue automático. Cada entorno usa su propio número de WhatsApp, su propia base y su propio `.env`. El restaurante y el motorizado solo hablan con WhatsApp.
+Las líneas punteadas son lo que falta: el GPS de motos reales y los tiempos de Google en el engine. El despliegue a staging ya es automático al hacer merge a `dev` (producción sigue siendo manual). Cada entorno usa su propio número de WhatsApp, su propia base y su propio `.env`. El restaurante y el motorizado solo hablan con WhatsApp.
 
 ## Entornos y flujo de cambios
 
@@ -89,7 +89,7 @@ Dos servidores distintos, con la misma estructura y nada compartido (ni base, ni
 flowchart LR
     DEVR[Rama dev] -- push --> IMG1["images.yml: construye imágenes"]
     IMG1 --> GHCR[(GHCR - imágenes por hash)]
-    GHCR -- "deploy.sh deploy hash" --> STG
+    IMG1 -- "deploy-staging.yml: deploy.sh deploy hash" --> STG
 
     subgraph STG[Servidor staging]
         S1["staging.dispatch.clapi.solutions<br/>número de prueba de Meta<br/>base de pruebas"]
@@ -335,15 +335,21 @@ flowchart LR
     PR[Pull request a main] --> CI["ci.yml: lint, tipos, build, migraciones, deriva del esquema"]
     PUSH[Push a dev o main] --> IMG["images.yml: construye y publica en GHCR con el hash"]
     IMG --> GHCR[(GHCR)]
-    MANUAL["deploy.sh deploy hash, por SSH"] --> GHCR
-    IMG -. "pendiente: deploy-staging.yml" .-> MANUAL
+    IMG -- "en dev, si todas las imágenes salieron" --> DEP["deploy-staging.yml: SSH como deploy, deploy.sh deploy hash"]
+    MANUAL["Manual desde Actions: hash a elegir"] --> DEP
+    GHCR --> DEP
+    DEP --> HC["Comprueba /api/health del bot (200)"]
 ```
 
 | Workflow | Cuándo corre | Qué hace |
 |---|---|---|
 | `ci.yml` | PR hacia `main` y push a `main` | Lint, typecheck, build, migraciones sobre base vacía aplicadas dos veces, comprueba que `schema.ts` no tenga cambios sin migración y corre el seed. Además, los casos y las pruebas del contrato del engine. Todavía no corre `npm test` ni en PR hacia `dev` ([PLAN](PLAN.md) I-4) |
 | `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker`, `engine` y los publica en GHCR con el hash y el nombre de la rama |
-| `deploy-staging.yml` | **No existe aún** | Pendiente: al terminar `images.yml` en `dev`, ejecutar `deploy` por SSH con la llave restringida |
+| `deploy-staging.yml` | Lo llama `images.yml` al publicar las imágenes de un push a `dev`; también manual (con un hash opcional) | Entra por SSH como `deploy` (llave restringida) a staging y ejecuta `deploy <hash>`; después comprueba que `https://bot.staging.dispatch.clapi.solutions/api/health` responda 200 `{"ok":true}`. Un despliegue a la vez (`concurrency`) y, si `deploy.sh` falla, el trabajo falla y staging vuelve a la versión anterior |
+
+El despliegue va como un trabajo de `images.yml` (y no como `workflow_run`) porque un push a `dev` usa el archivo de `dev`, mientras que `workflow_run` solo se dispara con el archivo de la rama principal. Solo corre si **las seis imágenes** se publicaron, y siempre con el hash de 40 caracteres de ese push. `main` no despliega nada.
+
+Secretos del despliegue (en el repositorio o en el entorno `staging`): `STAGING_SSH_KEY` (llave privada del usuario `deploy`) y `STAGING_SSH_KNOWN_HOSTS` (huella del servidor, fijada). Variables opcionales: `STAGING_HOST` y `STAGING_HEALTH_URL`. Cómo cargarlos: [OPERACION.md](OPERACION.md), «Desplegar a staging».
 
 La marca del portal (`NEXT_PUBLIC_*`) se incrusta al construir la imagen, desde las variables del repositorio `CLIENT_NAME`, `CLIENT_INITIALS` y `CLIENT_COLOR`. Dependabot propone actualizaciones con espera de 7 días.
 

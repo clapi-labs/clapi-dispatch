@@ -78,7 +78,9 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - Si el despliegue falla, staging sigue en la versión anterior y el fallo se ve en Actions.
 - La llave usada es la de despliegue restringida (solo puede correr `deploy.sh`), guardada como secreto de GitHub.
 
-**Dónde mirar:** `.github/workflows/images.yml`, `deploy/deploy.sh`, `docs/INFRAESTRUCTURA.md` («CI/CD»).
+**Hecho en el código (#81), falta activarlo:** `deploy-staging.yml` (llamado por `images.yml` en `dev` y también manual con un hash), con concurrencia, comprobación de `/api/health` y la huella del servidor fijada. **Para activarlo:** cargar `STAGING_SSH_KEY` y `STAGING_SSH_KNOWN_HOSTS` (OPERACION.md, «Desplegar a staging») y haber cerrado I-4 (#77), para no desplegar sin CI en los PR. Se da por terminada al ver un merge real a `dev` quedar en `/opt/dispatch/.tag`.
+
+**Dónde mirar:** `.github/workflows/images.yml`, `.github/workflows/deploy-staging.yml`, `deploy/deploy.sh`, `docs/INFRAESTRUCTURA.md` («CI/CD»).
 
 ### I-4 · CI en cada PR a `dev`, con las pruebas · Infra · S
 

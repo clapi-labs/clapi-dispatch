@@ -2,7 +2,8 @@ name: Imágenes
 
 # Construye y publica las imágenes en GHCR al hacer push a dev (staging) o a
 # main. Cada imagen lleva el hash del commit como etiqueta (nunca se despliega
-# "latest").
+# "latest"). En dev, cuando todas quedan publicadas, se despliega ese hash a
+# staging (deploy-staging.yml). En main no se despliega nada.
 on:
   push:
     branches: [main, dev]
@@ -60,3 +61,15 @@ jobs:
             ${{ env.REGISTRY }}/dispatch-${{ matrix.name }}:${{ github.ref_name }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Solo si las seis imágenes se publicaron. Va como job de este workflow (y no
+  # como workflow_run) porque un push a dev usa el archivo de dev, mientras que
+  # workflow_run solo se dispara con el archivo de la rama principal.
+  staging:
+    name: Staging
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    uses: ./.github/workflows/deploy-staging.yml
+    with:
+      sha: ${{ github.sha }}
+    secrets: inherit
