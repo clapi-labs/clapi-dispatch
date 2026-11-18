@@ -5,13 +5,15 @@ import {
   fixPaymentMethod,
   mergeDebtClaim,
   parseDebtClaim,
+  rescuePriceQuestion,
+  separateDoor,
   type DebtClaim,
   type DoubtfulField,
   type Interpretation,
   type OrderDraft,
 } from "@dispatch/shared";
 
-import { env } from "@/env";
+import { env } from "../../env";
 import type { DownloadedImage } from "@/services/whatsapp/client";
 
 /** `confirms`: el restaurante aceptó el servicio cotizado (lo dice el modelo;
@@ -92,18 +94,20 @@ export function parseDelivery(raw: Record<string, unknown>): Interpretation["ent
     ? raw.dudas.filter((k): k is DoubtfulField => (DOUBTFUL_FIELDS as readonly unknown[]).includes(k) && k !== "valorACobrar" && k !== "metodoPago")
     : [];
   if (phone.doubtful) doubts.push("telefonoCliente");
+  // La torre y el apartamento pasan completos a la puerta, aunque el modelo los deje en la dirección.
+  const door = separateDoor({ direccionEntrega: text(raw.direccionEntrega), detalleDireccion: text(raw.detalleDireccion), esConjunto: typeof raw.esConjunto === "boolean" ? raw.esConjunto : null });
   // Sin tipo de vía («la 42 con 83») el mapa puede ubicarla en otro lado: se confirma.
-  if (ambiguousAddress(text(raw.direccionEntrega))) doubts.push("direccionEntrega");
+  if (ambiguousAddress(door.direccionEntrega)) doubts.push("direccionEntrega");
   return {
-    direccionEntrega: text(raw.direccionEntrega),
+    direccionEntrega: door.direccionEntrega,
     telefonoCliente: phone.phone,
     nombreCliente: text(raw.nombreCliente),
     valorACobrar: valor && valor > 0 ? valor : null,
     metodoPago: raw.metodoPago === "efectivo" || raw.metodoPago === "transferencia" || raw.metodoPago === "datafono" ? raw.metodoPago : null,
     listoEnMinutos: listo !== null && listo >= 0 && listo <= MAX_LISTO_MIN ? listo : null,
     notas: text(raw.notas),
-    detalleDireccion: text(raw.detalleDireccion),
-    esConjunto: typeof raw.esConjunto === "boolean" ? raw.esConjunto : null,
+    detalleDireccion: door.detalleDireccion,
+    esConjunto: door.esConjunto,
     barrio: text(raw.barrio),
     // Solo los nombres conocidos y que tengan un valor: dudar de un null no aporta.
     dudas: doubts.length ? [...new Set(doubts)] : null,
@@ -190,6 +194,10 @@ export async function interpretMessage(
       messageText,
     );
 
+    // Preguntar el precio a un conjunto por su nombre no es confuso: es una cotización.
+    const rescue = rescuePriceQuestion(messageText, entregas, raw.confuso === true);
+    entregas.splice(0, entregas.length, ...rescue.entregas);
+
     for (const e of entregas) {
       const real = e.dudas?.filter((k: DoubtfulField) => e[k] != null) ?? [];
       e.dudas = real.length ? real : null;
@@ -206,9 +214,9 @@ export async function interpretMessage(
       },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       claim,
-      intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : null,
+      intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : rescue.rescued ? "cotizar" : null,
       confirms: raw.confirma === true,
-      confused: raw.confuso === true && !claim,
+      confused: rescue.confused && !claim,
       failed: false,
     };
   } catch (error) {

@@ -11,7 +11,8 @@
  *
  * Una consulta a Google por caso (unos 100: dentro de las 10.000 gratis del mes).
  * Con DATABASE_URL revisa también las zonas de servicio de esa base. No
- * escribe en la base. Termina con error si hay algún caso grave.
+ * escribe en la base. Termina con error si hay algún caso grave o algún caso
+ * exigido (`exigido` en casos.json: conjuntos y direcciones claras) que no se ubique.
  *
  * Para cargar el punto verificado de un caso (copiado de Google Maps, con clic
  * derecho sobre el pin, o el enlace largo):
@@ -36,7 +37,7 @@ import {
   type CaseResult,
   type Located,
 } from "../src/services/google/address-bench";
-import { requestGeocode } from "../src/services/google/geocode";
+import { resolveGeocode } from "../src/services/google/geocode";
 
 const CASES_PATH = fileURLToPath(new URL("../direcciones/casos.json", import.meta.url));
 const BARRIOS_PATH = fileURLToPath(new URL("../../portal/public/zonas/barrios.json", import.meta.url));
@@ -98,12 +99,14 @@ async function locate(c: AddressCase, withExtraction: boolean): Promise<Located>
   const extracted = withExtraction ? await extractAddress(c.texto) : null;
   if (withExtraction && !extracted) return { outcome: { kind: "not_found" }, google: null, extracted: null };
   const address = extracted ?? caseAddress(c);
-  const response = await requestGeocode(address);
-  if (response.kind !== "response") return { outcome: response, google: null, extracted };
-  if (response.data.status === "REQUEST_DENIED") {
-    fail(`Google respondió REQUEST_DENIED (${response.data.error_message ?? ""}). La llave solo sirve desde el servidor: correr con deploy/measure-addresses.sh.`);
+  // Lo mismo que hace el bot al cotizar: sin la puerta y, si falla, con las otras formas de nombrar el lugar.
+  const resolution = await resolveGeocode(address);
+  const decisive = resolution.attempts[resolution.attempts.length - 1];
+  if (!decisive) return { outcome: resolution.outcome, google: null, extracted };
+  if (decisive.data.status === "REQUEST_DENIED") {
+    fail(`Google respondió REQUEST_DENIED (${decisive.data.error_message ?? ""}). La llave solo sirve desde el servidor: correr con deploy/measure-addresses.sh.`);
   }
-  return locatedFromGoogle(response.data, address, extracted);
+  return locatedFromGoogle(decisive.data, decisive.address, extracted, resolution.via);
 }
 
 async function measure(): Promise<number> {
@@ -137,7 +140,8 @@ async function measure(): Promise<number> {
     console.error(`\nInforme en ${join(out, "informe.md")}`);
   }
   console.log(report);
-  return summarize(results).serious.length ? 1 : 0;
+  const summary = summarize(results);
+  return summary.serious.length || summary.requiredMisses.length ? 1 : 0;
 }
 
 async function main(): Promise<number> {
