@@ -199,6 +199,7 @@ export type ConversationSummary = {
   displayName: string | null;
   kind: ConversationKind;
   courierName: string | null;
+  restaurantName?: string | null;
   botPaused: boolean;
   escalationReason: string | null;
   draft: DraftFields | null;

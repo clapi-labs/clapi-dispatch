@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, needsHelpCondition, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
@@ -19,23 +19,31 @@ function last10(phone: string) {
  *  un asesor; después el resto, el más reciente primero. Un solo SELECT de mensajes recientes en
  *  vez de uno por conversación — a esta escala sobra. Cada chat sale marcado
  *  como restaurante o motorizado: es motorizado si su número está en la flota
- *  activa, que es justo a quien el bot atiende como tal. */
+ *  activa, que es justo a quien el bot atiende como tal; y si su número está en
+ *  Restaurantes activos, conserva su nombre registrado aunque WhatsApp tenga otro. */
 export async function listConversations() {
-  const [conversations, recent, fleet] = await Promise.all([
+  const [conversations, recent, fleet, restaurants] = await Promise.all([
     db.select().from(schema.conversations).orderBy(desc(schema.conversations.lastMessageAt)).limit(100),
     db.select().from(schema.messages).orderBy(desc(schema.messages.id)).limit(500),
     db.select({ name: schema.couriers.name, phone: schema.couriers.phone }).from(schema.couriers).where(eq(schema.couriers.active, true)),
+    db
+      .select({ name: schema.restaurants.name, phone: schema.restaurants.phone })
+      .from(schema.restaurants)
+      .where(and(eq(schema.restaurants.active, true), isNotNull(schema.restaurants.phone))),
   ]);
 
   const lastByConversation = new Map<number, (typeof recent)[number]>();
   for (const m of recent) if (!lastByConversation.has(m.conversationId)) lastByConversation.set(m.conversationId, m);
 
   const courierNameByPhone = new Map(fleet.map((courier) => [last10(courier.phone), courier.name]));
+  const restaurantNameByPhone = new Map(restaurants.flatMap((r) => (r.phone ? [[last10(r.phone), r.name]] : [])));
 
   return conversations
     .map((c) => {
       const last = lastByConversation.get(c.id);
-      const courierName = courierNameByPhone.get(last10(c.phone)) ?? null;
+      const phoneKey = last10(c.phone);
+      const courierName = courierNameByPhone.get(phoneKey) ?? null;
+      const restaurantName = courierName === null ? (restaurantNameByPhone.get(phoneKey) ?? null) : null;
       const kind: "restaurant" | "courier" = courierName === null ? "restaurant" : "courier";
       return {
         id: c.id,
@@ -43,6 +51,7 @@ export async function listConversations() {
         displayName: c.displayName,
         kind,
         courierName,
+        restaurantName,
         botPaused: c.botPaused,
         escalationReason: c.escalationReason,
         draft: draftSummary(c.draft),

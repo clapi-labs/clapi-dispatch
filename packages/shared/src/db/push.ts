@@ -74,6 +74,7 @@ const chatHelp: AlertSource<{
   phone: string;
   displayName: string | null;
   courierName: string | null;
+  restaurantName: string | null;
   reason: string | null;
   lastText: string | null;
   at: Date;
@@ -85,13 +86,18 @@ const chatHelp: AlertSource<{
         id: conversations.id,
         phone: conversations.phone,
         displayName: conversations.displayName,
-        // Como en el portal: un motorizado se ve con su nombre de Flota. Los
+        // Como en el portal: a un motorizado o restaurante registrado se le ve
+        // por su nombre en el sistema, no por su perfil de WhatsApp. Los
         // nombres van con su tabla escritos a mano: en la lista del SELECT
         // Drizzle deja las columnas sin tabla, y dentro de la subconsulta
-        // "phone" o "id" serían los de couriers o messages.
+        // "phone" o "id" serían los de couriers, restaurants o messages.
         courierName: sql<string | null>`(select c.name from couriers c
           where c.active
             and right(regexp_replace(c.phone, '\\D', '', 'g'), 10) = right(regexp_replace(conversations.phone, '\\D', '', 'g'), 10)
+          limit 1)`,
+        restaurantName: sql<string | null>`(select r.name from restaurants r
+          where r.active and r.phone is not null
+            and right(regexp_replace(r.phone, '\\D', '', 'g'), 10) = right(regexp_replace(conversations.phone, '\\D', '', 'g'), 10)
           limit 1)`,
         reason: conversations.escalationReason,
         lastText: sql<string | null>`(select m.text from messages m
@@ -103,7 +109,7 @@ const chatHelp: AlertSource<{
       .where(needsHelpCondition()),
   ref: (c) => c.id,
   at: (c) => c.at,
-  message: (c) => chatHelpMessage({ id: c.id, phone: c.phone, name: c.courierName ?? c.displayName, reason: c.reason, lastText: c.lastText, at: c.at }),
+  message: (c) => chatHelpMessage({ id: c.id, phone: c.phone, name: c.courierName ?? c.restaurantName ?? c.displayName, reason: c.reason, lastText: c.lastText, at: c.at }),
 };
 
 const tripAssigned: AlertSource<{
