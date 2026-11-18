@@ -285,7 +285,10 @@ async function handle(method: string, path: string, body: string | null): Promis
   }
   if (path.match(/^\/api\/trips\/\d+\/assign$/)) return json({ ok: true });
 
-  if (path === "/api/conversations/needs-help") return json({ count: summaries().filter(needsHelp).length });
+  if (path === "/api/conversations/needs-help") {
+    const ids = summaries().filter(needsHelp).map((c) => c.id);
+    return json({ count: ids.length, ids });
+  }
   if (path === "/api/conversations") return json(summaries());
   if ((m = path.match(/^\/api\/conversations\/(\d+)$/))) {
     const id = Number(m[1]);

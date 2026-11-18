@@ -41,12 +41,12 @@ const STATUS: Record<PushStatus, { label: string; tone: "ok" | "off" | "bad"; te
   on: {
     label: "Activas en este equipo",
     tone: "ok",
-    text: "Te llegan los chats que piden ayuda, las motos asignadas y los datáfonos sin devolver, aunque el portal esté cerrado y el celular bloqueado.",
+    text: "Te llegan los chats que piden ayuda, las motos que no recogen o no entregan y los datáfonos sin devolver, aunque el portal esté cerrado y el celular bloqueado.",
   },
   off: {
     label: "Apagadas en este equipo",
     tone: "off",
-    text: "Actívalas para que te lleguen los chats que piden ayuda, las motos asignadas y los datáfonos sin devolver con el portal cerrado.",
+    text: "Actívalas para que te lleguen los chats que piden ayuda, las motos que no recogen o no entregan y los datáfonos sin devolver con el portal cerrado.",
   },
   denied: {
     label: "Bloqueadas en los ajustes",

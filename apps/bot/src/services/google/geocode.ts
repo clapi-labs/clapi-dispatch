@@ -1,4 +1,4 @@
-import { haversineKm } from "@dispatch/shared";
+import { haversineKm, splitDoor } from "@dispatch/shared";
 
 import { env } from "../../env";
 
@@ -304,14 +304,91 @@ function simulatedLocation(address: string): LatLng {
   return { lat: 3.37 + (a - 0.5) * 0.08, lng: -76.53 + (b - 0.5) * 0.06 };
 }
 
+/**
+ * Lo que va al mapa: la dirección sin la puerta. La torre, el apartamento, la
+ * casa o el local no ayudan a Google y lo confunden: con «Unidad Reserva
+ * campestre, Torre 4 apto 803» devolvía el mismo punto que sin la torre, pero
+ * marcado como parcial, y el bot lo descartaba.
+ */
+export function addressForMap(address: string): string {
+  return splitDoor(address, { all: true }).direccion;
+}
+
+/** Conectores y palabras de «conjunto» al comienzo de un lugar: «unidad de», «conjunto residencial». */
+const PLACE_PREFIX = /^(?:(?:la|el|los|las)\s+)?(unidad|conjunto|conj\.?|urbanizaci[oó]n|urb\.?|condominio|agrupaci[oó]n|ciudadela)\s+(?:residencial\s+)?(?:de\s+)?/iu;
+
+/**
+ * Otras formas de nombrar el mismo lugar, para cuando Google no lo encuentra o
+ * solo lo ubica como parcial: «unidad de reserva campestre» → «unidad reserva
+ * campestre» → «reserva campestre». Solo para un lugar con nombre (sin calle y
+ * placa) que empieza con unidad, conjunto, urbanización…: una calle con
+ * número no se reescribe, y un nombre sin esas palabras («Valle del Lili»,
+ * «Bochalema») no tiene variantes: sigue pasando a la central.
+ */
+export function placeNameVariants(address: string): string[] {
+  const clean = address.replace(/\s+/g, " ").trim();
+  // Con números es una dirección («Conjunto Los Almendros, Cl. 15 Nte. #8»): no se reescribe.
+  if (/\d/.test(clean)) return [];
+  const m = PLACE_PREFIX.exec(clean);
+  if (!m) return [];
+  // «unidad del Sol» → «unidad el Sol»: se quita el «de» de «del», no el artículo.
+  const rest = clean.slice(m[0].length).trim().replace(/^del\s/iu, "el ");
+  if (!/[\p{L}\p{N}]{3,}/u.test(rest)) return [];
+  const withoutConnector = `${m[1].replace(/\.$/, "")} ${rest}`;
+  return [...new Set([withoutConnector, rest])].filter((v) => plain(v) !== plain(clean));
+}
+
+type GeocodeRequest = (address: string) => Promise<{ kind: "response"; data: GoogleGeocodeResponse } | { kind: "failed" } | { kind: "disabled" }>;
+
+/** Una consulta a Google y lo que se decidió con ella. */
+export type GeocodeAttempt = { address: string; query: string; data: GoogleGeocodeResponse; outcome: GeocodeOutcome };
+
+export type GeocodeResolution = {
+  outcome: GeocodeOutcome;
+  /** Cada consulta que se hizo, la que decidió al final. */
+  attempts: GeocodeAttempt[];
+  /** El nombre con que se encontró, si no fue el escrito. */
+  via: string | null;
+};
+
+/**
+ * Ubica una dirección: sin la puerta y, si Google no la encuentra, con las
+ * otras formas de nombrar el lugar (`placeNameVariants`). Cada forma pasa por
+ * las mismas reglas (`interpretGeocode`): un resultado parcial sigue sin valer
+ * si no trae la vía y la placa, así que «Valle del Lili» no se convierte en la
+ * clínica. Una consulta más por cada variante, solo cuando la primera falla.
+ */
+export async function resolveGeocode(address: string, request: GeocodeRequest = requestGeocode): Promise<GeocodeResolution> {
+  const clean = addressForMap(address);
+  const attempts: GeocodeAttempt[] = [];
+  let via: string | null = null;
+  let last: GeocodeOutcome = { kind: "not_found" };
+  for (const [i, candidate] of [clean, ...placeNameVariants(clean)].entries()) {
+    const response = await request(candidate);
+    if (response.kind !== "response") {
+      // Sin respuesta en la primera: no se sabe nada. En una variante, se queda lo que ya se sabía.
+      if (i === 0) return { outcome: response, attempts, via };
+      continue;
+    }
+    const outcome = interpretGeocode(response.data, candidate);
+    attempts.push({ address: candidate, query: buildGeocodeQuery(candidate), data: response.data, outcome });
+    last = outcome;
+    if (outcome.kind === "failed") return { outcome, attempts, via };
+    if (outcome.kind === "found") {
+      via = i === 0 ? null : candidate;
+      return { outcome, attempts, via };
+    }
+  }
+  return { outcome: last, attempts, via };
+}
+
 /** Un solo intento: si Google no responde, quien llama decide (hoy: pasa el
  *  pedido a la central, no se cobra sin ubicación). */
 export async function geocodeAddress(address: string): Promise<GeocodeOutcome> {
-  if (env.geocodeSimulated) return { kind: "found", location: simulatedLocation(address) };
-  const response = await requestGeocode(address);
-  if (response.kind !== "response") return response;
-  const outcome = interpretGeocode(response.data, address);
-  if (outcome.kind === "failed") console.error(`[geocode] ${response.data.status}: ${response.data.error_message ?? ""}`);
+  if (env.geocodeSimulated) return { kind: "found", location: simulatedLocation(addressForMap(address)) };
+  const { outcome, attempts } = await resolveGeocode(address);
+  const failed = attempts.find((a) => a.outcome.kind === "failed");
+  if (failed) console.error(`[geocode] ${failed.data.status}: ${failed.data.error_message ?? ""}`);
   return outcome;
 }
 

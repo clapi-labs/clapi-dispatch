@@ -1,7 +1,7 @@
 import { desc, eq, gte, or, sql } from "drizzle-orm";
 
 import { courierRoutesFor, db, getBotConfig, getEngineConfig, openTripCondition, routeKm, schema } from "@dispatch/shared/db";
-import { isTripOpen, phaseAlertAt, type DeliveryPlace } from "@dispatch/shared";
+import { isTripOpen, phaseAlertAt, tripBlockage, type DeliveryPlace } from "@dispatch/shared";
 
 export type TripRow = typeof schema.trips.$inferSelect;
 export type AssignmentRow = typeof schema.assignments.$inferSelect;
@@ -40,6 +40,10 @@ export type TripWithAssignment = TripRow & {
   /** Desde cuándo sale en rojo si sigue en esa fase. `null` si no hay nada que
    *  vigilar. */
   alertAt: Date | null;
+  /** El bloqueo real que avisa al celular (`tripBlockage`), y desde cuándo;
+   *  `null` si el viaje no está atascado. Lo usa el timbre del portal. */
+  blockageKind: string | null;
+  blockageAt: Date | null;
   /** Con el engine asignando: por qué sigue pendiente, y cuándo se despacha. */
   dispatchNote: string | null;
   dispatchAt: Date | null;
@@ -97,6 +101,8 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
   const next = new Map<number, number | undefined>();
   for (const [courierId, stops] of routes) next.set(courierId, stops[0]?.tipo === "B" ? undefined : stops[0]?.pedido);
 
+  const blockageOf = (r: (typeof rows)[number]) => (r.assignedAt ? tripBlockage({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config) : null);
+
   return rows.map((r) => ({
     ...r.trip,
     courierName: r.courierName,
@@ -122,5 +128,7 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     alertAt: r.assignedAt ? phaseAlertAt({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config, { notNext: next.get(r.courierId ?? 0) !== r.trip.id }) : null,
     dispatchNote: mode === "auto" && r.trip.status === "pending" ? r.engineReason : null,
     dispatchAt: mode === "auto" && r.trip.status === "pending" ? r.engineDispatchAt : null,
+    blockageKind: blockageOf(r)?.kind ?? null,
+    blockageAt: blockageOf(r)?.at ?? null,
   }));
 }
