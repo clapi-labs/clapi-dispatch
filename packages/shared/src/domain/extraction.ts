@@ -153,7 +153,49 @@ export type OrderDraft = {
   /** Ya se le recordó que debe confirmarlo antes de la hora límite: sale una
    *  sola vez por pedido. */
   recordatorioCierre?: boolean;
+  /** Última vez que este borrador recibió datos del restaurante o de la central. */
+  actualizadoEn?: string | null;
 };
+
+/** Tiempo máximo que un borrador abandonado sin asesor sigue activo antes de
+ *  empezar de cero cuando el restaurante vuelva a escribir. */
+export const DRAFT_TTL_MS = 60 * 60_000;
+
+/** Un borrador viejo y sin consulta abierta no debe secuestrar un mensaje nuevo horas después. */
+export function isStaleDraft(draft: OrderDraft, now: Date): boolean {
+  if (!draft.entregas.length && !draft.origenRestaurante && !draft.soloPrecio) return false;
+  if (draft.consultaAsesor || draft.preguntaIdentidad) return false;
+  const stamps = [draft.actualizadoEn, ...draft.entregas.map((d) => d.listoDesde)]
+    .map((s) => (s ? Date.parse(s) : NaN))
+    .filter(Number.isFinite);
+  if (!stamps.length) return false;
+  return now.getTime() - Math.max(...stamps) > DRAFT_TTL_MS;
+}
+
+const GREETING_ONLY_RE = /^\s*(?:hola|buen(?:os|as)(?:\s+(?:d[ií]as|tardes|noches))?|saludos)\b[\s.!?,]*$/iu;
+
+/**
+ * Calla solo cuando YA se le mostró este precio antes (`hadPriceBefore`) y el
+ * restaurante respondió algo neutro («ok», «gracias») sin pedir nada nuevo,
+ * preguntar ni saludar otra vez.
+ */
+export function shouldStaySilentAfterQuote(params: {
+  hadPriceBefore: boolean;
+  priceChanged: boolean;
+  progressed: boolean;
+  query: string | null;
+  intent: "cotizar" | "pedir" | null;
+  text: string;
+}): boolean {
+  return (
+    !params.priceChanged &&
+    params.hadPriceBefore &&
+    !params.progressed &&
+    !params.query &&
+    params.intent === null &&
+    !GREETING_ONLY_RE.test(params.text)
+  );
+}
 
 /** Lo que devuelve el modelo por mensaje. */
 export type Interpretation = {
@@ -456,7 +498,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "nombreRestaurante": string | null,   // el nombre del NEGOCIO QUE ESCRIBE, solo si el mensaje nuevo se identifica así a propósito ("soy de Pizza Nona", "habla Donde Lucho", "te escribo de Sushi Ya"), sin dirección. null si el mensaje no dice que el negocio es quien escribe: un nombre tras "domi", "domicilio", "moto", "llevar", "a", "para" o "al lado de" es a dónde va el pedido o una referencia ("domi para Café Luna, Calle 3 # 4-5", "domicilio a Café Luna", "al lado de Café Luna"), o si es el de una persona o del cliente. Ante la duda, null
   "entregas": [                         // una por cada cliente final, en el mismo orden de los datos ya capturados; también la dirección o el lugar por el que solo pregunta el precio
     {
-      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio, barrio y municipio si dice otro distinto de Cali ("Jamundí", "Yumbo", "Candelaria"); SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
+      "direccionEntrega": string | null,  // calle y número (o el lugar conocido), nombre del conjunto o edificio, barrio y municipio si dice otro distinto de Cali ("Jamundí", "Yumbo", "Candelaria", "Palmira"); SIN torre ni apto (van en detalleDireccion) y SIN puntos de referencia (van en notas)
       "telefonoCliente": string | null,   // solo dígitos
       "nombreCliente": string | null,
       "valorACobrar": number | null,      // lo que el motorizado le cobra al cliente, en pesos
@@ -512,7 +554,7 @@ Reglas:
 - Nunca inventes un valor: lo que no sepas va en null.
 - "dudas": los campos que SÍ leíste pero de los que no estás seguro: letra borrosa o cortada en una foto, un número con dígitos ilegibles o de menos (un celular colombiano tiene 10), dos lecturas posibles ("Cra 15" o "Cra 16"), un dato que no queda claro a qué entrega pertenece, o algo que no cuadra: una dirección sin tipo de vía ("la 42 con 83", no se sabe si es calle o carrera) o a medias (sin el número de la casa), dos teléfonos o dos nombres para el mismo cliente, un barrio que no corresponde a la dirección, o un dato distinto del ya capturado sin decir que es una corrección. Ante la duda, márcalo: el restaurante confirma antes de pedir la moto, y es mejor preguntar que mandar al domiciliario a otro lado. Pon tu mejor lectura en el campo y su nombre en "dudas" (solo estos nombres: "direccionEntrega", "detalleDireccion", "telefonoCliente", "nombreCliente", "valorACobrar", "metodoPago", "listoEnMinutos", "notas"). Lo que no se lee para nada va en null, no en "dudas". Un dato claro nunca va en "dudas".
 - Si no hay entregas capturadas y el mensaje trae datos sueltos sin dirección ("ya está listo", "en 10", "paga con 50 mil", un teléfono), devuélvelos en UNA entrega con "direccionEntrega": null. "entregas" va vacío solo si el mensaje no trae ningún dato (un saludo, por ejemplo).
-- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿cubren Pance?"); ese lugar también va en "entregas". En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
+- "consulta": "estado" si pregunta por un pedido ya pedido ("¿ya llegó?", "¿ya va la moto?", "¿quién va?", "¿dónde va el domicilio?", "¿ya lo recogieron?", "¿cuál es el número del domiciliario?", "pásame el contacto del motorizado"). "cobertura" si pregunta si llegan a algún lugar ("¿domis acá?", "¿llegan a Jamundí?", "¿tienen servicio hasta Palmira?", "¿cubren Pance?"); ese lugar también va en "entregas". En otro caso, null. Preguntar el PRECIO a una dirección no es consulta: es una cotización normal.
 - "reclamo": cuando el restaurante reclama que un domiciliario le devuelva su datáfono o le traiga la plata de pedidos anteriores, o avisa que ya va a cerrar ("¿a qué hora me traen la plata?", "necesito el datáfono", "ya vamos a cerrar, necesito la plata", "no me han devuelto el datáfono", "ya vamos a cerrar"). "motivo": "plata" si pide su plata/efectivo, "datafono" si pide su datáfono, o null si dice que va a cerrar o pide cuadrar sin especificar cuál. "cierra": true si dice que ya va a cerrar o está cerrando. NO es reclamo que un pedido nuevo diga "llevar datáfono" o "paga en efectivo" (eso es el metodoPago del cliente). Si en el mismo mensaje pide un domicilio y además hace un reclamo, llena TANTO "entregas"/"intencion" como "reclamo". Si no reclama nada ni avisa que cierra, null.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto (salvo que sea un "reclamo" de plata o datáfono), o se contradice sin aclarar cuál dato es el bueno. Saludos, reclamos de plata/datáfono, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;

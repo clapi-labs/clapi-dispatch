@@ -5,8 +5,10 @@ import {
   closedNoticeDue,
   countFields,
   emptyDelivery,
+  emptyDraft,
   fullAddress,
   isOpen,
+  isStaleDraft,
   mergeTripFields,
   missingFields,
   namedAsDestination,
@@ -14,6 +16,7 @@ import {
   normalizeName,
   parseDebtClaim,
   removeDeliveries,
+  shouldStaySilentAfterQuote,
   type DeliveryDraft,
   type DoubtfulField,
   type Interpretation,
@@ -98,7 +101,8 @@ type Context = {
 };
 
 async function save(ctx: Context, draft: OrderDraft | null, failedAttempts = 0) {
-  await updateConversation(ctx.conversation.id, { draft, failedAttempts });
+  const stamped = draft ? { ...draft, actualizadoEn: ctx.message.timestamp.toISOString() } : null;
+  await updateConversation(ctx.conversation.id, { draft: stamped, failedAttempts });
 }
 
 /** Google caído: el borrador se guarda (el asesor lo ve en el portal) y la
@@ -404,7 +408,11 @@ function placePin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">
 }
 
 export async function handleRestaurant(ctx: Context) {
-  const { conversation, message } = ctx;
+  const { message } = ctx;
+  const rawKnown = normalizeDraft(ctx.conversation.draft);
+  const stale = isStaleDraft(rawKnown, message.timestamp);
+  const conversation = stale ? { ...ctx.conversation, draft: null, failedAttempts: 0 } : ctx.conversation;
+  if (stale) ctx = { ...ctx, conversation };
   let { restaurant } = ctx;
   const config = await getBotConfig();
   // Se mide con la hora en que el restaurante envió el mensaje.
@@ -412,12 +420,14 @@ export async function handleRestaurant(ctx: Context) {
   const now = message.timestamp;
   const open = isOpen(now, hoursFor(restaurant, hours));
 
-  const known = normalizeDraft(conversation.draft);
+  const known = stale ? emptyDraft() : rawKnown;
   if (restaurant) known.origenRestaurante = restaurant.name;
   let draft: OrderDraft = structuredClone(known);
   let confirms = false;
   let fromImage = false;
   let saidName: string | null = null;
+  let query: "estado" | "cobertura" | null = null;
+  let intent: "cotizar" | "pedir" | null = null;
 
   // Lo que trae el turno: el texto (con sus fotos), los pines y los botones
   // que mandó seguido (`bot/turns.ts`). Un mensaje suelto es un turno de uno.
@@ -487,6 +497,8 @@ export async function handleRestaurant(ctx: Context) {
       return;
     }
     const extraction = await interpretMessage(text, draft, images);
+    query = extraction.query;
+    intent = extraction.intent;
     const claim = extraction.claim ?? parseDebtClaim(text);
     // OpenAI falló: no es culpa del restaurante, así que no suma intentos, no
     // escala y el borrador queda como estaba. Si era un reclamo claro, igual se atiende.
@@ -549,7 +561,10 @@ export async function handleRestaurant(ctx: Context) {
       await answerStatus(conversation, message.phone, quoted);
       return;
     }
-    const asksAddress = !pins.length && !extraction.fields.entregas.some((e) => e.direccionEntrega) && !before.entregas.some((e) => e.direccionEntrega);
+    const asksAddress =
+      !pins.length &&
+      !extraction.fields.entregas.some((e) => e.direccionEntrega) &&
+      (!before.entregas.some((e) => e.direccionEntrega) || before.etapa === "cotizado");
     if (extraction.query === "cobertura" && asksAddress) {
       if (!open) {
         await closedForOrders(ctx, hours.opensAt, now);
@@ -583,7 +598,7 @@ export async function handleRestaurant(ctx: Context) {
     // es otra cotización, no un segundo domicilio. Se empieza de nuevo con lo
     // que trae este mensaje; la recogida se conserva.
     let fields = extraction.fields;
-    if (before.soloPrecio && !extraction.confirms) {
+    if ((before.soloPrecio || priceOnly) && !extraction.confirms) {
       const fresh = fields.entregas.filter((e) => e.direccionEntrega && !before.entregas.some((k) => k.direccionEntrega === e.direccionEntrega));
       if (fresh.length) {
         draft = { ...draft, etapa: "recibiendo", entregas: [], mensajeOrigen: null };
@@ -782,10 +797,9 @@ export async function handleRestaurant(ctx: Context) {
   const accepted = confirms && draft.resumenMostrado === summaryOf(quoted);
   if (!accepted) {
     const priceChanged = newQuote || dropped.length > 0;
-    // Solo había preguntado el precio y no decidió mandarlo («gracias», «ok»):
-    // no se le insiste ni cuenta como intento. El precio queda guardado por si
-    // después dice «dale» o manda los datos.
-    if (!priceChanged && draft.soloPrecio) {
+    // Solo calla si YA se le había mostrado este precio (`before.soloPrecio`) y respondió
+    // algo neutro («gracias», «ok»), sin preguntar cobertura ni saludar otra vez.
+    if (shouldStaySilentAfterQuote({ hadPriceBefore: !!before.soloPrecio, priceChanged, progressed, query, intent, text })) {
       await save(ctx, draft);
       return;
     }
@@ -796,8 +810,8 @@ export async function handleRestaurant(ctx: Context) {
     const reason = reply.summary ? "sin confirmar el servicio" : "sin los datos que faltan";
     if (priceChanged) await save(ctx, draft);
     else if (!(await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos ${reason}.`))) return;
-    const text = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
-    await say(conversation.id, message.phone, text, { replyTo, buttons: reply.buttons });
+    const replyText = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
+    await say(conversation.id, message.phone, replyText, { replyTo, buttons: reply.buttons });
     return;
   }
 

@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ambiguousAddress, emptyDelivery, fixPaymentMethod, mentionsCardOnDelivery, mergeTripFields, removeDeliveries, type DeliveryDraft, type Interpretation, type OrderDraft } from "./extraction";
+import {
+  ambiguousAddress,
+  DRAFT_TTL_MS,
+  emptyDelivery,
+  emptyDraft,
+  fixPaymentMethod,
+  isStaleDraft,
+  mentionsCardOnDelivery,
+  mergeTripFields,
+  removeDeliveries,
+  shouldStaySilentAfterQuote,
+  type DeliveryDraft,
+  type Interpretation,
+  type OrderDraft,
+} from "./extraction";
 
 type DeliveryFields = Interpretation["entregas"][number];
 
@@ -219,5 +233,49 @@ describe("ambiguousAddress: sin tipo de vía se confirma", () => {
 
   it("una palabra que empieza como un tipo de vía no cuenta como tipo de vía", () => {
     assert.equal(ambiguousAddress("Callejón 4 casa 2"), true);
+  });
+});
+
+describe("isStaleDraft: borradores viejos expiran", () => {
+  const now = new Date("2026-11-18T19:30:00Z");
+
+  it("descarta un borrador sin actividad tras DRAFT_TTL_MS", () => {
+    const old = new Date(now.getTime() - DRAFT_TTL_MS - 60_000).toISOString();
+    assert.equal(isStaleDraft({ ...emptyDraft(), entregas: [emptyDelivery()], actualizadoEn: old }, now), true);
+    assert.equal(isStaleDraft({ ...emptyDraft(), entregas: [{ ...emptyDelivery(), listoDesde: old }] }, now), true);
+  });
+
+  it("conserva un borrador reciente o con consulta abierta al asesor", () => {
+    const recent = new Date(now.getTime() - 10 * 60_000).toISOString();
+    const old = new Date(now.getTime() - DRAFT_TTL_MS - 60_000).toISOString();
+    assert.equal(isStaleDraft({ ...emptyDraft(), entregas: [emptyDelivery()], actualizadoEn: recent }, now), false);
+    assert.equal(
+      isStaleDraft({ ...emptyDraft(), entregas: [emptyDelivery()], actualizadoEn: old, consultaAsesor: { entregas: [0], desde: old } }, now),
+      false,
+    );
+  });
+});
+
+describe("shouldStaySilentAfterQuote", () => {
+  it("calla solo tras haber dado ya la cotización y ante un «ok»/«gracias» neutro", () => {
+    assert.equal(
+      shouldStaySilentAfterQuote({ hadPriceBefore: true, priceChanged: false, progressed: false, query: null, intent: null, text: "gracias" }),
+      true,
+    );
+  });
+
+  it("no calla en la primera consulta, ni si pregunta cobertura, ni ante un saludo", () => {
+    assert.equal(
+      shouldStaySilentAfterQuote({ hadPriceBefore: false, priceChanged: false, progressed: false, query: "cobertura", intent: "cotizar", text: "tienen servicio hasta palmira?" }),
+      false,
+    );
+    assert.equal(
+      shouldStaySilentAfterQuote({ hadPriceBefore: true, priceChanged: false, progressed: false, query: "cobertura", intent: null, text: "llegan allá?" }),
+      false,
+    );
+    assert.equal(
+      shouldStaySilentAfterQuote({ hadPriceBefore: true, priceChanged: false, progressed: false, query: null, intent: null, text: "Hola.." }),
+      false,
+    );
   });
 });
