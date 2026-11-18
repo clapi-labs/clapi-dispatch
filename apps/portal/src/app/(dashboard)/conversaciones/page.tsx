@@ -135,7 +135,14 @@ const Bubble = memo(function Bubble({
   }
 
   return (
-    <div id={`msg-${message.id}`} className={`group flex scroll-my-24 items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+    // `content-visibility: auto`: el navegador no pinta ni calcula las burbujas que están
+    // fuera de pantalla. Con un hilo de miles de mensajes, sin esto cada tecla cuesta
+    // ~45 ms de pintado aunque React no toque nada. `shrink-0`: una burbuja omitida no
+    // tiene altura mínima y, sin él, el hilo (flex en columna) la encogería.
+    <div
+      id={`msg-${message.id}`}
+      className={`group flex shrink-0 scroll-my-24 items-center gap-1 [contain-intrinsic-size:auto_64px] [content-visibility:auto] ${mine ? "flex-row-reverse" : ""}`}
+    >
       <div
         onPointerDown={(e) => {
           touched.current = e.pointerType === "touch";
@@ -262,10 +269,16 @@ function Composer({
   );
 
   // La caja crece con lo que se escribe o se pega (un pedido de varias líneas), hasta su tope.
+  // Solo se toca la altura cuando cambia: al crecer, basta con leer `scrollHeight`;
+  // volver a "auto" en cada tecla invalida el diseño de toda la página.
+  const lastLength = useRef(0);
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
-    el.style.height = "auto";
+    const shrinking = draftText.length < lastLength.current;
+    lastLength.current = draftText.length;
+    if (shrinking) el.style.height = "auto";
+    else if (el.scrollHeight <= el.clientHeight) return;
     el.style.height = `${el.scrollHeight}px`;
   }, [draftText, inputRef]);
 
@@ -414,7 +427,11 @@ export default function ConversacionesPage() {
   // Bajar al último mensaje solo cuando llega uno nuevo, no en cada sondeo.
   useEffect(() => {
     if (thread.length !== lastCount.current) {
-      bottomRef.current?.scrollIntoView({ behavior: lastCount.current === 0 ? "auto" : "smooth" });
+      const first = lastCount.current === 0;
+      bottomRef.current?.scrollIntoView({ behavior: first ? "auto" : "smooth" });
+      // Las burbujas fuera de pantalla miden un estimado hasta que se pintan: al abrir el
+      // chat, un segundo ajuste ya con las del final pintadas deja el hilo realmente abajo.
+      if (first) requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "auto" }));
       lastCount.current = thread.length;
     }
   }, [thread]);

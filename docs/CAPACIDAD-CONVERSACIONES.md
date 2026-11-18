@@ -25,7 +25,26 @@ Qué está medido y qué no:
 
 Cambio de comportamiento: al cambiar de chat, la caja se reinicia. Antes el borrador se arrastraba de un chat a otro, y se podía enviar por error a otro contacto.
 
-Pendiente de verificar a mano: escribir párrafos largos con un hilo largo, en escritorio y en celular. No hay prueba automática de rendimiento de interfaz.
+### 1.1 Medición en el navegador
+
+Chrome de escritorio, `next dev`, base local con 100 chats y un hilo de **3.000 mensajes**. Se escribió un párrafo de 368 caracteres, una tecla por cuadro, y se midió lo que tarda el cuadro siguiente en pintarse (en reposo, un cuadro dura ~17 ms).
+
+| | Antes de pintar fuera de pantalla | Con `content-visibility` |
+|---|---|---|
+| Trabajo de JavaScript por tecla | 2,3 ms | 2,1 ms |
+| Espera del cuadro por tecla (promedio) | **~48–63 ms** | **~19–24 ms** |
+| Tareas largas (más de 50 ms) | 22–40 | 0–1 |
+| Cambios en el DOM del hilo y de la lista al teclear | 0 | 0 |
+
+Lo que mostró la medición:
+
+- Aislar la caja de texto funcionó: React ya casi no trabaja por tecla (2 ms) y no toca el hilo ni la lista (0 cambios en el DOM).
+- Aun así, con 3.000 burbujas cada tecla costaba ~45 ms: era el navegador, no React, pintando y calculando estilos de todas las burbujas. Ocultar el hilo bajaba el cuadro a ~14 ms.
+- Se corrigió con `content-visibility: auto` en cada burbuja (el navegador omite las que están fuera de pantalla), `shrink-0` (sin él, el hilo en columna las encoge y el scroll queda mal) y un segundo ajuste de scroll al abrir el chat, porque las burbujas no pintadas miden un estimado.
+- El ajuste de altura de la caja ya no vuelve a `auto` en cada tecla; solo lo hace al borrar.
+- Enviar con el servidor tardando 3 s: la caja se vacía en ~90 ms, sigue habilitada y acepta texto mientras el envío está en curso.
+
+Contra: al saltar con el scroll a una cita lejana, la posición puede quedar algo desviada hasta que se pintan las burbujas intermedias.
 
 ---
 
@@ -210,13 +229,8 @@ Pegar el resultado en esta sección. Sin eso, la conclusión sobre «cuánto mar
 
 ## Pendiente de verificar (no se pudo hacer al cerrar el #82)
 
-Dos cosas quedaron sin hacer. Se anotan aquí con el paso exacto para cerrarlas.
+Quedan dos cosas sin hacer. Se anotan aquí con el paso exacto para cerrarlas.
 
-**1. Prueba de la caja de texto en un navegador real.** Hay pruebas automáticas de la cola de envío (`apps/portal/src/lib/send-queue.test.ts`), pero ninguna de que teclear no repinta la bandeja ni el hilo. El intento de abrir el portal en Chrome desde la herramienta de automatización falló (sin grupo de pestañas disponible). Para hacerla a mano:
-
-1. Levantar el portal con una base local (`npm run dev:portal`) con ~100 chats y uno con ~3.000 mensajes, con el bot pausado en ese chat para que aparezca la caja.
-2. En las herramientas de desarrollo del navegador, pestaña Performance, grabar escribiendo un párrafo largo y rápido.
-3. Esperado: sin tareas largas (más de 50 ms) por tecla y sin repintado de las burbujas; con la red en «Slow 3G», la caja sigue respondiendo y solo el envío demora.
-4. Repetir en un celular (también con el teclado en pantalla).
+**1. Prueba en celular y con escritura a mano.** Se midió en Chrome de escritorio (sección 1.1), pero no en un celular ni con una persona escribiendo. Para cerrarlo: abrir un chat largo en el celular, con el teclado en pantalla, escribir un párrafo largo y rápido, y confirmar que se siente instantáneo; repetir con la red en «Slow 3G».
 
 **2. Carga real de los contenedores en staging.** El SSH a staging fue rechazado (`Permission denied (publickey)`) desde la máquina donde se hizo el informe. Los comandos están en la sección 4; falta pegar la salida en reposo y en una hora de actividad.
