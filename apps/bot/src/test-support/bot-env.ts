@@ -1,3 +1,6 @@
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
+import path from "node:path";
 import { mock } from "node:test";
 
 import { eq } from "drizzle-orm";
@@ -86,6 +89,73 @@ export function fakeEngine(request: EngineRequest): EngineResponseBody {
   };
 }
 
+// El engine de verdad: el servicio Python de apps/engine (solo librería estándar), levantado como proceso.
+let realFetch: typeof fetch | null = null;
+
+/** Qué intérprete de Python hay en esta máquina (el engine solo usa la librería estándar); `null` si ninguno. */
+export function findPython(): string | null {
+  for (const command of ["python3", "python"]) {
+    const found = spawnSync(command, ["--version"], { encoding: "utf8" });
+    if (found.status === 0 && /Python 3/.test(`${found.stdout}${found.stderr}`)) return command;
+  }
+  return null;
+}
+
+/** Un puerto libre. */
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Levanta el engine real (`apps/engine/api.py`) y espera a que conteste `/health`. Mientras esté
+ * `ENGINE_URL` apuntando a su `url`, lo que el bot le pregunta a `/evaluar` va a él y no al engine de mentiras
+ * (el engine de mentiras vive en otra URL). `stop()` lo apaga.
+ */
+export async function startRealEngine(): Promise<{ url: string; version: string; stop: () => Promise<void> }> {
+  const python = findPython();
+  if (!python) throw new Error("No hay Python 3 para levantar el engine real");
+  if (!realFetch) throw new Error("installMocks() primero");
+  const port = await freePort();
+  const script = path.resolve(process.cwd(), "apps/engine/api.py");
+  const child: ChildProcess = spawn(python, [script], { env: { ...process.env, PORT: String(port), PYTHONUNBUFFERED: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  child.stdout?.on("data", (d) => (output += String(d)));
+  child.stderr?.on("data", (d) => (output += String(d)));
+  const url = `http://127.0.0.1:${port}`;
+  let version = "";
+  for (let attempt = 0; attempt < 100 && !version; attempt++) {
+    if (child.exitCode !== null) throw new Error(`El engine real se cerró al arrancar: ${output}`);
+    try {
+      const health = await realFetch(`${url}/health`);
+      if (health.ok) version = ((await health.json()) as { engine_version: string }).engine_version;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  if (!version) {
+    child.kill();
+    throw new Error(`El engine real no contestó /health: ${output}`);
+  }
+  return {
+    url,
+    version,
+    stop: async () => {
+      if (child.exitCode !== null) return;
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => resolve());
+        child.kill();
+      });
+    },
+  };
+}
+
 let engineHandler: ((request: EngineRequest) => EngineReply | Promise<EngineReply>) | null = null;
 export const engineCalls: EngineRequest[] = [];
 /** Cambia lo que contesta el engine (por defecto, `fakeEngine`); `null` lo devuelve a lo de siempre. */
@@ -152,10 +222,11 @@ export async function installMocks() {
     },
   });
 
+  realFetch ??= globalThis.fetch;
   process.env.OPENAI_API_KEY = "sk-prueba-sin-red";
   mock.method(globalThis, "fetch", async (url: unknown, init?: { body?: unknown }) => {
     const target = String(url instanceof Request ? url.url : url);
-    if (target.includes("/evaluar")) return engineFetch(init);
+    if (target.includes("/evaluar")) return realFetch && target.startsWith("http://127.0.0.1") ? realFetch(url as string, init as RequestInit) : engineFetch(init);
     const body = JSON.parse(String(init?.body ?? "{}")) as { messages?: { role: string; content: string }[] };
     classified.push(body.messages?.find((m) => m.role === "user")?.content ?? "");
     const answer = classifierQueue.shift();
