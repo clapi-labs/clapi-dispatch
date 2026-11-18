@@ -76,15 +76,14 @@ function pinRank(c: Parameters<typeof needsHelp>[0]) {
   return c.botPaused ? 1 : 0;
 }
 
-/** Cuántos chats piden ayuda: la burbuja amarilla de la navegación. Es
- *  `needsHelp` (lib/chat.ts) en SQL, la misma condición con que el servidor
- *  avisa al celular (`needsHelpCondition` en @dispatch/shared). */
-export async function countNeedingHelp(): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(schema.conversations)
-    .where(needsHelpCondition());
-  return row?.n ?? 0;
+/** Qué chats piden ayuda: la burbuja amarilla de la navegación (su cuenta) y,
+ *  por id, el timbre (un chat que entra mientras otro sale no cambia la
+ *  cuenta, pero sí suena). Es `needsHelp` (lib/chat.ts) en SQL, la misma
+ *  condición con que el servidor avisa al celular (`needsHelpCondition` en
+ *  @dispatch/shared). */
+export async function idsNeedingHelp(): Promise<number[]> {
+  const rows = await db.select({ id: schema.conversations.id }).from(schema.conversations).where(needsHelpCondition());
+  return rows.map((r) => r.id);
 }
 
 /**

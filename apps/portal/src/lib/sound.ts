@@ -1,5 +1,5 @@
 /**
- * La alerta de "moto asignada": dos notas cortas (La5 → Mi6), sintetizadas
+ * El timbre del portal (un chat pide ayuda, un viaje se atascó): dos notas cortas (La5 → Mi6), sintetizadas
  * con Web Audio. Sin archivo de audio que cargar ni que pueda fallar.
  *
  * Los navegadores no dejan sonar nada hasta que la persona toca la página una

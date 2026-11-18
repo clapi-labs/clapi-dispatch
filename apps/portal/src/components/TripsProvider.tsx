@@ -1,19 +1,20 @@
 "use client";
 
-import { Bike } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+import { criticalBlockedIds, hasNewCritical } from "@/lib/blockages";
 import { DEMO, installDemo } from "@/lib/demo";
 import { useLive } from "@/lib/live";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Trip } from "@/lib/types";
 
 /**
- * Los viajes viven acá y no en cada página: así la alerta de "moto asignada"
- * suena esté donde esté el despachador — viendo chats, flota o arqueo — y
- * los contadores de la navegación están siempre al día.
+ * Los viajes viven acá y no en cada página: así el timbre de "un chat pide
+ * ayuda" o "un viaje se atascó" (moto que no recoge, entrega o devolución estancada)
+ * suena esté donde esté el despachador, y los contadores de la navegación están
+ * siempre al día. Una moto asignada no suena: la tarjeta de Viajes solo se
+ * actualiza.
  */
 
 type TripsState = {
@@ -55,13 +56,13 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [needsHelp, setNeedsHelp] = useState(0);
-  const lastHelp = useRef<number | null>(null);
+  const lastHelp = useRef<Set<number> | null>(null);
+  const lastBlocked = useRef<Set<number> | null>(null);
+  const tripsRef = useRef<Trip[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(true);
   const [soundOn, setSoundOn] = useState(true);
-  const [toast, setToast] = useState<Trip | null>(null);
 
-  const seenAssigned = useRef<Set<number> | null>(null);
   const soundRef = useRef(soundOn);
   useEffect(() => {
     soundRef.current = soundOn;
@@ -70,6 +71,15 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   // El texto de la última respuesta: si llega igual, no se toca el estado y
   // nada se vuelve a dibujar.
   const lastBody = useRef<string | null>(null);
+
+  // Suena cuando un viaje entra en un bloqueo crítico (no en la primera carga).
+  // El bloqueo empieza con el paso del tiempo, no con un cambio en la base: por
+  // eso se revisa también cada pocos segundos, no solo al traer los viajes.
+  const checkBlocked = useCallback((list: Trip[]) => {
+    const current = criticalBlockedIds(list);
+    if (hasNewCritical(current, lastBlocked.current) && soundRef.current) playChime();
+    lastBlocked.current = current;
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -87,31 +97,26 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       lastBody.current = body;
       const data: Trip[] = JSON.parse(body);
 
-      const assigned = data.filter((t) => t.assignedAt && t.status !== "pending");
-      // La primera carga solo aprende qué existía: no suena por lo viejo.
-      if (seenAssigned.current) {
-        const fresh = assigned.filter((t) => !seenAssigned.current!.has(t.id));
-        if (fresh.length > 0) {
-          if (soundRef.current) playChime();
-          setToast(fresh[0]);
-        }
-      }
-      seenAssigned.current = new Set(assigned.map((t) => t.id));
-
+      tripsRef.current = data;
+      checkBlocked(data);
       setTrips((prev) => keepUnchanged(prev, data));
     } catch {
       setOnline(false);
     }
-  }, [router]);
+  }, [router, checkBlocked]);
 
   const refreshHelp = useCallback(async () => {
     const help = await fetch("/api/conversations/needs-help", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     if (!help || typeof help.count !== "number") return;
-    // Suena cuando un chat nuevo pide ayuda; no en la primera carga.
-    if (lastHelp.current !== null && help.count > lastHelp.current && soundRef.current) playChime();
-    lastHelp.current = help.count;
+    // Suena cuando entra un chat que pide ayuda (no en la primera carga). Se
+    // compara por id y no por la cuenta: si entra uno y sale otro a la vez, la
+    // cuenta queda igual pero hay un caso nuevo.
+    const ids: number[] = Array.isArray(help.ids) ? help.ids : [];
+    const seen = lastHelp.current;
+    if (seen !== null && ids.some((id) => !seen.has(id)) && soundRef.current) playChime();
+    lastHelp.current = new Set(ids);
     setNeedsHelp(help.count);
   }, []);
 
@@ -119,6 +124,13 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   // del motorizado sale de ahí); el contador de ayuda, cuando cambian chats.
   useLive(refresh, TRIP_TOPICS);
   useLive(refreshHelp, HELP_TOPICS);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastBlocked.current !== null) checkBlocked(tripsRef.current);
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [checkBlocked]);
 
   useEffect(() => {
     const unlock = () => unlockAudio();
@@ -129,12 +141,6 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("keydown", unlock);
     };
   }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(id);
-  }, [toast]);
 
   const deliver = useCallback(
     async (tripId: number, { place }: DeliveryOutcome) => {
@@ -178,28 +184,6 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
           Datos de ejemplo
         </span>
       )}
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -16, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ type: "spring", stiffness: 420, damping: 30 }}
-            className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl bg-clapi-deep px-4 py-3 text-white shadow-xl shadow-clapi/20 ring-1 ring-white/15"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-clapi-deep">
-              <Bike size={18} strokeWidth={2.4} />
-            </span>
-            <div className="min-w-0 text-sm leading-tight">
-              <p className="font-semibold">Moto asignada · {toast.code}</p>
-              <p className="truncate text-white/70">
-                {toast.courierName} → {toast.deliveryAddress}
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </TripsContext.Provider>
   );
 }

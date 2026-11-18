@@ -67,7 +67,12 @@ Ningún paso lo impone el sistema.
 
 ## Alertas al celular
 
-Las alertas del portal (un chat que pide ayuda a la central, una moto asignada y un datáfono que no se ha devuelto) le llegan al celular como una notificación, igual que las de WhatsApp: suenan con el celular bloqueado y el portal cerrado. Al tocarla, el portal abre ese chat o ese pedido. No pasa por WhatsApp ni por Meta: no cuesta nada por aviso.
+Las alertas del portal le llegan al celular como una notificación, igual que las de WhatsApp: suenan con el celular bloqueado y el portal cerrado. Al tocarla, el portal abre ese chat o ese pedido. Solo avisan lo que necesita a la central, en dos niveles:
+
+- 🟠 **Naranja** (⚠️, ícono naranja, vibración normal): chat de un restaurante que pide ayuda, cliente que no contesta, reclamo de plata o datáfono, datáfono afuera (tarde o al cierre).
+- 🔴 **Rojo** (🚨, ícono rojo, vibración larga y no se va hasta tocarla): chat de un motorizado que pide ayuda, moto en pausa en Flota (emergencia), moto que no recoge, entrega o devolución estancada.
+
+No avisan la operación normal: una moto asignada, un pedido sin moto, un «Voy en camino» sin tocar o una moto que salió de la entrega sin marcarla se ven en la tarjeta de Viajes, sin notificación. Si la central ya escribió en un chat, las respuestas de los siguientes 5 minutos («ok gracias») tampoco avisan. No pasa por WhatsApp ni por Meta: no cuesta nada por aviso.
 
 Son las mismas alertas que suenan con el portal abierto, ni más ni menos. «Chat que pide ayuda» incluye las novedades de un motorizado y las consultas de dirección, porque el bot las pasa a la central. Con el portal abierto en el computador, todo sigue sonando como antes.
 

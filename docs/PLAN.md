@@ -268,7 +268,7 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Éxito:**
 - El portal se instala como app (ícono de Clapi, pantalla completa) y recibe notificaciones push (Android con Chrome; iPhone con iOS 16.4 o más, instalado en la pantalla de inicio).
-- Suenan las alertas que ya tiene el portal: chat que pide ayuda (incluye novedad de un motorizado y consulta de dirección) y moto asignada. Al tocar la notificación abre ese chat o ese pedido.
+- Suenan solo los bloqueos reales y las emergencias, en dos niveles (ver [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md), «Alertas al celular»): 🟠 naranja (chat de restaurante, cliente que no contesta, reclamos y datáfonos) y 🔴 rojo (chat de motorizado, emergencia en Flota, moto que no recoge, entrega o devolución estancada). La operación normal (moto asignada, pedido sin moto, «Voy en camino», salida de la entrega) no avisa al celular. Al tocar la notificación abre ese chat o ese pedido.
 - El portal muestra si las notificaciones están activas o bloqueadas en ese celular.
 - En el celular instalado la sesión dura 30 días y se puede cerrar a distancia.
 - Probado en un Android real con el celular bloqueado y el portal cerrado; en un iPhone, cuando haya uno.
