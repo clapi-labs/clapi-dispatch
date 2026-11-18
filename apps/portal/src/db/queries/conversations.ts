@@ -25,9 +25,12 @@ export async function listConversations() {
   const [conversations, recent, fleet, restaurants] = await Promise.all([
     db.select().from(schema.conversations).orderBy(desc(schema.conversations.lastMessageAt)).limit(100),
     db.select().from(schema.messages).orderBy(desc(schema.messages.id)).limit(500),
-    db.select({ name: schema.couriers.name, phone: schema.couriers.phone }).from(schema.couriers).where(eq(schema.couriers.active, true)),
     db
-      .select({ name: schema.restaurants.name, phone: schema.restaurants.phone })
+      .select({ name: schema.couriers.name, phone: schema.couriers.phone, photo: schema.couriers.photo })
+      .from(schema.couriers)
+      .where(eq(schema.couriers.active, true)),
+    db
+      .select({ name: schema.restaurants.name, phone: schema.restaurants.phone, photo: schema.restaurants.photo })
       .from(schema.restaurants)
       .where(and(eq(schema.restaurants.active, true), isNotNull(schema.restaurants.phone))),
   ]);
@@ -35,16 +38,18 @@ export async function listConversations() {
   const lastByConversation = new Map<number, (typeof recent)[number]>();
   for (const m of recent) if (!lastByConversation.has(m.conversationId)) lastByConversation.set(m.conversationId, m);
 
-  const courierNameByPhone = new Map(fleet.map((courier) => [last10(courier.phone), courier.name]));
-  const restaurantNameByPhone = new Map(restaurants.flatMap((r) => (r.phone ? [[last10(r.phone), r.name]] : [])));
+  const courierByPhone = new Map(fleet.map((c) => [last10(c.phone), { name: c.name, photo: c.photo }]));
+  const restaurantByPhone = new Map(restaurants.flatMap((r) => (r.phone ? [[last10(r.phone), { name: r.name, photo: r.photo }]] : [])));
 
   return conversations
     .map((c) => {
       const last = lastByConversation.get(c.id);
       const phoneKey = last10(c.phone);
-      const courierName = courierNameByPhone.get(phoneKey) ?? null;
-      const restaurantName = courierName === null ? (restaurantNameByPhone.get(phoneKey) ?? null) : null;
-      const kind: "restaurant" | "courier" = courierName === null ? "restaurant" : "courier";
+      const courier = courierByPhone.get(phoneKey) ?? null;
+      const restaurant = courier === null ? (restaurantByPhone.get(phoneKey) ?? null) : null;
+      const courierName = courier?.name ?? null;
+      const restaurantName = restaurant?.name ?? null;
+      const kind: "restaurant" | "courier" = courier === null ? "restaurant" : "courier";
       return {
         id: c.id,
         phone: c.phone,
@@ -52,6 +57,7 @@ export async function listConversations() {
         kind,
         courierName,
         restaurantName,
+        photo: courier?.photo ?? restaurant?.photo ?? null,
         botPaused: c.botPaused,
         escalationReason: c.escalationReason,
         draft: draftSummary(c.draft),

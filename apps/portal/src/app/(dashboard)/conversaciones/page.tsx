@@ -97,6 +97,29 @@ function Quote({ quote, contactName, onClick }: { quote: NonNullable<ChatMessage
   );
 }
 
+/** Foto registrada del contacto (restaurante o motorizado), o sus iniciales. */
+function ContactAvatar({
+  contact,
+  sizeClass,
+  children,
+}: {
+  contact: ConversationSummary;
+  sizeClass: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <span className={`relative flex shrink-0 items-center justify-center rounded-full font-bold ${sizeClass} ${KINDS[contact.kind].tint}`}>
+      {contact.photo ? (
+        // eslint-disable-next-line @next/next/no-img-element -- la foto es un data URL guardado en la base.
+        <img src={contact.photo} alt="" className="h-full w-full rounded-full object-cover" />
+      ) : (
+        initials(name(contact)) || "#"
+      )}
+      {children}
+    </span>
+  );
+}
+
 /**
  * `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
  * escribe un motorizado. Colores de WhatsApp: lo que llega va en blanco y lo
@@ -573,14 +596,13 @@ export default function ConversacionesPage() {
                     >
                       {/* Franja amarilla a la izquierda: este chat pide ayuda. */}
                       {help && <span className="absolute inset-y-0 left-0 w-1 bg-gold" />}
-                      <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${KINDS[c.kind].tint}`}>
-                        {initials(name(c)) || "#"}
+                      <ContactAvatar contact={c} sizeClass="h-11 w-11 text-sm">
                         {c.botPaused && (
                           <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gold ring-2 ring-surface">
                             {help ? <TriangleAlert size={11} className="text-clapi-deep" /> : <Headset size={11} className="text-clapi-deep" />}
                           </span>
                         )}
-                      </span>
+                      </ContactAvatar>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline justify-between gap-2">
                           <span className="truncate text-sm font-semibold">{name(c)}</span>
@@ -632,6 +654,7 @@ export default function ConversacionesPage() {
                 >
                   <ArrowLeft size={20} />
                 </button>
+                <ContactAvatar contact={selected} sizeClass="h-9 w-9 text-xs" />
                 <div className="min-w-0 flex-1 leading-tight">
                   <p className="truncate font-semibold">{name(selected)}</p>
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-3">

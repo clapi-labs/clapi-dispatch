@@ -200,6 +200,7 @@ export type ConversationSummary = {
   kind: ConversationKind;
   courierName: string | null;
   restaurantName?: string | null;
+  photo?: string | null;
   botPaused: boolean;
   escalationReason: string | null;
   draft: DraftFields | null;
