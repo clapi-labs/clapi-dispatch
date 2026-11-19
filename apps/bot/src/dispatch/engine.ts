@@ -216,16 +216,25 @@ async function assignIfDue(trip: typeof schema.trips.$inferSelect, previous: num
 
   const assigned = await assignTripTo(trip.id, result.winner);
   if (!assigned) {
-    await save(trip.id, { ...common, status: "waiting", reason: "La moto elegida ya no está disponible" });
+    // Otro tick (o la central) se lo llevó mientras se evaluaba: ya está decidido, y quien ganó
+    // anotó su decisión. Solo si sigue pendiente se anota por qué espera.
+    const [pending] = await db.select({ id: schema.trips.id }).from(schema.trips).where(and(eq(schema.trips.id, trip.id), eq(schema.trips.status, "pending")));
+    if (pending) await save(trip.id, { ...common, status: "waiting", reason: "La moto elegida ya no está disponible" });
     return false;
   }
-  if (result.plan) {
-    await saveCourierRoute(result.winner, result.plan.map((s) => ({ tipo: s.tipo, pedido: s.pedido ?? trip.id })));
-    // La plata que el engine metió porque recoge en ese restaurante ya va en su
-    // ruta: paga en la misma vuelta.
-    for (const s of result.plan) if (s.tipo === "B" && s.motivo === "plata" && s.pedido !== null) await routeReturnDebts(await returnGroupDebtIds(s.pedido));
+  // El viaje ya tiene moto: lo que sigue es anotar la ruta y la decisión. Si eso falla (la base, por
+  // ejemplo) no puede perderse el aviso: se devuelve como asignado igual y quien llama lo avisa.
+  try {
+    if (result.plan) {
+      await saveCourierRoute(result.winner, result.plan.map((s) => ({ tipo: s.tipo, pedido: s.pedido ?? trip.id })));
+      // La plata que el engine metió porque recoge en ese restaurante ya va en su
+      // ruta: paga en la misma vuelta.
+      for (const s of result.plan) if (s.tipo === "B" && s.motivo === "plata" && s.pedido !== null) await routeReturnDebts(await returnGroupDebtIds(s.pedido));
+    }
+    await save(trip.id, { ...common, status: "decided", reason: null, decidedAt: now });
+  } catch (error) {
+    console.error(`[engine] el viaje ${trip.id} quedó asignado pero no se pudo anotar la decisión:`, error);
   }
-  await save(trip.id, { ...common, status: "decided", reason: null, decidedAt: now });
   return true;
 }
 

@@ -1,3 +1,6 @@
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
+import path from "node:path";
 import { mock } from "node:test";
 
 import { eq } from "drizzle-orm";
@@ -47,8 +50,136 @@ export const classifier = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// El engine (HTTP): `POST {ENGINE_URL}/evaluar`
+// ---------------------------------------------------------------------------
+
+/** Lo que el bot le manda a `/evaluar` (docs/ALGORITMO.md), lo justo para armar una respuesta. */
+export type EngineRequest = {
+  ahora: number;
+  pedido: { id: number; listo_ts: number };
+  motos: { id: string; sin_senal: boolean }[];
+};
+export type EngineResponseBody = {
+  engine_version: string;
+  despacho: { despachar_ts: number; faltan_min: number };
+  ganador: string | null;
+  plan: { tipo: "R" | "C" | "W" | "V" | "B"; pedido: number | null; motivo?: "datafono" | "plata" }[] | null;
+  motos: { id: string; elegible: boolean; motivo: string | null }[];
+};
+/** Qué contesta el engine: un cuerpo, un error HTTP, una caída de red o un timeout. */
+export type EngineReply =
+  | EngineResponseBody
+  | { http: number; body?: unknown }
+  | "network"
+  | "timeout"
+  | "badjson";
+
+/** Un engine mínimo y determinista: gana la primera moto con señal y se despacha de una si la comida está lista en menos de 10 minutos. */
+export function fakeEngine(request: EngineRequest): EngineResponseBody {
+  const eligible = request.motos.filter((m) => !m.sin_senal);
+  const winner = eligible[0]?.id ?? null;
+  const faltan = Math.max(0, Math.ceil((request.pedido.listo_ts - request.ahora) / 60) - 10);
+  return {
+    engine_version: "fake-1",
+    despacho: { despachar_ts: request.ahora + faltan * 60, faltan_min: faltan },
+    ganador: winner,
+    plan: winner === null ? null : [{ tipo: "R", pedido: request.pedido.id }, { tipo: "C", pedido: request.pedido.id }],
+    motos: request.motos.map((m) => ({ id: m.id, elegible: !m.sin_senal, motivo: m.sin_senal ? "sin_senal" : null })),
+  };
+}
+
+// El engine de verdad: el servicio Python de apps/engine (solo librería estándar), levantado como proceso.
+let realFetch: typeof fetch | null = null;
+
+/** Qué intérprete de Python hay en esta máquina (el engine solo usa la librería estándar); `null` si ninguno. */
+export function findPython(): string | null {
+  for (const command of ["python3", "python"]) {
+    const found = spawnSync(command, ["--version"], { encoding: "utf8" });
+    if (found.status === 0 && /Python 3/.test(`${found.stdout}${found.stderr}`)) return command;
+  }
+  return null;
+}
+
+/** Un puerto libre. */
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Levanta el engine real (`apps/engine/api.py`) y espera a que conteste `/health`. Mientras esté
+ * `ENGINE_URL` apuntando a su `url`, lo que el bot le pregunta a `/evaluar` va a él y no al engine de mentiras
+ * (el engine de mentiras vive en otra URL). `stop()` lo apaga.
+ */
+export async function startRealEngine(): Promise<{ url: string; version: string; stop: () => Promise<void> }> {
+  const python = findPython();
+  if (!python) throw new Error("No hay Python 3 para levantar el engine real");
+  if (!realFetch) throw new Error("installMocks() primero");
+  const port = await freePort();
+  const script = path.resolve(process.cwd(), "apps/engine/api.py");
+  const child: ChildProcess = spawn(python, [script], { env: { ...process.env, PORT: String(port), PYTHONUNBUFFERED: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  child.stdout?.on("data", (d) => (output += String(d)));
+  child.stderr?.on("data", (d) => (output += String(d)));
+  const url = `http://127.0.0.1:${port}`;
+  let version = "";
+  for (let attempt = 0; attempt < 100 && !version; attempt++) {
+    if (child.exitCode !== null) throw new Error(`El engine real se cerró al arrancar: ${output}`);
+    try {
+      const health = await realFetch(`${url}/health`);
+      if (health.ok) version = ((await health.json()) as { engine_version: string }).engine_version;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  if (!version) {
+    child.kill();
+    throw new Error(`El engine real no contestó /health: ${output}`);
+  }
+  return {
+    url,
+    version,
+    stop: async () => {
+      if (child.exitCode !== null) return;
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => resolve());
+        child.kill();
+      });
+    },
+  };
+}
+
+let engineHandler: ((request: EngineRequest) => EngineReply | Promise<EngineReply>) | null = null;
+export const engineCalls: EngineRequest[] = [];
+/** Cambia lo que contesta el engine (por defecto, `fakeEngine`); `null` lo devuelve a lo de siempre. */
+export const engine = {
+  reply(handler: ((request: EngineRequest) => EngineReply | Promise<EngineReply>) | EngineReply | null) {
+    engineHandler = handler === null ? null : typeof handler === "function" ? handler : () => handler;
+  },
+};
+
+async function engineFetch(init?: { body?: unknown }): Promise<Response> {
+  const request = JSON.parse(String(init?.body ?? "{}")) as EngineRequest;
+  engineCalls.push(request);
+  const reply = await (engineHandler ? engineHandler(request) : fakeEngine(request));
+  if (reply === "network") throw new TypeError("fetch failed");
+  if (reply === "timeout") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  if (reply === "badjson") return new Response("<html>502</html>", { status: 200 });
+  if ("http" in reply) return new Response(JSON.stringify(reply.body ?? { error: "falló" }), { status: reply.http, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 let sentSeq = 0;
 let failSends = false;
+let throwSends = false;
+const failingReads = new Set<string>();
 let failBody: unknown = null;
 /** Hace que WhatsApp rechace los envíos (para probar que el estado igual se guarda),
  *  con el cuerpo de error que devolvería Meta. */
@@ -57,11 +188,20 @@ export const whatsapp = {
     failSends = on;
     failBody = body;
   },
+  /** Que enviar lance una excepción (no solo que Meta rechace el envío). */
+  throwSends(on: boolean) {
+    throwSends = on;
+  },
+  /** Que marcar como leído ese mensaje falle (lo primero que hace el bot con un mensaje de un motorizado). */
+  failReadOf(wamid: string) {
+    failingReads.add(wamid);
+  },
 };
 
 export async function installMocks() {
   const client = await import("@/services/whatsapp/client");
   const record = (phone: string, text: string, buttons: { id: string; title: string }[] = [], replyTo: string | null = null) => {
+    if (throwSends) throw new Error("WhatsApp no respondió");
     if (failSends) return { ok: false as const, reason: "http_error" as const, status: 500, body: failBody };
     const wamid = `wamid.out.${++sentSeq}`;
     outbox.push({ phone, text, buttons, replyTo, wamid });
@@ -74,13 +214,19 @@ export async function installMocks() {
       sendButtons: async (phone: string, text: string, buttons: { id: string; title: string }[], o?: { replyTo?: string | null }) =>
         record(phone, text, buttons, o?.replyTo ?? null),
       sendList: async (phone: string, text: string, _list: unknown, o?: { replyTo?: string | null }) => record(phone, text, [], o?.replyTo ?? null),
-      markRead: async (wamid: string) => void marked.push({ wamid, typing: false }),
+      markRead: async (wamid: string) => {
+        if (failingReads.has(wamid)) throw new Error("WhatsApp no respondió");
+        marked.push({ wamid, typing: false });
+      },
       markReadAndTyping: async (wamid: string) => void marked.push({ wamid, typing: true }),
     },
   });
 
+  realFetch ??= globalThis.fetch;
   process.env.OPENAI_API_KEY = "sk-prueba-sin-red";
-  mock.method(globalThis, "fetch", async (_url: unknown, init?: { body?: unknown }) => {
+  mock.method(globalThis, "fetch", async (url: unknown, init?: { body?: unknown }) => {
+    const target = String(url instanceof Request ? url.url : url);
+    if (target.includes("/evaluar")) return realFetch && target.startsWith("http://127.0.0.1") ? realFetch(url as string, init as RequestInit) : engineFetch(init);
     const body = JSON.parse(String(init?.body ?? "{}")) as { messages?: { role: string; content: string }[] };
     classified.push(body.messages?.find((m) => m.role === "user")?.content ?? "");
     const answer = classifierQueue.shift();
@@ -98,7 +244,11 @@ export function resetMocks() {
   classifierQueue.length = 0;
   classified.length = 0;
   failSends = false;
+  throwSends = false;
   failBody = null;
+  failingReads.clear();
+  engineHandler = null;
+  engineCalls.length = 0;
 }
 
 export function restoreMocks() {
@@ -176,3 +326,39 @@ const head = (phone: string) => ({ waMessageId: `wamid.in.${++inbound}`, phone, 
 
 export const textFrom = (phone: string, text: string): IncomingMessage => ({ ...head(phone), kind: "text", text });
 export const buttonFrom = (phone: string, buttonId: string): IncomingMessage => ({ ...head(phone), kind: "button", buttonId, title: buttonId });
+
+// ---------------------------------------------------------------------------
+// Despacho: una moto con GPS en vivo y pedidos pendientes listos para evaluar
+// ---------------------------------------------------------------------------
+
+/** Una moto conectada con GPS de hace un instante (lo que el engine necesita para tenerla en cuenta). */
+export const liveCourier = (over: Parameters<typeof createCourier>[0] = {}): Parameters<typeof createCourier>[0] => ({
+  status: "available",
+  lat: PICKUP.lat,
+  lng: PICKUP.lng,
+  locationUpdatedAt: new Date(),
+  locationMoving: true,
+  ...over,
+});
+
+/** Un pedido pendiente con todo lo que el engine pide (ubicaciones y hora de listo). Listo en 5 minutos: se despacha ya. */
+export async function pendingTrip(w: World, over: Parameters<typeof createTrip>[0] = {}) {
+  const n = ++seq;
+  return createTrip({
+    status: "pending",
+    conversationId: w.restaurantConversation.id,
+    restaurantId: w.restaurant.id,
+    originRestaurantName: w.restaurant.name,
+    pickupAddress: "Calle 5 # 38-10",
+    pickupLocation: PICKUP,
+    deliveryAddress: "Calle 10 # 5-20",
+    deliveryLocation: DELIVERY,
+    customerName: "Marta Ríos",
+    customerPhone: "3001234567",
+    sourceWaMessageId: `wamid.src.${n}`,
+    code: `P-${String(n).padStart(2, "0")}`,
+    readyAt: new Date(Date.now() + 5 * 60_000),
+    deliveryFee: 5_000,
+    ...over,
+  });
+}

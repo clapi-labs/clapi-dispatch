@@ -70,6 +70,9 @@ jobs:
       TEST_DATABASE_URL: postgres://dispatch:dispatch@localhost:5432/dispatch_test
       # Sin la base, las suites fallan en vez de saltarse (test-db.ts).
       REQUIRE_TEST_DATABASE: "1"
+      # Idem con el engine real (dispatch/engine.real.test.ts): es Python con solo la
+      # librería estándar, y el `python3` que trae el runner basta.
+      REQUIRE_REAL_ENGINE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
