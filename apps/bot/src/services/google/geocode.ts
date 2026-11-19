@@ -138,18 +138,43 @@ export function requestedMunicipality(address: string): MunicipalitySpec | null 
   return null;
 }
 
+const ROAD_PREFIX_RE = String.raw`(?:cal+e|cll?|car+e+r+a|cra?|kra?|kr|diagonal|dg|diag|transversal|tv|trans|transv|tr|avenida|avda|av)`;
+
+/**
+ * Corrige abreviaturas y tipeos de vía que Google no entiende («kra»/«kr»/«carerra» →
+ * Carrera, «cale» → Calle) y pega la letra suelta de la vía («cra 85 c» → «cra 85C»).
+ * Las abreviaturas estándar («Cra», «Cl», «Calle», «Carrera») se dejan tal cual.
+ */
+function normalizeRoadsForGoogle(address: string): string {
+  return address
+    .replace(new RegExp(String.raw`${B}(?:kra|kr|car+e+r+a)\.?(\s*\d)`, "giu"), (m, rest: string) =>
+      /^carrera$/iu.test(m.slice(0, m.length - rest.length).replace(/\.$/, "")) ? m : `Carrera${rest}`,
+    )
+    .replace(new RegExp(String.raw`${B}(?:cale|calle{2,})\.?(\s*\d)`, "giu"), (_, rest: string) => `Calle${rest}`)
+    .replace(
+      new RegExp(
+        String.raw`(${B}${ROAD_PREFIX_RE}\.?\s*\d{1,3})\s+([a-h])(?=\s*(?:#|no\.?|n[uú]mero|\bcon\b|bis|norte|nt|sur|oeste|oe|este|,|$))`,
+        "giu",
+      ),
+      (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`,
+    );
+}
+
 /**
  * Arma el texto que se manda a Google Geocoding:
  * - Separa «30#1-15» como «30 # 1-15» para que Google no ignore el número.
+ * - Normaliza tipeos de vía («kra», «cale», «carerra») y letras sueltas («cra 85 c»).
  * - Si la dirección es de otro municipio («Calle 30#1-15 jamundi»), NO le pega
  *   «, Cali» al final (eso hacía que Google buscara la calle homónima dentro de
  *   Cali y la metiera en Ciudad Pacífica / Villa Fátima).
  */
 export function buildGeocodeQuery(address: string): string {
-  let clean = address
-    .trim()
-    .replace(/(\d|[a-zA-Z])\s*#\s*(\d)/g, "$1 # $2")
-    .replace(/\s+/g, " ");
+  let clean = normalizeRoadsForGoogle(
+    address
+      .trim()
+      .replace(/(\d|[a-zA-Z])\s*#\s*(\d)/g, "$1 # $2")
+      .replace(/\s+/g, " "),
+  );
   const other = requestedMunicipality(clean);
   if (other) {
     const trailingCity = new RegExp(String.raw`(?:,\s*|\s+)(${other.key})$`, "iu");
@@ -202,8 +227,6 @@ function matchesMunicipality(r: GoogleGeocodeResult, expected: MunicipalitySpec 
   return true;
 }
 
-const ROAD_PREFIX_RE = String.raw`(?:cal+e|cll?|car+e+r+a|cra?|kra?|kr|diagonal|dg|diag|transversal|tv|trans|transv|tr|avenida|avda|av)`;
-
 const WRITTEN_STREET_RE = new RegExp(
   String.raw`${B}${ROAD_PREFIX_RE}\.?\s*(\d{1,3})\s*[a-z]?(?:\s+(?:bis|norte|nt|sur|oeste|oe|este))?\s*(?:#|no\.?|n[uú]mero|\bcon\b(?:\s+${ROAD_PREFIX_RE}\.?)?)\s*(\d{1,3})`,
   "iu",
@@ -233,10 +256,12 @@ function matchesWrittenStreet(r: GoogleGeocodeResult, address: string): boolean 
   if (r.partial_match && !hasMain) return false;
   // La vía del resultado tiene número y es otra («Cra 94A #42-64» para «Carrera 97 # 42-10»):
   // coincidir en la placa no basta. Una vía con nombre propio (Av. Pasoancho) sí puede ser la escrita.
-  // En una esquina («intersection»), Google puede devolver cualquiera de las dos vías en `route`.
+  // En una esquina pedida con «con» (`intersection`), Google puede devolver cualquiera de las dos vías en `route`.
   const routeNum = routeComp ? /(?<![0-9])(\d{1,3})(?![0-9])/u.exec(plain(routeComp.long_name))?.[1] : undefined;
   const isIntersection = !!r.types?.includes("intersection");
-  if (routeNum && routeNum !== mainNum && !(isIntersection && routeNum === crossNum)) return false;
+  const askedIntersection = /\bcon\b/iu.test(plain(address));
+  if (routeNum && routeNum !== mainNum && !(isIntersection && askedIntersection && routeNum === crossNum)) return false;
+  if (!askedIntersection && isIntersection && r.partial_match) return false;
   return hasMain || hasCross;
 }
 
@@ -268,8 +293,19 @@ function trustsPlace(r: GoogleGeocodeResult, address: string): boolean {
   return !r.partial_match || WRITTEN_STREET_RE.test(plain(address)) || writesResultNumbers(r, address);
 }
 
+/** Textos genéricos sin nombre propio ni número («Conjunto residencial», «Unidad», «Edificio»):
+ *  Google inventa un conjunto cualquiera de la ciudad y lo devuelve como ROOFTOP exacto. */
+const GENERIC_PLACE_ONLY_RE =
+  /^(?:(?:el|la|los|las|un|una)\s+)?(?:unidad|conjunto|conj\.?|urbanizaci[oó]n|urb\.?|condominio|agrupaci[oó]n|ciudadela|edificio|edif\.?|torre|bloque|casa|apartamento|apto\.?|porter[ií]a)(?:\s+residencial)?(?:\s*,\s*cali)?$/iu;
+
+export function isGenericPlaceOnly(address: string): boolean {
+  const trimmed = address.trim();
+  return trimmed.length > 0 && !/\d/.test(trimmed) && GENERIC_PLACE_ONLY_RE.test(trimmed);
+}
+
 /** Pura: decide con la respuesta de Google, sin red. */
 export function interpretGeocode(data: GoogleGeocodeResponse, address = ""): GeocodeOutcome {
+  if (isGenericPlaceOnly(address)) return { kind: "not_found" };
   if (data.status === "ZERO_RESULTS") return { kind: "not_found" };
   if (data.status !== "OK") return { kind: "failed" };
   const expected = requestedMunicipality(address);
@@ -317,25 +353,44 @@ export function addressForMap(address: string): string {
 /** Conectores y palabras de «conjunto» al comienzo de un lugar: «unidad de», «conjunto residencial». */
 const PLACE_PREFIX = /^(?:(?:la|el|los|las)\s+)?(unidad|conjunto|conj\.?|urbanizaci[oó]n|urb\.?|condominio|agrupaci[oó]n|ciudadela)\s+(?:residencial\s+)?(?:de\s+)?/iu;
 
+/** Sectores/barrios conocidos que pueden quedar pegados al final sin coma después de quitar
+ *  torre/apto del medio («reserva campestre torre 4 apto 803 pance» → «reserva campestre pance»). */
+const TRAILING_SECTOR_RE =
+  /\s+(pance|ciudad\s+jard[ií]n|valle\s+del\s+lili|bochalema|el\s+ingenio|caney|ciudad\s+mel[eé]ndez|mel[eé]ndez|ciudad\s+pac[ií]fica|capri|san\s+fernando|el\s+refugio|santa\s+anita|la\s+flora|granada|san\s+antonio)$/iu;
+
 /**
  * Otras formas de nombrar el mismo lugar, para cuando Google no lo encuentra o
  * solo lo ubica como parcial: «unidad de reserva campestre» → «unidad reserva
  * campestre» → «reserva campestre». Solo para un lugar con nombre (sin calle y
- * placa) que empieza con unidad, conjunto, urbanización…: una calle con
+ * placa) que empieza con unidad, conjunto, urbanización… (o cuando queda el
+ * barrio pegado al final sin coma tras separar la puerta): una calle con
  * número no se reescribe, y un nombre sin esas palabras («Valle del Lili»,
  * «Bochalema») no tiene variantes: sigue pasando a la central.
  */
 export function placeNameVariants(address: string): string[] {
   const clean = address.replace(/\s+/g, " ").trim();
   // Con números es una dirección («Conjunto Los Almendros, Cl. 15 Nte. #8»): no se reescribe.
-  if (/\d/.test(clean)) return [];
+  if (/\d/.test(clean) || isGenericPlaceOnly(clean)) return [];
+  const variants: string[] = [];
   const m = PLACE_PREFIX.exec(clean);
-  if (!m) return [];
-  // «unidad del Sol» → «unidad el Sol»: se quita el «de» de «del», no el artículo.
-  const rest = clean.slice(m[0].length).trim().replace(/^del\s/iu, "el ");
-  if (!/[\p{L}\p{N}]{3,}/u.test(rest)) return [];
-  const withoutConnector = `${m[1].replace(/\.$/, "")} ${rest}`;
-  return [...new Set([withoutConnector, rest])].filter((v) => plain(v) !== plain(clean));
+  if (m) {
+    // «unidad del Sol» → «unidad el Sol»: se quita el «de» de «del», no el artículo.
+    const rest = clean.slice(m[0].length).trim().replace(/^del\s/iu, "el ");
+    if (/[\p{L}\p{N}]{3,}/u.test(rest)) {
+      variants.push(`${m[1].replace(/\.$/, "")} ${rest}`, rest);
+    }
+  } else if (!clean.includes(",")) {
+    const sector = TRAILING_SECTOR_RE.exec(clean);
+    if (sector) {
+      const before = clean.slice(0, sector.index).trim();
+      const words = before.split(/\s+/).filter(Boolean);
+      const lastWord = plain(words[words.length - 1] ?? "");
+      if (words.length >= 2 && !isGenericPlaceOnly(before) && !/^(?:de|del|la|el|los|las|sede|via|barrio|comuna|sector|parque)$/.test(lastWord)) {
+        variants.push(`${before}, ${sector[1]}`);
+      }
+    }
+  }
+  return [...new Set(variants)].filter((v) => plain(v) !== plain(clean));
 }
 
 type GeocodeRequest = (address: string) => Promise<{ kind: "response"; data: GoogleGeocodeResponse } | { kind: "failed" } | { kind: "disabled" }>;
@@ -360,6 +415,7 @@ export type GeocodeResolution = {
  */
 export async function resolveGeocode(address: string, request: GeocodeRequest = requestGeocode): Promise<GeocodeResolution> {
   const clean = addressForMap(address);
+  if (isGenericPlaceOnly(clean)) return { outcome: { kind: "not_found" }, attempts: [], via: null };
   const attempts: GeocodeAttempt[] = [];
   let via: string | null = null;
   let last: GeocodeOutcome = { kind: "not_found" };

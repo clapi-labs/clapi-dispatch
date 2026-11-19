@@ -394,4 +394,53 @@ describe("interpretGeocode: lo que destapó la medición contra Google", () => {
       assert.deepEqual(interpretGeocode(wrongWayResponse, addr), { kind: "not_found" }, addr);
     }
   });
+
+  it("normaliza tipeos de vía (kra, cale, carerra) y letra suelta antes de consultar a Google", () => {
+    assert.equal(buildGeocodeQuery("KRA 85 #43-76"), "Carrera 85 # 43-76, Cali, Valle del Cauca");
+    assert.equal(buildGeocodeQuery("kra 98 # 42-55"), "Carrera 98 # 42-55, Cali, Valle del Cauca");
+    assert.equal(buildGeocodeQuery("Cale 42 # 81-15"), "Calle 42 # 81-15, Cali, Valle del Cauca");
+    assert.equal(buildGeocodeQuery("Carerra 98 # 42-55"), "Carrera 98 # 42-55, Cali, Valle del Cauca");
+    assert.equal(buildGeocodeQuery("calle 42 con cra 85 c"), "calle 42 con cra 85C, Cali, Valle del Cauca");
+  });
+
+  it("una dirección con placa (#) nunca acepta un cruce parcial en otra vía (Dg. 42 Oe. para kra 98 # 42-55)", () => {
+    const outcome = interpretGeocode(
+      {
+        status: "OK",
+        results: [
+          {
+            partial_match: true,
+            types: ["intersection"],
+            formatted_address: "Dg. 42 Oe., Cali, Valle del Cauca, Colombia",
+            geometry: { location: { lat: 3.37228, lng: -76.54697 }, location_type: "GEOMETRIC_CENTER" },
+            address_components: [
+              { long_name: "Diagonal 42 Oeste", types: ["route"] },
+              { long_name: "Cali", types: ["locality"] },
+            ],
+          },
+        ],
+      },
+      "kra 98 # 42-55",
+    );
+    assert.deepEqual(outcome, { kind: "not_found" });
+  });
+
+  it("un texto genérico sin nombre («Conjunto residencial») se descarta aunque Google dé ROOFTOP exacto", () => {
+    const fakeRooftop = {
+      status: "OK",
+      results: [
+        {
+          types: ["premise"],
+          formatted_address: "Cra. 38 #9 A OESTE 50, Maracaibo, Cali, Valle del Cauca, Colombia",
+          geometry: { location: { lat: 3.41983, lng: -76.51925 }, location_type: "ROOFTOP" },
+          address_components: [
+            { long_name: "Cali", types: ["locality"] },
+          ],
+        },
+      ],
+    };
+    for (const addr of ["Conjunto residencial", "Unidad residencial", "Edificio"]) {
+      assert.deepEqual(interpretGeocode(fakeRooftop, addr), { kind: "not_found" }, addr);
+    }
+  });
 });

@@ -1926,7 +1926,7 @@
         "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
         "verificado": "por la central, al registrar el restaurante"
       },
-      "exigido": true
+      "nota": "Igual que estandar-13: en Calicanto Google mapea la Cra 97 # 42-10 en Cra 94A # 42-64, por lo que pasa a la central."
     },
     {
       "id": "via-10",
@@ -2028,7 +2028,7 @@
         "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
         "verificado": "por la central, al registrar el restaurante"
       },
-      "exigido": true
+      "nota": "Igual que esquina-04: Google no conoce el cruce de Cra 97A con Cl 45 en Calicanto y pasa a la central."
     },
     {
       "id": "cruce-04",
@@ -2062,7 +2062,7 @@
         "fuente": "Pin de Google Maps de la ficha del restaurante socio, copiado por la central (clic derecho sobre el pin)",
         "verificado": "por la central, al registrar el restaurante"
       },
-      "exigido": true
+      "nota": "Igual que estandar-13: en Calicanto Google devuelve Cra 94A # 42-64 y pasa a la central."
     },
     {
       "id": "tipeo-02",

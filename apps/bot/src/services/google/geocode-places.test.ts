@@ -88,6 +88,10 @@ describe("placeNameVariants: otras formas de nombrar el mismo conjunto", () => {
     assert.deepEqual(placeNameVariants("Conjunto Alfaguara, Jamundí"), ["Alfaguara, Jamundí"]);
   });
 
+  it("separa con coma un sector conocido al final cuando la puerta salió del medio", () => {
+    assert.deepEqual(placeNameVariants("reserva campestre pance"), ["reserva campestre, pance"]);
+  });
+
   it("no inventa variantes: una calle con número, un nombre sin esas palabras o un nombre vacío", () => {
     assert.deepEqual(placeNameVariants("Cra 97 # 45-11"), []);
     assert.deepEqual(placeNameVariants("Conjunto Los Almendros, Cl. 15 Nte. #8"), []);
@@ -215,6 +219,13 @@ describe("resolveGeocode: lo que debe seguir pasando a la central", () => {
     const google = fakeGoogle(() => NOTHING);
     await resolveGeocode("Cra 97 # 45-11 local 102", google.request);
     assert.deepEqual(google.asked, ["Cra 97 # 45-11"]);
+  });
+
+  it("un texto genérico sin nombre («Conjunto residencial») no consulta a Google y pasa a la central", async () => {
+    const google = fakeGoogle(() => reserva(false));
+    const { outcome } = await resolveGeocode("Conjunto residencial", google.request);
+    assert.deepEqual(outcome, { kind: "not_found" });
+    assert.equal(google.asked.length, 0);
   });
 
   it("otro municipio: una variante que Google ubica en Cali no vale cuando la dirección era de Jamundí", async () => {
