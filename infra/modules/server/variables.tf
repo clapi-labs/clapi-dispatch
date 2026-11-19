@@ -45,3 +45,9 @@ variable "backups" {
   type        = bool
   default     = true
 }
+
+variable "register_admin_keys" {
+  description = "Registrar las llaves de admins en el proyecto de Hetzner (en un segundo servidor del mismo proyecto se usa la llave de deploy para no duplicar huellas en Hetzner; cloud-init igual instala todas las de admins)."
+  type        = bool
+  default     = true
+}

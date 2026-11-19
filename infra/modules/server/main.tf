@@ -15,13 +15,21 @@ locals {
 }
 
 # --- Llaves SSH -------------------------------------------------------------
-# Hetzner las guarda como recursos del proyecto. Se inyectan al crear el
-# servidor para que no mande una contraseña de root por correo. Después el
-# acceso real lo da cloud-init (un usuario por persona) y root queda cerrado.
+# Hetzner las guarda como recursos del proyecto (no permite dos llaves con la
+# misma huella en el mismo proyecto). Se inyectan al crear el servidor solo
+# para que no mande una contraseña de root por correo. Después el acceso real
+# lo da cloud-init (un usuario por persona de var.admins) y root queda cerrado.
 resource "hcloud_ssh_key" "admin" {
-  for_each   = var.admins
+  for_each   = var.register_admin_keys ? var.admins : {}
   name       = "${var.name}-${each.key}"
   public_key = each.value
+  labels     = local.labels
+}
+
+resource "hcloud_ssh_key" "deploy" {
+  count      = var.register_admin_keys ? 0 : 1
+  name       = "${var.name}-deploy"
+  public_key = var.deploy_public_key
   labels     = local.labels
 }
 
@@ -91,7 +99,7 @@ resource "hcloud_server" "main" {
   server_type  = var.server_type
   image        = var.image
   location     = var.location
-  ssh_keys     = [for key in hcloud_ssh_key.admin : key.id]
+  ssh_keys     = var.register_admin_keys ? [for key in hcloud_ssh_key.admin : key.id] : [hcloud_ssh_key.deploy[0].id]
   firewall_ids = [hcloud_firewall.main.id]
   backups      = var.backups
   labels       = local.labels
