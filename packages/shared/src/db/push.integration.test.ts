@@ -15,6 +15,8 @@ if (url) {
   if (!/\/[^/?]*test[^/?]*(\?|$)/i.test(url)) throw new Error("TEST_DATABASE_URL tiene que apuntar a una base cuyo nombre contenga «test»");
   process.env.DATABASE_URL = url;
 }
+// El disco de la máquina de pruebas no es el del servidor (ver db/test-db.ts).
+process.env.DISK_ALERTS ??= "off";
 
 type Push = typeof import("./push");
 type Client = typeof import("./client");

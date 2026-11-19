@@ -21,11 +21,13 @@ import {
 } from "../domain/alerts";
 import { datafonoLateAt, matchRestaurant } from "../domain/return-debts";
 import { formatClock, isOpen, lastOpening } from "../domain/service-hours";
+import { diskAlertLevel, diskAlertMessage, type DiskLevel, type DiskUsage } from "../domain/system-health";
 import { getBotConfig } from "./bot-config";
 import { db } from "./client";
 import { listRestaurants } from "./restaurants";
 import { openDebtClaims, openReturnDebts } from "./return-debts";
 import { getServiceHours, hoursFor } from "./service-hours";
+import { diskUsage } from "./system-health";
 import {
   assignments,
   conversations,
@@ -292,8 +294,41 @@ const datafonoClosing: AlertSource<{
   message: (d) => datafonoClosingMessage(d),
 };
 
+/** Una por nivel: pasar de advertencia a crítico vuelve a sonar. */
+const DISK_REF: Record<Exclude<DiskLevel, "ok">, number> = { warning: 1, critical: 2 };
+
+const diskFull: AlertSource<{ level: Exclude<DiskLevel, "ok">; disk: DiskUsage; at: Date }> = {
+  kind: "disk_full",
+  // El disco del servidor pasó el 75 % (advertencia) o el 85 % (crítico),
+  // issue #103. Lo que ya estaba avisado se mantiene hasta que baje un margen.
+  current: async () => {
+    // Las pruebas la apagan (db/test-db.ts): el disco del CI no es el del servidor.
+    if (process.env.DISK_ALERTS === "off") return [];
+    let disk: DiskUsage;
+    try {
+      disk = await diskUsage();
+    } catch {
+      return [];
+    }
+    const active = await db
+      .select({ ref: pushAlertState.ref })
+      .from(pushAlertState)
+      .where(and(eq(pushAlertState.kind, "disk_full"), eq(pushAlertState.active, true)));
+    const refs = new Set(active.map((r) => r.ref));
+    const previous: DiskLevel = refs.has(DISK_REF.critical) ? "critical" : refs.has(DISK_REF.warning) ? "warning" : "ok";
+    const level = diskAlertLevel(disk.usedPct, previous);
+    if (level === "ok") return [];
+    if (level !== previous) console.warn(`[salud] disco al ${disk.usedPct} % (${level}) en ${disk.path}`);
+    return [{ level, disk, at: new Date() }];
+  },
+  ref: (d) => DISK_REF[d.level],
+  at: (d) => d.at,
+  message: (d) => diskAlertMessage(d.disk, d.level, d.at),
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const ALERT_SOURCES: AlertSource<any>[] = [
+  diskFull,
   chatHelp,
   courierEmergency,
   customerNoAnswer,

@@ -299,7 +299,11 @@ async function handle(method: string, path: string, body: string | null, params:
   if (path === "/api/conversations") return json(summaries());
   if ((m = path.match(/^\/api\/conversations\/(\d+)$/))) {
     const id = Number(m[1]);
-    if (method === "GET") return json(threads.get(id) ?? []);
+    if (method === "GET") {
+      const all = threads.get(id) ?? [];
+      if (!params.has("limit") && !params.has("before") && !params.has("after")) return json(all);
+      return json({ messages: all, hasOlder: false });
+    }
     const c = conversations.find((x) => x.id === id);
     if (!c) return json({ error: "No existe" }, 404);
     if (data.action === "pause") Object.assign(c, { botPaused: true, escalationReason: TAKEOVER_REASON, draft: null });

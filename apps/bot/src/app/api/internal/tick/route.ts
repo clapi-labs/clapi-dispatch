@@ -1,4 +1,4 @@
-import { purgeOldMedia, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
+import { purgeOldMedia, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, runRetention, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, nudgeIdlePayments, remindClosingDebts, remindCouriers } from "@/bot/notify";
@@ -17,6 +17,10 @@ let lastPurge = 0;
 /** Cada cuánto se limpian las fotos de los chats (por días y por espacio): es barato, pero no hace falta en cada tick. */
 const MEDIA_PURGE_EVERY_MS = 60 * 60_000;
 let lastMediaPurge = 0;
+
+/** Cada cuánto se aplica la retención de datos (db/retention.ts). */
+const RETENTION_EVERY_MS = 60 * 60_000;
+let lastRetention = 0;
 
 /**
  * Lo que tiene que pasar "cada tanto" aunque nadie esté mirando. Lo llama el
@@ -127,6 +131,20 @@ export async function POST(request: Request) {
       }
     } catch (error) {
       console.error("[tick] no se pudieron limpiar las fotos:", error);
+    }
+  }
+
+  // Lo que crece sin límite (webhooks atendidos, evaluaciones del engine y
+  // chats viejos) se borra según su retención, una vez por hora (#103).
+  if (Date.now() - lastRetention >= RETENTION_EVERY_MS) {
+    lastRetention = Date.now();
+    try {
+      const r = await runRetention();
+      if (r.processedMessages || r.engineEvaluations || r.messages) {
+        console.log(`[tick] retención: ${r.processedMessages} webhooks, ${r.engineEvaluations} evaluaciones y ${r.messages} mensajes borrados`);
+      }
+    } catch (error) {
+      console.error("[tick] no se pudo aplicar la retención:", error);
     }
   }
 

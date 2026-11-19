@@ -1,12 +1,37 @@
-import { getThread, resumeBot, takeOver } from "@/db/queries/conversations";
+import { getThread, getThreadPage, resumeBot, takeOver, type ThreadQuery } from "@/db/queries/conversations";
 import { callBot } from "@/lib/bot";
 import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return Response.json(await getThread(Number(id)));
+/** Un id o un tamaño de página: entero positivo, o nada. */
+function positiveInt(raw: string | null): number | undefined | "invalid" {
+  if (raw === null || raw === "") return undefined;
+  return /^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : "invalid";
+}
+
+/**
+ * El hilo. Con `?limit=`, `?before=` o `?after=` va por páginas
+ * (`getThreadPage`: `{ messages, hasOlder, reset }`); sin ninguno, el hilo
+ * entero como lista, que es lo que piden las pestañas abiertas desde antes.
+ */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const conversationId = Number((await params).id);
+  const search = new URL(request.url).searchParams;
+  const limit = positiveInt(search.get("limit"));
+  const before = positiveInt(search.get("before"));
+  // `after=0` vale: es «desde el principio».
+  const afterRaw = search.get("after");
+  const after = afterRaw === "0" ? 0 : positiveInt(afterRaw);
+
+  if (limit === undefined && before === undefined && after === undefined) {
+    return Response.json(await getThread(conversationId));
+  }
+  if (limit === "invalid" || before === "invalid" || after === "invalid" || (before !== undefined && after !== undefined)) {
+    return Response.json({ error: "Página inválida" }, { status: 400 });
+  }
+  const query: ThreadQuery = { limit, before, after };
+  return Response.json(await getThreadPage(conversationId, query));
 }
 
 /**

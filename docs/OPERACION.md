@@ -396,6 +396,30 @@ Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo
 
 Al terminar cada prueba: `docker start …` y comprobar el aviso de recuperación.
 
+## 6c. Salud del sistema y retención
+
+**Salud del sistema** (`/salud` en el portal; en la barra de escritorio para los correos de `PORTAL_ADMIN_EMAILS`, o para todos si está vacía) muestra, cada 30 s:
+
+- el disco del servidor (total, usado, libre y %);
+- el peso de la base y sus 10 tablas más grandes (`pg_total_relation_size`, con índices);
+- la carpeta de imágenes de los chats (`MEDIA_DIR`, cuando exista: #102);
+- la memoria de la máquina y del contenedor del portal. El detalle de cada contenedor: `docker stats --no-stream` en el servidor.
+
+**Alerta de disco.** El tick del bot mide el disco cada vuelta. Al pasar el **75 %** suena en el celular una alerta naranja; al pasar el **85 %**, una roja (`disk_full` en `packages/shared/src/db/push.ts`, llevan a `/salud`). Se dan por resueltas al bajar dos puntos de su umbral, para no sonar una y otra vez. También queda en el log del bot: `[salud] disco al …`.
+
+**Retención automática.** Una vez por hora, el tick del bot borra lo que pasó su tiempo (`runRetention`, `packages/shared/src/db/retention.ts`), de a lotes de 5.000 filas:
+
+| Tabla | Se guarda | Variable (días; `0` = no se borra) |
+|---|---|---|
+| `messages` (los chats: es el único historial, no hay coexistencia con WhatsApp Business) | 365 días (mínimo 30) | `RETENTION_MESSAGES_DAYS` |
+| `engine_evaluations` (las que esperan moto no se borran nunca) | 30 días | `RETENTION_ENGINE_EVALUATIONS_DAYS` |
+| `processed_messages` (webhooks ya atendidos) | 14 días | `RETENTION_PROCESSED_MESSAGES_DAYS` |
+| `trips`, `assignments` | Siempre (Finanzas) | — |
+
+Lo borrado queda en el log del bot: `[tick] retención: …`. Postgres reutiliza el espacio de lo borrado, pero no lo devuelve al disco: si se necesita liberar de verdad, `VACUUM FULL` sobre la tabla (la bloquea mientras corre; hacerlo fuera de horario).
+
+**Respaldos.** `deploy/backup-db.sh` cada noche por cron, con 7 días de respaldos; cómo instalarlo y restaurar: `deploy/README.md`, «Respaldo de la base». En producción, además, activar los backups de Hetzner (`backups = true`).
+
 ## 7. Infraestructura (solo el administrador)
 
 El token de Hetzner (`HCLOUD_TOKEN`) y el estado de OpenTofu están únicamente en su equipo.

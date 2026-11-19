@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
+import { Activity, Bell, BellOff, BellRing, Bot, CirclePause, CirclePlay, FlaskConical, LayoutGrid, LogOut, MapPinned, MessagesSquare, Store, Tags, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -266,10 +266,15 @@ function PausedBanner() {
   );
 }
 
-export function AppShell({ children, simulator = false }: { children: React.ReactNode; simulator?: boolean }) {
+export function AppShell({ children, simulator = false, admin = false }: { children: React.ReactNode; simulator?: boolean; admin?: boolean }) {
   const pathname = usePathname();
-  // El simulador de staging solo aparece con SIMULATOR_ENABLED.
-  const nav: NavItem[] = simulator ? [...NAV, { href: "/simulador", label: "Simulador", short: "Simulador", icon: FlaskConical, desktopOnly: true }] : NAV;
+  // El simulador de staging solo aparece con SIMULATOR_ENABLED; «Salud del
+  // sistema», solo a los administradores (lib/admin.ts).
+  const nav: NavItem[] = [
+    ...NAV,
+    ...(admin ? [{ href: "/salud", label: "Salud del sistema", short: "Salud", icon: Activity, desktopOnly: true }] : []),
+    ...(simulator ? [{ href: "/simulador", label: "Simulador", short: "Simulador", icon: FlaskConical, desktopOnly: true }] : []),
+  ];
   const { trips, needsHelp } = useTrips();
   const pending = trips.filter((t) => t.status === "pending").length;
 

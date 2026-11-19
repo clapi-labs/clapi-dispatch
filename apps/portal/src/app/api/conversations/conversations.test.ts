@@ -79,6 +79,16 @@ describe("conversaciones del portal (Postgres)", { skip: integrationSkip }, () =
       assert.deepEqual([row.lastText, row.lastRole], [null, null]);
     });
 
+    it("la vista previa no se pierde aunque otros chats tengan cientos de mensajes después (H1)", async () => {
+      const quiet = await createConversation({ lastMessageAt: minutesAgo(120) });
+      await message(quiet.id, "restaurant", "pedido de la mañana");
+      const busy = await createConversation({ lastMessageAt: minutesAgo(1) });
+      await db.insert(schema.messages).values(Array.from({ length: 600 }, (_, i) => ({ conversationId: busy.id, role: "bot" as const, text: `aviso ${i}` })));
+      const rows = await inbox();
+      assert.equal(rows.find((r) => r.id === quiet.id)?.lastText, "pedido de la mañana");
+      assert.equal(rows.find((r) => r.id === busy.id)?.lastText, "aviso 599");
+    });
+
     it("lo marca como motorizado si su número está en la flota activa, y como restaurante si no; con su nombre y foto del sistema", async () => {
       const courier = await createCourier({ name: "Pedro Gómez", photo: "data:image/jpeg;base64,AAAA" });
       const restaurant = await createRestaurant({ name: "Pizza Nona", photo: "data:image/jpeg;base64,BBBB" });
@@ -250,6 +260,86 @@ describe("conversaciones del portal (Postgres)", { skip: integrationSkip }, () =
       await message(a.id, "restaurant", "de A");
       await message(b.id, "restaurant", "de B");
       assert.deepEqual(((await (await get(a.id)).json()) as { text: string }[]).map((m) => m.text), ["de A"]);
+    });
+  });
+
+  describe("GET /api/conversations/:id?limit|before|after: el hilo por páginas (H2)", () => {
+    type Page = { messages: { id: number; text: string; quote: { id: number } | null; tripCodes: string[] }[]; hasOlder: boolean | null; reset: boolean };
+    const page = async (id: number, query: string) => {
+      const res = await thread.GET(request("GET", `/api/conversations/${id}?${query}`), params({ id }));
+      assert.equal(res.status, 200);
+      return (await res.json()) as Page;
+    };
+    const fill = async (conversationId: number, n: number) =>
+      db
+        .insert(schema.messages)
+        .values(Array.from({ length: n }, (_, i) => ({ conversationId, role: "bot" as const, text: `m${i + 1}` })))
+        .returning({ id: schema.messages.id });
+
+    it("al abrir: los últimos 50, en orden, y avisa que hay anteriores", async () => {
+      const chat = await createConversation();
+      await fill(chat.id, 120);
+      const first = await page(chat.id, "limit=50");
+      assert.equal(first.messages.length, 50);
+      assert.equal(first.messages[0].text, "m71");
+      assert.equal(first.messages[49].text, "m120");
+      assert.equal(first.hasOlder, true);
+      assert.equal(first.reset, false);
+    });
+
+    it("«Cargar anteriores» trae los de antes, hasta que no queda ninguno", async () => {
+      const chat = await createConversation();
+      await fill(chat.id, 70);
+      const last = await page(chat.id, "limit=50");
+      const older = await page(chat.id, `before=${last.messages[0].id}&limit=50`);
+      assert.deepEqual([older.messages[0].text, older.messages.at(-1)?.text, older.messages.length], ["m1", "m20", 20]);
+      assert.equal(older.hasOlder, false);
+    });
+
+    it("ponerse al día: solo lo posterior al id pedido, sin decir si hay anteriores", async () => {
+      const chat = await createConversation();
+      const ids = await fill(chat.id, 10);
+      await message(chat.id, "restaurant", "nuevo");
+      const fresh = await page(chat.id, `after=${ids[7].id}`);
+      assert.deepEqual(fresh.messages.map((m) => m.text), ["m9", "m10", "nuevo"]);
+      assert.equal(fresh.hasOlder, null);
+    });
+
+    it("con demasiados nuevos devuelve la última página entera (reset)", async () => {
+      const chat = await createConversation();
+      const ids = await fill(chat.id, 260);
+      const fresh = await page(chat.id, `after=${ids[0].id}&limit=50`);
+      assert.equal(fresh.reset, true);
+      assert.equal(fresh.messages.length, 50);
+      assert.equal(fresh.messages.at(-1)?.text, "m260");
+      assert.equal(fresh.hasOlder, true);
+    });
+
+    it("una cita de un mensaje que no está en la página igual se muestra", async () => {
+      const chat = await createConversation();
+      const original = await message(chat.id, "bot", "Pedido A-01: va Pedro", { waMessageId: "wamid.viejo" });
+      await fill(chat.id, 60);
+      await message(chat.id, "restaurant", "¿ya salió?", { incoming: { kind: "text", text: "¿ya salió?", replyTo: "wamid.viejo" } });
+      const last = await page(chat.id, "limit=10");
+      assert.deepEqual(last.messages.at(-1)?.quote, { id: original.id, role: "bot", text: "Pedido A-01: va Pedro" });
+    });
+
+    it("el código del pedido sale en la página del mensaje que lo pidió, y no se mezclan chats", async () => {
+      const chat = await createConversation();
+      const other = await createConversation();
+      await message(chat.id, "restaurant", "dos domis", { waMessageId: "wamid.pedido" });
+      await createTrip({ conversationId: chat.id, code: "A-01", sourceWaMessageId: "wamid.pedido" });
+      await message(other.id, "restaurant", "de otro chat");
+      const p = await page(chat.id, "limit=50");
+      assert.deepEqual(p.messages.map((m) => [m.text, m.tripCodes]), [["dos domis", ["A-01"]]]);
+    });
+
+    it("parámetros inválidos: 400", async () => {
+      const chat = await createConversation();
+      for (const query of ["limit=abc", "before=-1", "after=x", "before=5&after=2", "limit=0"]) {
+        const res = await thread.GET(request("GET", `/api/conversations/${chat.id}?${query}`), params({ id: chat.id }));
+        assert.equal(res.status, 400, query);
+      }
     });
   });
 

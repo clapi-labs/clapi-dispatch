@@ -8,6 +8,7 @@ Lo que hay en esta carpeta corre en el VPS, en `/opt/dispatch`:
 | `compose.yml` | Caddy, Postgres, bot, portal y worker. `deploy.sh` lo descarga del commit que despliega |
 | `caddy/Caddyfile` | HTTPS y rutas. Solo se exponen el webhook y la salud del bot |
 | `env.example` | Plantilla del `.env` del servidor (sin valores reales) |
+| `backup-db.sh` | Respaldo nocturno de la base (`pg_dump`), ver «Respaldo de la base» |
 
 ## Primera vez en un servidor nuevo
 
@@ -35,3 +36,24 @@ ssh TU_USUARIO@IP 'cd /opt/dispatch && sudo install -o root -g docker -m 755 dep
 ## Cambiar un secreto
 
 Editar `/opt/dispatch/.env` y volver a desplegar el mismo commit (los contenedores leen las variables al arrancar).
+
+## Respaldo de la base
+
+`backup-db.sh` saca un `pg_dump -Fc` del Postgres del compose a `/opt/dispatch/backups/db/` y borra los de más de `BACKUP_KEEP_DAYS` días (7 por defecto). Se instala una vez, como `deploy.sh`, y lo corre el cron cada noche:
+
+```bash
+scp deploy/backup-db.sh TU_USUARIO@IP:/opt/dispatch/backup-db.sh.new
+ssh TU_USUARIO@IP 'cd /opt/dispatch && sudo install -o root -g docker -m 755 backup-db.sh.new backup-db.sh && rm backup-db.sh.new'
+# 3:30 a. m. de Colombia (8:30 UTC), con la salida en el log del sistema
+ssh TU_USUARIO@IP "echo '30 8 * * * root /opt/dispatch/backup-db.sh 2>&1 | logger -t dispatch-backup' | sudo tee /etc/cron.d/dispatch-backup"
+```
+
+Restaurar (reemplaza la base entera; antes, detener `bot`, `portal` y `worker`):
+
+```bash
+cd /opt/dispatch
+IMAGE_TAG=$(cat .tag) docker compose --env-file .env -f compose.yml exec -T postgres \
+  pg_restore -U dispatch -d dispatch --clean --if-exists < backups/db/dispatch-AAAAMMDD-HHMMSS.dump
+```
+
+Estos respaldos viven en el mismo disco: sirven ante un borrado o una migración mala, no si se pierde el servidor. Para eso, en producción se activan los backups de Hetzner (`backups = true` en el `main.tf` del entorno; staging los tiene apagados) o se copia la carpeta a otro lado. Ocupan espacio del mismo disco que vigila «Salud del sistema» (`/salud`).

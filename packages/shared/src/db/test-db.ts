@@ -54,6 +54,10 @@ if (url) {
   process.env.DATABASE_URL = url;
 }
 
+// La alerta de disco lleno (`diskFull` en push.ts) mide el disco de la máquina
+// que corre las pruebas: en CI suele pasar del 75 % y metería un aviso de más.
+process.env.DISK_ALERTS ??= "off";
+
 /** Para `describe(…, { skip: integrationSkip })`. */
 export const integrationSkip: string | false = url ? false : "falta TEST_DATABASE_URL";
 

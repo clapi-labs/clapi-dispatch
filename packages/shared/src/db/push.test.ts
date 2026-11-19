@@ -16,7 +16,7 @@ describe("fuentes de alertas al celular", () => {
   });
 
   it("están los bloqueos reales y las emergencias", () => {
-    for (const kind of ["chat_help", "courier_emergency", "customer_no_answer", "pickup_late", "delivery_late", "return_late", "datafono_late", "datafono_closing", "debt_claim"]) {
+    for (const kind of ["disk_full", "chat_help", "courier_emergency", "customer_no_answer", "pickup_late", "delivery_late", "return_late", "datafono_late", "datafono_closing", "debt_claim"]) {
       assert.ok(kinds.includes(kind), kind);
     }
     assert.equal(new Set(kinds).size, kinds.length, "cada fuente con su propio kind");

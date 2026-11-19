@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, sql } from "drizzle-orm";
 
 import { db, needsHelpCondition, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
@@ -8,6 +8,7 @@ import type { AdvisorQueryItem, ChatMessage, DraftFields } from "@/lib/types";
 
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
 import { mediaOf } from "@/lib/media";
+import { THREAD_PAGE, type ThreadPage } from "@/lib/thread";
 
 /** La misma regla que `findCourier` en el bot (apps/bot/src/bot/intake.ts): un
  *  motorizado guardado como "3001234567" y el wa_id "573001234567" de
@@ -16,17 +17,46 @@ function last10(phone: string) {
   return phone.replace(/\D/g, "").slice(-10);
 }
 
+/** Cuántos chats trae la bandeja. */
+export const INBOX_LIMIT = 100;
+
+/** El último mensaje de cada chat de la bandeja, con un `LATERAL`: una lectura
+ *  del índice `(conversation_id, id)` por chat (~1 ms los 100). Antes se
+ *  tomaban los últimos 500 mensajes de toda la base, y con mucho tráfico los
+ *  chats de hace unas horas quedaban sin vista previa (H1 en
+ *  docs/CAPACIDAD-CONVERSACIONES.md). Los chats salen en el mismo orden que la
+ *  bandeja. */
+async function lastMessages(limit: number) {
+  const { rows } = await db.execute<{ conversation_id: number; text: string; role: ChatMessage["role"] }>(sql`
+    select c.id as conversation_id, m.text, m.role
+    from (
+      select id from ${schema.conversations}
+      order by ${schema.conversations.lastMessageAt} desc, ${schema.conversations.id} desc
+      limit ${limit}
+    ) c
+    cross join lateral (
+      select text, role from ${schema.messages}
+      where ${schema.messages.conversationId} = c.id
+      order by ${schema.messages.id} desc
+      limit 1
+    ) m`);
+  return rows;
+}
+
 /** La bandeja: cada conversación con su último mensaje. Arriba, fijados, los
  *  que piden ayuda (ver `needsHelp` en lib/chat.ts); después los que ya atiende
- *  un asesor; después el resto, el más reciente primero. Un solo SELECT de mensajes recientes en
- *  vez de uno por conversación — a esta escala sobra. Cada chat sale marcado
+ *  un asesor; después el resto, el más reciente primero. Cada chat sale marcado
  *  como restaurante o motorizado: es motorizado si su número está en la flota
  *  activa, que es justo a quien el bot atiende como tal; y si su número está en
  *  Restaurantes activos, conserva su nombre registrado aunque WhatsApp tenga otro. */
 export async function listConversations() {
   const [conversations, recent, fleet, restaurants] = await Promise.all([
-    db.select().from(schema.conversations).orderBy(desc(schema.conversations.lastMessageAt)).limit(100),
-    db.select().from(schema.messages).orderBy(desc(schema.messages.id)).limit(500),
+    db
+      .select()
+      .from(schema.conversations)
+      .orderBy(desc(schema.conversations.lastMessageAt), desc(schema.conversations.id))
+      .limit(INBOX_LIMIT),
+    lastMessages(INBOX_LIMIT),
     db
       .select({ name: schema.couriers.name, phone: schema.couriers.phone, photo: schema.couriers.photo })
       .from(schema.couriers)
@@ -37,8 +67,7 @@ export async function listConversations() {
       .where(and(eq(schema.restaurants.active, true), isNotNull(schema.restaurants.phone))),
   ]);
 
-  const lastByConversation = new Map<number, (typeof recent)[number]>();
-  for (const m of recent) if (!lastByConversation.has(m.conversationId)) lastByConversation.set(m.conversationId, m);
+  const lastByConversation = new Map(recent.map((m) => [Number(m.conversation_id), m]));
 
   const courierByPhone = new Map(fleet.map((c) => [last10(c.phone), { name: c.name, photo: c.photo }]));
   const restaurantByPhone = new Map(restaurants.flatMap((r) => (r.phone ? [[last10(r.phone), { name: r.name, photo: r.photo }]] : [])));
@@ -88,47 +117,78 @@ export async function idsNeedingHelp(): Promise<number[]> {
   return rows.map((r) => r.id);
 }
 
-/**
- * El hilo como en WhatsApp: cada mensaje con el que cita (si cita uno) y los
- * códigos de los pedidos que salieron de él o de los que habla. Así, en el
- * portal se ve a qué pedido responde cada aviso, igual que en el celular.
- */
-export async function getThread(conversationId: number): Promise<ChatMessage[]> {
-  const [rows, trips] = await Promise.all([
-    db
-      .select({
-        id: schema.messages.id,
-        role: schema.messages.role,
-        text: schema.messages.text,
-        createdAt: schema.messages.createdAt,
-        waMessageId: schema.messages.waMessageId,
-        replyTo: schema.messages.replyToWaMessageId,
-        incoming: schema.messages.incoming,
-        tripId: schema.messages.tripId,
-        mediaStatus: schema.messages.mediaStatus,
-        mediaMime: schema.messages.mediaMime,
-        mediaBytes: schema.messages.mediaBytes,
-        mediaWidth: schema.messages.mediaWidth,
-        mediaHeight: schema.messages.mediaHeight,
-        mediaExpiredReason: schema.messages.mediaExpiredReason,
-      })
-      .from(schema.messages)
-      .where(eq(schema.messages.conversationId, conversationId))
-      .orderBy(asc(schema.messages.id)),
-    db
-      .select({ id: schema.trips.id, code: schema.trips.code, source: schema.trips.sourceWaMessageId })
-      .from(schema.trips)
-      .where(eq(schema.trips.conversationId, conversationId)),
-  ]);
+/** Lo más que trae una sola página; con `after`, si hay más nuevos que esto, se
+ *  devuelve la última página entera (`reset`). */
+export const THREAD_MAX_PAGE = 200;
 
+const threadColumns = {
+  id: schema.messages.id,
+  role: schema.messages.role,
+  text: schema.messages.text,
+  createdAt: schema.messages.createdAt,
+  waMessageId: schema.messages.waMessageId,
+  replyTo: schema.messages.replyToWaMessageId,
+  // Del mensaje entrante solo hace falta a cuál cita, no el JSON entero.
+  incomingReplyTo: sql<string | null>`${schema.messages.incoming} ->> 'replyTo'`,
+  mediaStatus: schema.messages.mediaStatus,
+  mediaMime: schema.messages.mediaMime,
+  mediaBytes: schema.messages.mediaBytes,
+  mediaWidth: schema.messages.mediaWidth,
+  mediaHeight: schema.messages.mediaHeight,
+  mediaExpiredReason: schema.messages.mediaExpiredReason,
+};
+
+type ThreadRow = {
+  id: number;
+  role: ChatMessage["role"];
+  text: string;
+  createdAt: Date;
+  waMessageId: string | null;
+  replyTo: string | null;
+  incomingReplyTo: string | null;
+  mediaStatus: typeof schema.messages.$inferSelect.mediaStatus;
+  mediaMime: string | null;
+  mediaBytes: number | null;
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  mediaExpiredReason: typeof schema.messages.$inferSelect.mediaExpiredReason;
+};
+
+/**
+ * Los mensajes como en WhatsApp: cada uno con el que cita (si cita uno) y los
+ * códigos de los pedidos que salieron de él. Así, en el portal se ve a qué
+ * pedido responde cada aviso, igual que en el celular. La cita puede ser de un
+ * mensaje que no está en la página: se busca aparte, por su wamid.
+ */
+async function decorate(conversationId: number, rows: ThreadRow[]): Promise<ChatMessage[]> {
+  if (rows.length === 0) return [];
   const { retentionDays } = mediaConfig();
-  const byWaId = new Map(rows.filter((m) => m.waMessageId).map((m) => [m.waMessageId!, m]));
+  const byWaId = new Map(rows.filter((m) => m.waMessageId).map((m) => [m.waMessageId!, { id: m.id, role: m.role, text: m.text }]));
+  const missing = [...new Set(rows.map((m) => m.replyTo ?? m.incomingReplyTo).filter((q): q is string => !!q && !byWaId.has(q)))];
+  const sources = rows.filter((m) => m.role === "restaurant" && m.waMessageId).map((m) => m.waMessageId!);
+
+  const [quoted, trips] = await Promise.all([
+    missing.length === 0
+      ? []
+      : db
+          .select({ id: schema.messages.id, role: schema.messages.role, text: schema.messages.text, waMessageId: schema.messages.waMessageId })
+          .from(schema.messages)
+          .where(and(eq(schema.messages.conversationId, conversationId), inArray(schema.messages.waMessageId, missing))),
+    sources.length === 0
+      ? []
+      : db
+          .select({ code: schema.trips.code, source: schema.trips.sourceWaMessageId })
+          .from(schema.trips)
+          .where(and(eq(schema.trips.conversationId, conversationId), inArray(schema.trips.sourceWaMessageId, sources)))
+          .orderBy(asc(schema.trips.id)),
+  ]);
+  for (const q of quoted) if (q.waMessageId && !byWaId.has(q.waMessageId)) byWaId.set(q.waMessageId, { id: q.id, role: q.role, text: q.text });
   const codesBySource = new Map<string, string[]>();
   for (const t of trips) if (t.source) codesBySource.set(t.source, [...(codesBySource.get(t.source) ?? []), t.code]);
 
   return rows.map((m) => {
-    const quotedId = m.replyTo ?? m.incoming?.replyTo ?? null;
-    const quoted = quotedId ? byWaId.get(quotedId) : undefined;
+    const quotedId = m.replyTo ?? m.incomingReplyTo ?? null;
+    const quote = quotedId ? byWaId.get(quotedId) : undefined;
     // La etiqueta va en el mensaje con que el restaurante pidió: ahí nace el
     // pedido. Los avisos del bot ya dicen el código en el texto.
     const own = m.role === "restaurant" && m.waMessageId ? (codesBySource.get(m.waMessageId) ?? []) : [];
@@ -137,11 +197,61 @@ export async function getThread(conversationId: number): Promise<ChatMessage[]> 
       role: m.role,
       text: m.text,
       createdAt: m.createdAt.toISOString(),
-      quote: quoted ? { id: quoted.id, role: quoted.role, text: quoted.text } : null,
+      quote: quote ?? null,
       tripCodes: own,
       media: mediaOf(m, retentionDays),
     };
   });
+}
+
+/** El hilo entero, del más viejo al más nuevo. Lo siguen pidiendo las pestañas
+ *  abiertas antes del hilo paginado; el portal de ahora usa `getThreadPage`. */
+export async function getThread(conversationId: number): Promise<ChatMessage[]> {
+  const rows = await db
+    .select(threadColumns)
+    .from(schema.messages)
+    .where(eq(schema.messages.conversationId, conversationId))
+    .orderBy(asc(schema.messages.id));
+  return decorate(conversationId, rows);
+}
+
+export type ThreadQuery = { before?: number; after?: number; limit?: number };
+
+/**
+ * El hilo por páginas (H2 en docs/CAPACIDAD-CONVERSACIONES.md):
+ *
+ * - sin nada: los últimos `limit` mensajes (al abrir el chat);
+ * - `before`: los `limit` anteriores a ese id («Cargar anteriores»);
+ * - `after`: los posteriores a ese id, para ponerse al día sin volver a bajar
+ *   el hilo. El portal pide desde unos mensajes antes del último que tiene,
+ *   así ve también los que cambiaron (un «No se pudo entregar» de Meta).
+ *
+ * Siempre en orden, del más viejo al más nuevo.
+ */
+export async function getThreadPage(conversationId: number, query: ThreadQuery = {}): Promise<ThreadPage> {
+  const limit = Math.min(Math.max(Math.trunc(query.limit ?? THREAD_PAGE), 1), THREAD_MAX_PAGE);
+  const inChat = eq(schema.messages.conversationId, conversationId);
+
+  if (query.after !== undefined) {
+    const rows = await db
+      .select(threadColumns)
+      .from(schema.messages)
+      .where(and(inChat, gt(schema.messages.id, query.after)))
+      .orderBy(asc(schema.messages.id))
+      .limit(THREAD_MAX_PAGE + 1);
+    if (rows.length > THREAD_MAX_PAGE) return { ...(await getThreadPage(conversationId, { limit })), reset: true };
+    return { messages: await decorate(conversationId, rows), hasOlder: null, reset: false };
+  }
+
+  const rows = await db
+    .select(threadColumns)
+    .from(schema.messages)
+    .where(query.before !== undefined ? and(inChat, lt(schema.messages.id, query.before)) : inChat)
+    .orderBy(desc(schema.messages.id))
+    .limit(limit + 1);
+  const hasOlder = rows.length > limit;
+  const page = rows.slice(0, limit).reverse();
+  return { messages: await decorate(conversationId, page), hasOlder, reset: false };
 }
 
 /** "Intervenir": el operador toma el chat y el bot se calla en ese número. */

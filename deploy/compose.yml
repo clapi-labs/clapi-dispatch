@@ -87,6 +87,10 @@ services:
       MEDIA_MAX_MB: ${MEDIA_MAX_MB:-3072}
       MEDIA_MAX_DISK_PERCENT: ${MEDIA_MAX_DISK_PERCENT:-75}
       MEDIA_CONCURRENCY: ${MEDIA_CONCURRENCY:-2}
+      # Retención en días (domain/retention.ts); vacío = el valor por defecto, 0 = sin borrar.
+      RETENTION_MESSAGES_DAYS: ${RETENTION_MESSAGES_DAYS:-}
+      RETENTION_ENGINE_EVALUATIONS_DAYS: ${RETENTION_ENGINE_EVALUATIONS_DAYS:-}
+      RETENTION_PROCESSED_MESSAGES_DAYS: ${RETENTION_PROCESSED_MESSAGES_DAYS:-}
     volumes:
       - media:/data/media
     depends_on:
@@ -122,6 +126,12 @@ services:
       # Las fotos de los chats, solo lectura: las escribe y las limpia el bot.
       MEDIA_DIR: /data/media
       MEDIA_RETENTION_DAYS: ${MEDIA_RETENTION_DAYS:-30}
+      # Quién ve «Salud del sistema» (/salud), correos separados por coma; vacío = todos.
+      PORTAL_ADMIN_EMAILS: ${PORTAL_ADMIN_EMAILS:-}
+      # Solo para mostrarla en /salud: la aplica el bot.
+      RETENTION_MESSAGES_DAYS: ${RETENTION_MESSAGES_DAYS:-}
+      RETENTION_ENGINE_EVALUATIONS_DAYS: ${RETENTION_ENGINE_EVALUATIONS_DAYS:-}
+      RETENTION_PROCESSED_MESSAGES_DAYS: ${RETENTION_PROCESSED_MESSAGES_DAYS:-}
     volumes:
       - media:/data/media:ro
     depends_on:
