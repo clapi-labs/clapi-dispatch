@@ -74,13 +74,13 @@ Seguimiento: pestaña *Actions* del repositorio.
 
 ### Pruebas de integración
 
-Las `*.integration.test.ts` corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
+Las `*.integration.test.ts` y `apps/bot/src/bot/order.test.ts` (la máquina de estados del restaurante, con OpenAI, WhatsApp y Google simulados) corren contra un Postgres de verdad (helper `@dispatch/shared/db/test-db`: valida que la base se llame «test», la vacía entre pruebas y trae factories de restaurante, conversación, motorizado, viaje y asignación). En local, con Docker (la base se **vacía**: usa una de tirar):
 
 ```bash
-docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine && DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate && TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run test:integration
+docker run -d --rm --name dispatch-test-pg -e POSTGRES_USER=dispatch -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dispatch_test -p 55432:5432 postgres:17-alpine && DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm run db:migrate && TEST_DATABASE_URL=postgres://dispatch:test@localhost:55432/dispatch_test npm test
 ```
 
-Sin `TEST_DATABASE_URL` se saltan (`npm test` no las necesita). En CI las corre el job `integration` con `REQUIRE_TEST_DATABASE=1`: si falta la base, fallan en vez de saltarse.
+`npm run test:integration` corre solo las `*.integration.test.ts`. Sin `TEST_DATABASE_URL` todas se saltan (`npm test` no la necesita). En CI las corre el job `integration` (`npm test` con la base) con `REQUIRE_TEST_DATABASE=1`: si falta la base, fallan en vez de saltarse.
 
 ## 3. Desplegar a staging
 
@@ -339,9 +339,7 @@ Un servicio **externo** (HetrixTools) revisa el sistema cada minuto desde varios
 1. **El bot en el grupo** (una sola vez): un administrador agrega a Telegram el bot oficial `hetrixtools_bot` (hay otros de nombre parecido; ver la [guía de HetrixTools](https://docs.hetrixtools.com/telegram-integration-group-notifications/)). No necesita ser administrador del grupo: que diga «no tiene acceso a los mensajes» es normal, solo no lee lo que se habla.
 2. En el grupo se escribe `/start` (o `/start@hetrixtools_bot`) y el bot contesta con el ID del grupo.
 3. En HetrixTools, *Contact Lists* → la lista del equipo → sección *Telegram*: pegar el ID **con el signo menos** del principio y guardar. Sin el menos Telegram lo toma como un chat personal y el aviso no llega a ningún lado. Probar con «Send test notification» que llega al grupo.
-4. *Uptime Monitors* → nuevo monitor tipo *Website*, la dirección de la tabla, intervalo de 1 minuto, 4 ubicaciones repartidas (Norteamérica, Sudamérica si aparece, Europa) y esa *Contact List*. Nombre con guiones, por ejemplo `Dispatch - staging - bot` (no acepta «·»). Cuenta como caído cualquier respuesta distinta de 200, que es lo que se quiere para el bot.
-5. **Avisar después de 2 revisiones fallidas.** Con 1, los ~10 s que el bot y el portal tardan en reiniciar en un despliegue pueden mandar un aviso falso.
-6. **Que las alertas del monitor no queden silenciadas** (en la lista de monitores, el botón del ojo en *Action*). Pasó en staging: el monitor marcaba la caída y el uptime bajaba, pero no llegaba nada a Telegram. La «Send test notification» de la *Contact List* no lo detecta, porque sale de la lista y no del monitor: la prueba de verdad es apagar el bot.
+4. *Uptime Monitors* → nuevo monitor tipo sitio web (HTTP/HTTPS), la dirección de la tabla, intervalo de 1 minuto y esa *Contact List*. Cuenta como caído cualquier respuesta distinta de 200, que es lo que se quiere para el bot.
 
 Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo al activar temas o nombrar administradores), Telegram le cambia el ID a uno que empieza por `-100`. Se repite el `/start` y se pega el nuevo en la *Contact List*. El ID real también se ve en la dirección del grupo abierto en Telegram Web.
 
@@ -349,7 +347,7 @@ Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo
 - **Agregar a alguien:** un administrador del grupo lo añade desde Telegram. No hay que tocar HetrixTools.
 - **Quitar a alguien:** se le saca del grupo el mismo día que sale del equipo (`docs/SEGURIDAD.md`, «Accesos»).
 
-**Sumar producción u otro producto:** en la misma cuenta de HetrixTools, crear sus monitores (su `/api/health` o equivalente y su página principal) con la **misma Contact List**. Que el nombre del monitor diga el producto y el entorno (por ejemplo `Dispatch - producción - bot`), porque los avisos de todos llegan al mismo grupo.
+**Sumar producción u otro producto:** en la misma cuenta de HetrixTools, crear sus monitores (su `/api/health` o equivalente y su página principal) con la **misma Contact List**. Que el nombre del monitor diga el producto y el entorno (por ejemplo «Dispatch · producción · bot»), porque los avisos de todos llegan al mismo grupo.
 
 **Probarlo a propósito** (sin datos reales):
 
@@ -359,21 +357,9 @@ Si un día dejan de llegar: si el grupo se convirtió en supergrupo (por ejemplo
 | Worker detenido | `docker stop dispatch-worker-1` | Aviso (a los 2 min sin vueltas, más el intervalo del monitor) |
 | Base detenida | `docker stop dispatch-postgres-1` | Aviso |
 | Engine apagado en modo `auto` | `docker stop dispatch-engine-1` | Aviso. En `manual`, no |
-| Despliegue normal | `IMAGE_TAG="$(cat .tag)" docker compose --env-file .env -f compose.yml up -d --wait --force-recreate bot worker engine portal` | Ningún aviso |
+| Despliegue normal | `./deploy.sh deploy "$(cat .tag)"` | Ningún aviso |
 
-Al terminar cada prueba: `docker start …` y comprobar el aviso de recuperación. Para el despliegue no sirve `./deploy.sh deploy "$(cat .tag)"` con la versión que ya corre: Docker ve las mismas imágenes y no reinicia nada. El comando de la tabla recrea los contenedores como lo hace un despliegue con versión nueva.
-
-**Resultado en staging (17 de noviembre de 2026, issue #51):**
-
-| Prueba | `/api/health` falló | Telegram |
-|---|---|---|
-| Bot apagado 4 min | A los 20 s (502) | Caída y recuperación |
-| Worker detenido 4½ min | A los 2 min (503, «el worker lleva … s sin completar una vuelta») | Caída y recuperación |
-| Base detenida 4 min | A los 30 s (503). El portal siguió en 200: `/login` no usa la base, por eso hacen falta los dos monitores | Caída y recuperación del bot; nada del portal |
-| Engine apagado 4 min, modo `auto` | A los 30 s (503) | Caída y recuperación |
-| Despliegue (recrear bot, worker, engine y portal) | ~10 s de 502 mientras reinician | Nada |
-
-Todo volvió solo al prender cada servicio.
+Al terminar cada prueba: `docker start …` y comprobar el aviso de recuperación.
 
 ## 7. Infraestructura (solo el administrador)
 
