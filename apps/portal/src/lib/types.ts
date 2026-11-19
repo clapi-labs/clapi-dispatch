@@ -168,6 +168,21 @@ export type Settlement = {
   agencyRate: number;
   agencyShare: number;
   couriers: SettlementRow[];
+  /** Solo si se pidió una semana (`?semana=` o `?dia=`): lunes y domingo, `YYYY-MM-DD`. */
+  week?: { start: string; end: string };
+  /** Solo si se pidió una semana: lunes a domingo, siempre 7. */
+  days?: SettlementDay[];
+  /** Solo si se pidió un día: ese día; si no, el resumen es de toda la semana. */
+  day?: string | null;
+};
+
+/** Un día de la semana en el resumen de Finanzas. */
+export type SettlementDay = {
+  /** `YYYY-MM-DD`, hora de Colombia. */
+  date: string;
+  deliveredCount: number;
+  total: number;
+  agencyShare: number;
 };
 
 /** Un tramo de la tarifa por distancia; el último no tiene tope ("más de X km"). */

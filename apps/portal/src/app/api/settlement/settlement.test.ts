@@ -6,7 +6,8 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@dispatch/shared/db";
 import { closeTestDatabase, integrationSkip, resetDatabase } from "@dispatch/shared/db/test-db";
 
-import { assignedTrip, createCourier, installMocks, resetMocks, restoreMocks, setAssignment } from "@/test-support/portal-env";
+import { addDays, bogotaDate, weekRange } from "@/lib/week";
+import { assignedTrip,createCourier, installMocks, resetMocks, restoreMocks, setAssignment } from "@/test-support/portal-env";
 
 /**
  * El arqueo (`GET /api/settlement`): el cierre del día desde los viajes
@@ -126,6 +127,43 @@ describe("arqueo del portal (Postgres)", { skip: integrationSkip }, () => {
       await setAssignment(gate.id, { deliveryPlace: "gate" });
       await delivered(courier.id, 5_000, now);
       assert.equal((await settle()).deliveredCount, 2);
+    });
+  });
+
+  describe("semana (lunes a domingo) y día, hora de Colombia", () => {
+    const get = (query: string) => route.GET(new Request(`http://portal.test/api/settlement${query}`));
+    type Week = Body & { week: { start: string; end: string }; days: { date: string; deliveredCount: number; total: number; agencyShare: number }[]; day: string | null };
+
+    it("?semana=: el acumulado lunes–domingo y siete días; lo de otras semanas no entra", async () => {
+      const courier = await createCourier({ status: "available" });
+      const monday = weekRange(bogotaDate(Date.now()));
+      await delivered(courier.id, 5_000, new Date(monday.from.getTime() + 60_000)); // lunes 00:01
+      await delivered(courier.id, 7_000, new Date(monday.to.getTime() - 60_000)); // domingo 23:59
+      await delivered(courier.id, 9_000, new Date(monday.to.getTime() + 60_000)); // lunes siguiente
+      await delivered(courier.id, 3_000, new Date(monday.from.getTime() - 60_000)); // domingo anterior
+      const body = (await (await get(`?semana=${monday.days[3].date}`)).json()) as Week;
+      assert.deepEqual([body.week.start, body.week.end, body.day], [monday.start, monday.end, null]);
+      assert.deepEqual([body.deliveredCount, body.total], [2, 12_000]);
+      assert.equal(body.days.length, 7);
+      assert.deepEqual(body.days.map((d) => d.deliveredCount), [1, 0, 0, 0, 0, 0, 1]);
+    });
+
+    it("&dia=: solo ese día en las tarjetas y en las motos, y los siete días siguen completos", async () => {
+      const courier = await createCourier({ name: "Pedro", status: "available" });
+      const monday = weekRange(bogotaDate(Date.now()));
+      await delivered(courier.id, 5_000, new Date(monday.days[1].from.getTime() + 3600_000));
+      await delivered(courier.id, 7_000, new Date(monday.days[2].from.getTime() + 3600_000));
+      const body = (await (await get(`?semana=${monday.start}&dia=${monday.days[2].date}`)).json()) as Week;
+      assert.deepEqual([body.day, body.deliveredCount, body.total], [monday.days[2].date, 1, 7_000]);
+      assert.deepEqual(body.couriers.map((c) => [c.courierName, c.earned]), [["Pedro", 7_000]]);
+      assert.equal(body.days.reduce((s, d) => s + d.deliveredCount, 0), 2);
+    });
+
+    it("fechas inválidas o un día fuera de la semana: 400", async () => {
+      const monday = weekRange(bogotaDate(Date.now()));
+      assert.equal((await get("?semana=ayer")).status, 400);
+      assert.equal((await get("?dia=2026-02-30")).status, 400);
+      assert.equal((await get(`?semana=${monday.start}&dia=${addDays(monday.start, 7)}`)).status, 400);
     });
   });
 

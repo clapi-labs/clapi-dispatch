@@ -11,6 +11,8 @@
  * ver llegar la burbuja amarilla y oír la alerta.
  */
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
+import { byDay, onDay, summarize, type DeliveredRow } from "@/lib/settlement-calc";
+import { bogotaDate, weekRange } from "@/lib/week";
 import type {
   ChatMessage,
   ConversationSummary,
@@ -18,7 +20,6 @@ import type {
   CourierProfile,
   FareRange,
   Settlement,
-  SettlementRow,
   Trip,
 } from "@/lib/types";
 
@@ -231,26 +232,20 @@ const fareExampleKm: [number, number, number, number][] = [
 // Finanzas
 // ---------------------------------------------------------------------------
 
-function settlement(): Settlement {
-  const delivered = trips.filter((t) => t.status === "delivered");
-  const byCourier = new Map<string, SettlementRow>();
-  let total = 0;
-  for (const t of delivered) {
-    total += t.deliveryFee;
-    const name = t.courierName ?? "—";
-    const row = byCourier.get(name) ?? { courierId: t.courierId ?? 0, courierName: name, deliveredCount: 0, earned: 0, agencyShare: 0 };
-    row.deliveredCount += 1;
-    row.earned += t.deliveryFee;
-    row.agencyShare = Math.round(row.earned * 0.1);
-    byCourier.set(name, row);
-  }
+function settlement(params: URLSearchParams): Settlement {
+  const rows: DeliveredRow[] = trips
+    .filter((t) => t.status === "delivered" && t.deliveredAt)
+    .map((t) => ({ courierId: t.courierId, courierName: t.courierName ?? "—", deliveryFee: t.deliveryFee, deliveredAt: new Date(t.deliveredAt!) }));
+  const semana = params.get("semana");
+  const dia = params.get("dia");
+  if (!semana && !dia) return summarize(onDay(rows, bogotaDate(Date.now())));
+
+  const week = weekRange(semana ?? dia!);
   return {
-    total,
-    deliveredCount: delivered.length,
-    averageFee: delivered.length ? Math.round(total / delivered.length) : 0,
-    agencyRate: 0.1,
-    agencyShare: Math.round(total * 0.1),
-    couriers: [...byCourier.values()].sort((a, b) => b.earned - a.earned),
+    ...summarize(dia ? onDay(rows, dia) : rows),
+    week: { start: week.start, end: week.end },
+    days: byDay(rows, week.start),
+    day: dia,
   };
 }
 
@@ -260,7 +255,7 @@ function settlement(): Settlement {
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 
-async function handle(method: string, path: string, body: string | null): Promise<Response | null> {
+async function handle(method: string, path: string, body: string | null, params: URLSearchParams): Promise<Response | null> {
   const data = body ? JSON.parse(body) : {};
   let m: RegExpMatchArray | null;
 
@@ -328,7 +323,7 @@ async function handle(method: string, path: string, body: string | null): Promis
     return json(c ?? {});
   }
 
-  if (path === "/api/settlement") return json(settlement());
+  if (path === "/api/settlement") return json(settlement(params));
 
   if (path === "/api/fares/ejemplos") {
     return json({
@@ -374,7 +369,7 @@ export function installDemo() {
     if (url.origin === window.location.origin && url.pathname.startsWith("/api/")) {
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
       const body = typeof init?.body === "string" ? init.body : null;
-      const response = await handle(method, url.pathname, body);
+      const response = await handle(method, url.pathname, body, url.searchParams);
       if (response) return response;
     }
     return realFetch(input, init);
