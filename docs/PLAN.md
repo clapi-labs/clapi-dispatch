@@ -11,7 +11,7 @@ Staging (`dev`, commit `1734609`) tiene el sistema completo funcionando con What
 - **Bot:** reconoce al restaurante, cotiza por distancia, pide los datos con un formato, confirma con botón, crea un viaje por entrega, responde consultas y cambios. Un turno de mensajes seguidos recibe una sola respuesta ([BOT.md](BOT.md)).
 - **Despacho:** el engine asigna en modo `auto` ([ALGORITMO.md](ALGORITMO.md)). Las motos son simuladas: en staging no hay flota real con GPS (ver «Simulador» en [OPERACION.md](OPERACION.md)).
 - **Domiciliario:** mensajes guiados, botones, recordatorios, portería, cliente que no contesta ([FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md)).
-- **Portal:** viajes con estados, flota, conversaciones, tarifas por km, finanzas del día, restaurantes, zonas de servicio, pausa general, mapa del simulador.
+- **Portal:** viajes con estados, flota, conversaciones, tarifas por km, finanzas por semana (lunes a domingo, con pestañas por día y reporte en PDF), restaurantes, zonas de servicio, pausa general, mapa del simulador.
 
 Lo que falta, en grande: un servidor de producción con backups y alertas, que el bot resuelva los casos que hoy terminan en la central, GPS real en las motos y que la central se entere de lo urgente sin estar mirando la pantalla.
 
