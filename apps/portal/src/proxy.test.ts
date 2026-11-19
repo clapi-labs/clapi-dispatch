@@ -66,8 +66,8 @@ const call = (pathname: string, opts: { cookie?: string; method?: string; search
   );
 
 const passes = (res: Response) => res.headers.get("x-middleware-next") === "1";
-/** Lo que se queda fuera del proxy a propósito: el login, su API y lo que el celular pide sin cookie para instalar el portal. */
-const PUBLIC = (p: string) => p === "/login" || p.startsWith("/api/auth/");
+/** Lo que se queda fuera del proxy a propósito: el login, su API, el enlace de contraseña (/clave/<token>) y lo que el celular pide sin cookie para instalar el portal. */
+const PUBLIC = (p: string) => p === "/login" || p.startsWith("/clave/") || p.startsWith("/api/auth/");
 
 describe("proxy.ts: protección de las rutas (Postgres)", { skip: integrationSkip }, () => {
   after(async () => {
@@ -90,7 +90,7 @@ describe("proxy.ts: protección de las rutas (Postgres)", { skip: integrationSki
 
   describe("el matcher", () => {
     it("deja fuera solo el login, su API (/api/auth) y lo que el celular pide sin cookie para instalar el portal", () => {
-      for (const open of ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/session", "/_next/static/chunk.js", "/_next/image", "/favicon.ico", "/manifest.webmanifest", "/sw.js", "/icons/icon-192.png"]) {
+      for (const open of ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/session", "/api/auth/password-setup", "/clave/abc.def", "/_next/static/chunk.js", "/_next/image", "/favicon.ico", "/manifest.webmanifest", "/sw.js", "/icons/icon-192.png"]) {
         assert.equal(proxied(open), false, `${open} no debería pasar por el proxy`);
       }
     });
@@ -104,7 +104,7 @@ describe("proxy.ts: protección de las rutas (Postgres)", { skip: integrationSki
     });
 
     it("la lista de lo público es corta y conocida (si crece, que sea a propósito)", () => {
-      assert.deepEqual([...API_ROUTES, ...PAGES].filter(PUBLIC).sort(), ["/api/auth/login", "/api/auth/logout", "/api/auth/session", "/login"]);
+      assert.deepEqual([...API_ROUTES, ...PAGES].filter(PUBLIC).sort(), ["/api/auth/login", "/api/auth/logout", "/api/auth/password-setup", "/api/auth/session", "/clave/1", "/login"]);
     });
   });
 

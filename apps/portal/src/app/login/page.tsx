@@ -68,13 +68,29 @@ function LoginForm() {
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">{BRAND.platform.product}</p>
       </div>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-        Correo
-        <input name="email" type="email" required autoComplete="username" autoFocus className={field} />
+        Usuario o correo
+        <input
+          name="email"
+          type="text"
+          required
+          placeholder="Admin"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoComplete="username"
+          autoFocus
+          className={field}
+        />
       </label>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
         Contraseña
         <input name="password" type="password" required autoComplete="current-password" className={field} />
       </label>
+      {params.get("clave") === "ok" && !error && (
+        <p role="status" className="rounded-lg bg-ok-soft px-3 py-2 text-sm text-ok">
+          Contraseña guardada. Ya puedes entrar.
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}

@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth";
 import { authDisabled, isSimulatorPath, SESSION_COOKIE } from "@/lib/session";
 
 /**
- * Todo el portal exige sesión salvo la pantalla de login y su API, y lo que el
+ * Todo el portal exige sesión salvo la pantalla de login y su API, y /clave/<token> (crear o cambiar la contraseña con un enlace de un solo uso), y lo que el
  * celular pide sin cookie para instalar el portal como app (manifest, íconos y
  * service worker). Las páginas redirigen a /login; la API responde 401.
  */
@@ -28,5 +28,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|clave/|api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/).*)"],
 };
