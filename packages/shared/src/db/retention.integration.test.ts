@@ -38,17 +38,19 @@ describe("runRetention (Postgres)", { skip: integrationSkip }, () => {
   });
 
   it("evaluaciones del engine: se van las decididas o vencidas de más de 30 días; las que esperan moto, nunca", async () => {
-    const trip = await createTrip();
-    await db.insert(engineEvaluations).values([
-      { tripId: trip.id, status: "decided", updatedAt: daysAgo(31), request: { motos: [] } },
-      { tripId: trip.id, status: "expired", updatedAt: daysAgo(40) },
-      { tripId: trip.id, status: "waiting", updatedAt: daysAgo(90) },
-      { tripId: trip.id, status: "decided", updatedAt: daysAgo(5) },
-    ]);
+    // Una evaluación por viaje (engine_evaluations_trip_idx).
+    const rows = [
+      { status: "decided" as const, updatedAt: daysAgo(31), request: { motos: [] } },
+      { status: "expired" as const, updatedAt: daysAgo(40) },
+      { status: "waiting" as const, updatedAt: daysAgo(90) },
+      { status: "decided" as const, updatedAt: daysAgo(5) },
+    ];
+    for (const row of rows) await db.insert(engineEvaluations).values({ tripId: (await createTrip()).id, ...row });
     const result = await runRetention(NOW, CONFIG);
     assert.equal(result.engineEvaluations, 2);
     const left = await db.select({ status: engineEvaluations.status }).from(engineEvaluations);
     assert.deepEqual(left.map((r) => r.status).sort(), ["decided", "waiting"]);
+    assert.equal(await count(trips), 4, "los viajes de las evaluaciones borradas se quedan");
   });
 
   it("mensajes: se van los de más de un año; el chat y sus viajes se quedan", async () => {
