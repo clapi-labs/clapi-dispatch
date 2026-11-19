@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { currentSession, promoteToInstalled, sessionCookie } from "@/lib/auth";
+import { readJsonObject } from "@/lib/json";
 import { SESSION_COOKIE } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
   const session = await currentSession();
   if (!session) return Response.json({ error: "No autenticado" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const body = (await readJsonObject(request)) ?? {};
   if (body.installed !== true) return Response.json({ ok: true, changed: false });
 
   const issued = await promoteToInstalled(session, request.headers.get("user-agent"));

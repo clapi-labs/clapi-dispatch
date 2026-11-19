@@ -1,6 +1,7 @@
 import { deliverTrip } from "@dispatch/shared/db";
 
 import { notifyBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tripId = Number((await params).id);
-  const body = (await request.json().catch(() => ({}))) as { place?: unknown };
+  const body = ((await readJsonObject(request)) ?? {}) as { place?: unknown };
   const delivered = await deliverTrip(tripId, { place: body.place === "gate" ? "gate" : "customer" });
   if (!delivered) return Response.json({ ok: false }, { status: 409 });
 

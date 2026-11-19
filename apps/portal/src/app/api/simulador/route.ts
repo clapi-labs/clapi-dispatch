@@ -22,6 +22,7 @@ import { PHASE_LABEL, phaseSince, tripPhase } from "@dispatch/shared";
 
 import { updateCourierStatus } from "@/db/queries/couriers";
 import { callBot, notifyBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -155,7 +156,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   if (!simulatorEnabled()) return notFound();
-  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const body = (await readJsonObject(request)) ?? {};
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const courierId = num(body.courierId);
   const ok = () => Response.json({ ok: true });

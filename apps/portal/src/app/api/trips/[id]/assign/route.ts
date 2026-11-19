@@ -2,6 +2,7 @@ import { assignTripTo, db, returnTripToDispatch, schema } from "@dispatch/shared
 import { eq } from "drizzle-orm";
 
 import { notifyBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,13 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const tripId = Number((await params).id);
-  const { courierId } = (await request.json()) as { courierId?: number | null };
+  const body = await readJsonObject(request);
+  // `courierId` es obligatorio: un número, o `null` para solo quitarle el pedido. Sin él (o con un cuerpo
+  // que no es un objeto) no se hace nada: no se le quita el pedido a nadie por un cuerpo mal formado.
+  if (!body || !("courierId" in body) || (body.courierId !== null && typeof body.courierId !== "number")) {
+    return Response.json({ error: "Falta courierId (un número, o null para solo quitarlo)" }, { status: 400 });
+  }
+  const courierId = body.courierId as number | null;
 
   const [trip] = await db.select({ status: schema.trips.status }).from(schema.trips).where(eq(schema.trips.id, tripId)).limit(1);
   if (!trip) return Response.json({ error: "No existe" }, { status: 404 });

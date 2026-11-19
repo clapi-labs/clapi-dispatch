@@ -1,4 +1,5 @@
 import { createCourier, listCouriers } from "@/db/queries/couriers";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body = (await readJsonObject(request)) ?? {};
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
 

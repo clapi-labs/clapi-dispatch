@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { findUserByEmail } from "@/db/queries/users";
 import { clearFailures, isBlocked, recordFailure } from "@/lib/rate-limit";
 import { openSession, sessionCookie } from "@/lib/auth";
+import { readJsonObject } from "@/lib/json";
 import { SESSION_COOKIE } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 const DUMMY_HASH = "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$" + "A".repeat(86) + "==";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
+  const body = (await readJsonObject(request)) ?? {};
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
   // El portal instalado como app en el celular (lo detecta la página): la

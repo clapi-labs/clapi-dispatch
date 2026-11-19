@@ -1,5 +1,6 @@
 import { getThread, resumeBot, takeOver } from "@/db/queries/conversations";
 import { callBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const conversationId = Number((await params).id);
-  const body = await request.json().catch(() => ({}));
+  const body = (await readJsonObject(request)) ?? {};
 
   if (body.action === "pause") {
     await takeOver(conversationId);
