@@ -2,18 +2,31 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    schedule: { interval: weekly }
+    target-branch: dev
+    schedule:
+      interval: weekly
     open-pull-requests-limit: 5
     # No adoptar versiones recién publicadas: los paquetes comprometidos en
     # ataques a npm suelen detectarse y retirarse en pocos días.
     cooldown:
       default-days: 7
+    ignore:
+      # Saltos mayores de TypeScript (p. ej. 5 -> 7) requieren migración manual.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       next-react:
         patterns: ["next", "react", "react-dom", "eslint-config-next"]
   - package-ecosystem: docker
     directory: /
-    schedule: { interval: weekly }
+    target-branch: dev
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
