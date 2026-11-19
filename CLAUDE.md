@@ -29,6 +29,7 @@ npm run bot:eval:restaurantes      # compara nombres de restaurantes contra Open
 npm run calles:comparar            # km por calle (OSRM_URL) frente a línea recta × 1,3, con los restaurantes y zonas de la base; solo agregados
 npm run bot:direcciones:medir       # precisión de las direcciones contra Google real (solo desde el servidor: deploy/measure-addresses.sh); los casos van en apps/bot/direcciones/casos.json
 npm test                           # pruebas unitarias (*.test.ts en packages/shared y apps/bot)
+npm run test:integration           # *.integration.test.ts contra Postgres real (TEST_DATABASE_URL a una base «test»; ver docs/OPERACION.md, «Pruebas de integración»)
 npm run lint                       # eslint en cada workspace
 npm run typecheck                  # tsc --build (project references; el bot se revisa en el build o con tsc -p apps/bot)
 npm run build                      # next build de ambas apps (no necesita secretos)
