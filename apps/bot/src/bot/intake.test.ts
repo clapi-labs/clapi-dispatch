@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { after, before, beforeEach, describe, it, mock } from "node:test";
 
 import { eq } from "drizzle-orm";
+import sharp from "sharp";
 
 import { db, schema, setBusinessPaused, saveFareRanges } from "@dispatch/shared/db";
 import { closeTestDatabase, createCourier, createRestaurant, integrationSkip, resetDatabase } from "@dispatch/shared/db/test-db";
@@ -233,6 +237,69 @@ describe("intake.ts: a quién va cada mensaje (Postgres)", { skip: integrationSk
       const conversation = await conversationByPhone(phone);
       const stored = await messagesOf(conversation.id);
       assert.equal(conversation.processedThroughMessageId, stored.filter((m) => m.role === "restaurant").at(-1)?.id, "quedó procesado hasta el último");
+    });
+  });
+
+  describe("fotos en el chat", () => {
+    /** Con el chat tomado por un asesor, `handleIncoming` solo anota el mensaje: no espera ni llama al modelo. */
+    async function advisorChat() {
+      const restaurant = await createRestaurant({ name: "Pizza Nona", knownPickupLocation: PICKUP, knownPickupAddress: "Calle 5 # 38-10" });
+      await db.insert(schema.conversations).values({ phone: restaurant.phone!, botPaused: true, escalationReason: "x" });
+      return restaurant.phone!;
+    }
+    const image = (phone: string, mediaId: string, caption: string | null) =>
+      ({ waMessageId: `wamid.in.${++inbound}`, phone, profileName: null, timestamp: new Date(), kind: "image", mediaId, caption }) as IncomingMessage;
+
+    async function withMediaDir(run: (dir: string) => Promise<void>) {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "intake-media-"));
+      const saved = { dir: process.env.MEDIA_DIR, simulated: process.env.WHATSAPP_SIMULADO };
+      process.env.MEDIA_DIR = dir;
+      process.env.WHATSAPP_SIMULADO = "true"; // el id de la foto es una ruta local, no de Meta
+      try {
+        await run(dir);
+      } finally {
+        for (const [key, value] of [["MEDIA_DIR", saved.dir], ["WHATSAPP_SIMULADO", saved.simulated]] as const) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    it("una foto entrante se achica, queda en disco y el mensaje guarda solo la referencia", async () => {
+      const phone = await advisorChat();
+      await withMediaDir(async (dir) => {
+        const source = path.join(dir, "entrada.jpg");
+        await fs.writeFile(source, await sharp({ create: { width: 2400, height: 1800, channels: 3, background: "#cc3366" } }).jpeg().toBuffer());
+
+        await intake.handleIncoming(image(phone, source, "El pedido de Marta"));
+
+        const [message] = await messagesOf((await conversationByPhone(phone)).id);
+        assert.equal(message.text, "[Imagen] El pedido de Marta");
+        assert.equal(message.mediaStatus, "stored");
+        assert.match(message.mediaPath!, /^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\.webp$/);
+        assert.equal(message.mediaMime, "image/webp");
+        assert.deepEqual([message.mediaWidth, message.mediaHeight], [1200, 900]);
+        const file = await fs.readFile(path.join(dir, message.mediaPath!));
+        assert.equal(message.mediaBytes, file.length);
+        assert.equal(JSON.stringify(message).includes(file.toString("base64").slice(0, 40)), false, "ningún byte de la foto va en la fila");
+      });
+    });
+
+    it("si la foto no se puede bajar, el mensaje queda solo con su texto y el turno sigue", async () => {
+      const phone = await advisorChat();
+      await withMediaDir(async (dir) => {
+        const quiet = console.error;
+        console.error = () => {};
+        try {
+          await intake.handleIncoming(image(phone, path.join(dir, "no-existe.jpg"), null));
+        } finally {
+          console.error = quiet;
+        }
+        const [message] = await messagesOf((await conversationByPhone(phone)).id);
+        assert.equal(message.text, "[Imagen]");
+        assert.deepEqual([message.mediaPath, message.mediaStatus], [null, null]);
+      });
     });
   });
 

@@ -74,6 +74,8 @@ export const conversations = pgTable(
 );
 
 export type MessageRole = "restaurant" | "bot" | "agent";
+export type MediaStatus = "stored" | "expired";
+export type MediaExpiredReason = "ttl" | "space";
 
 /** Lo que el bot necesita de un mensaje entrante para procesarlo más tarde. */
 export type IncomingPayload = (
@@ -113,9 +115,28 @@ export const messages = pgTable(
      *  completo. Queda guardado para poder auditar por qué un viaje pidió
      *  una repregunta. */
     extraction: jsonb("extraction").$type<Interpretation>(),
+    /** La foto del mensaje, si la trae: solo la referencia, nunca los bytes (el
+     *  archivo vive en el disco del servidor, ver `@dispatch/shared/media`).
+     *  `mediaPath` es relativo a la carpeta de fotos: `AAAA-MM-DD/<uuid>.webp`. */
+    mediaPath: text("media_path"),
+    mediaMime: text("media_mime"),
+    mediaBytes: integer("media_bytes"),
+    mediaWidth: integer("media_width"),
+    mediaHeight: integer("media_height"),
+    /** `stored`: el archivo está en disco. `expired`: la limpieza lo borró (la
+     *  fila queda para que el chat muestre que hubo una imagen). */
+    mediaStatus: text("media_status").$type<MediaStatus>(),
+    /** Por qué se borró: `ttl` (pasó el tiempo de retención) o `space` (tope de espacio). */
+    mediaExpiredReason: text("media_expired_reason").$type<MediaExpiredReason>(),
+    mediaExpiredAt: timestamp("media_expired_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.id), index("messages_wa_message_idx").on(t.waMessageId)],
+  (t) => [
+    index("messages_conversation_idx").on(t.conversationId, t.id),
+    index("messages_wa_message_idx").on(t.waMessageId),
+    // La limpieza solo mira las fotos que siguen en disco, de la más vieja a la más nueva.
+    index("messages_media_stored_idx").on(t.createdAt).where(sql`${t.mediaStatus} = 'stored'`),
+  ],
 );
 
 export const processedMessages = pgTable("processed_messages", {

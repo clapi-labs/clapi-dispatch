@@ -118,6 +118,13 @@ const conversations: DemoConversation[] = [
 let nextMessageId = 1000;
 const msg = (role: ChatMessage["role"], text: string, minutesAgo: number): ChatMessage => ({ id: nextMessageId++, role, text, createdAt: ago(minutesAgo) });
 
+/** Una foto de ejemplo (una imagen incrustada: en el demo no hay servidor de fotos). */
+function demoPhoto(width: number, height: number, label: string, hue: number): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 70% 55%)"/><stop offset="1" stop-color="hsl(${hue + 50} 70% 35%)"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${width * 0.7}" cy="${height * 0.35}" r="${Math.min(width, height) * 0.18}" fill="rgba(255,255,255,.25)"/><text x="50%" y="55%" text-anchor="middle" font-family="sans-serif" font-size="${Math.round(width / 14)}" fill="#fff">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+const photoMsg = (role: ChatMessage["role"], text: string, minutesAgo: number, media: NonNullable<ChatMessage["media"]>): ChatMessage => ({ ...msg(role, text, minutesAgo), media });
+
 const threads = new Map<number, ChatMessage[]>([
   [
     1,
@@ -158,6 +165,11 @@ const threads = new Map<number, ChatMessage[]>([
   [
     4,
     [
+      // Fotos de ejemplo: una vigente, una vertical con pie y una que ya expiró por retención.
+      photoMsg("restaurant", "[Imagen]", 60 * 24 * 31, { status: "expired", reason: "ttl", retentionDays: 30 }),
+      photoMsg("restaurant", "[Imagen] Así quedó el pedido", 40, { status: "stored", mime: "image/webp", width: 1200, height: 800, bytes: 61_000, src: demoPhoto(1200, 800, "Pedido listo", 20) }),
+      photoMsg("restaurant", "[Imagen] La dirección del cliente", 30, { status: "stored", mime: "image/webp", width: 675, height: 1200, bytes: 48_000, src: demoPhoto(675, 1200, "Calle 66 #10-45", 200) }),
+      photoMsg("restaurant", "[Imagen]", 20, { status: "expired", reason: "space", retentionDays: 30 }),
       msg("restaurant", "Domicilio para Cra 66 #10-45, cobrar 52 mil", 16),
       msg("bot", "¡Listo! Ya tengo la dirección y el valor. ¿Cuál es el teléfono del cliente y cómo va a pagar?", 15),
     ],

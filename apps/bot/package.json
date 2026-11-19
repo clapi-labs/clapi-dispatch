@@ -20,7 +20,8 @@
     "@dispatch/shared": "*",
     "next": "16.4.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/react": "^19",

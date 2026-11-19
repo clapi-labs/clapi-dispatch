@@ -1,4 +1,4 @@
-import { purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
+import { purgeOldMedia, purgeOldPositions, runDemand, releaseIdleControls, runPushAlerts, simulatorEnabled } from "@dispatch/shared/db";
 
 import { handleClosing } from "@/bot/closing";
 import { closeCustomerWaits, notifyAssigned, nudgeIdlePayments, remindClosingDebts, remindCouriers } from "@/bot/notify";
@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
 /** Cada cuánto se borran las posiciones de más de 24 horas: no hace falta en cada tick. */
 const PURGE_EVERY_MS = 10 * 60_000;
 let lastPurge = 0;
+
+/** Cada cuánto se limpian las fotos de los chats (por días y por espacio): es barato, pero no hace falta en cada tick. */
+const MEDIA_PURGE_EVERY_MS = 60 * 60_000;
+let lastMediaPurge = 0;
 
 /**
  * Lo que tiene que pasar "cada tanto" aunque nadie esté mirando. Lo llama el
@@ -109,6 +113,20 @@ export async function POST(request: Request) {
       if (purged.couriers || purged.evaluations) console.log(`[tick] posiciones de más de 24 h borradas: ${purged.couriers} motos, ${purged.evaluations} evaluaciones`);
     } catch (error) {
       console.error("[tick] no se pudieron borrar las posiciones viejas:", error);
+    }
+  }
+
+  // Las fotos de los chats: las de más de 30 días se borran, y si la carpeta o el disco
+  // pasan de su tope, las más viejas hasta bajar (`MEDIA_*`, docs/OPERACION.md).
+  if (Date.now() - lastMediaPurge >= MEDIA_PURGE_EVERY_MS) {
+    lastMediaPurge = Date.now();
+    try {
+      const purged = await purgeOldMedia();
+      if (purged.ttl || purged.space || purged.foldersRemoved) {
+        console.log(`[tick] fotos borradas: ${purged.ttl} por tiempo, ${purged.space} por espacio (${Math.round(purged.freedBytes / 1024)} kB)`);
+      }
+    } catch (error) {
+      console.error("[tick] no se pudieron limpiar las fotos:", error);
     }
   }
 

@@ -55,6 +55,10 @@ services:
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-secret}
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
+      # Fotos de los chats: el bot las guarda y el portal las lee del mismo volumen.
+      MEDIA_DIR: /data/media
+    volumes:
+      - media:/data/media
     depends_on:
       migrate: { condition: service_completed_successfully }
     ports:
@@ -135,6 +139,9 @@ services:
       BOT_URL: http://bot:3001
       # Km por calle para la vista previa de Tarifas y «Probar un punto».
       OSRM_URL: http://osrm:5000
+      MEDIA_DIR: /data/media
+    volumes:
+      - media:/data/media:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       bot: { condition: service_started }
@@ -149,3 +156,4 @@ services:
 
 volumes:
   pgdata:
+  media:
