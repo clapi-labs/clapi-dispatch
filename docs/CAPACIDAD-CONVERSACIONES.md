@@ -109,10 +109,10 @@ Esa máquina tiene muchos más núcleos que el CX23 (2 vCPU compartidos con todo
 - **Aguanta:** el almacenamiento y las consultas a 500 chats al día, con varias personas en el portal. Postgres tiene margen de RAM y de disco por años.
 - **Se rompe primero:** H1 (vistas previas vacías) y H2 (hilos largos descargados enteros en cada aviso).
 - **Hacer, en issues aparte, por orden:**
-  1. Último mensaje por chat con `LATERAL` en `listConversations` (cambio chico, resuelve H1).
-  2. Hilo paginado (últimos ~50 mensajes, «cargar anteriores») y refresco incremental: pedir solo `id > último`, y solo cuando el aviso es del chat abierto (hoy el aviso no dice de qué chat es).
-  3. Buscador y «cargar más» en la bandeja (H4).
-  4. Sin urgencia: archivar o purgar mensajes con más de N meses si se quiere frenar el crecimiento; no hace falta antes de varios años.
+  1. ✅ Último mensaje por chat con `LATERAL` en `listConversations` (H1, #103).
+  2. ✅ Hilo paginado (últimos 50 mensajes, «Cargar anteriores») y refresco incremental: se pide solo desde unos mensajes antes del último (`?after=`, así se ven también los que cambiaron) y solo cuando el aviso es del chat abierto. Los avisos de `messages` ahora dicen de qué chats son: `messages:12,15` (migración 0026) (H2, #103).
+  3. Buscador y «cargar más» en la bandeja (H4): pendiente.
+  4. ✅ Retención automática de mensajes (365 días por defecto, `RETENTION_MESSAGES_DAYS`), junto con la de webhooks atendidos y decisiones del engine (#103; ver `docs/OPERACION.md`, «Salud del sistema y retención»).
 
 ---
 

@@ -13,3 +13,5 @@ export * from "./domain/restaurant-identity";
 export * from "./domain/service-hours";
 export * from "./domain/alerts";
 export * from "./domain/demand";
+export * from "./domain/retention";
+export * from "./domain/system-health";

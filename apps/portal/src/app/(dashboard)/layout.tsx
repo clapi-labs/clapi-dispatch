@@ -5,6 +5,7 @@ import { simulatorEnabled } from "@dispatch/shared/db";
 import { AppBridge } from "@/components/AppBridge";
 import { AppShell } from "@/components/AppShell";
 import { TripsProvider } from "@/components/TripsProvider";
+import { isAdmin } from "@/lib/admin";
 import { currentSession } from "@/lib/auth";
 import { authDisabled } from "@/lib/session";
 
@@ -16,7 +17,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <TripsProvider>
       <AppBridge />
-      <AppShell simulator={simulatorEnabled()}>{children}</AppShell>
+      <AppShell simulator={simulatorEnabled()} admin={await isAdmin()}>
+        {children}
+      </AppShell>
     </TripsProvider>
   );
 }

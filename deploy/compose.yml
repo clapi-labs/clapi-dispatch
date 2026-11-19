@@ -80,6 +80,10 @@ services:
       BOT_HOST: ${BOT_HOST:-}
       # Solo en staging: "1" enciende el simulador (docs/OPERACION.md, «Simulador»).
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
+      # Retención en días (domain/retention.ts); vacío = el valor por defecto, 0 = sin borrar.
+      RETENTION_MESSAGES_DAYS: ${RETENTION_MESSAGES_DAYS:-}
+      RETENTION_ENGINE_EVALUATIONS_DAYS: ${RETENTION_ENGINE_EVALUATIONS_DAYS:-}
+      RETENTION_PROCESSED_MESSAGES_DAYS: ${RETENTION_PROCESSED_MESSAGES_DAYS:-}
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
@@ -107,6 +111,12 @@ services:
       BOT_HOST: ${BOT_HOST:-}
       # Km por calle para la vista previa de Tarifas y «Probar un punto».
       OSRM_URL: http://osrm:5000
+      # Quién ve «Salud del sistema» (/salud), correos separados por coma; vacío = todos.
+      PORTAL_ADMIN_EMAILS: ${PORTAL_ADMIN_EMAILS:-}
+      # Solo para mostrarla en /salud: la aplica el bot.
+      RETENTION_MESSAGES_DAYS: ${RETENTION_MESSAGES_DAYS:-}
+      RETENTION_ENGINE_EVALUATIONS_DAYS: ${RETENTION_ENGINE_EVALUATIONS_DAYS:-}
+      RETENTION_PROCESSED_MESSAGES_DAYS: ${RETENTION_PROCESSED_MESSAGES_DAYS:-}
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:

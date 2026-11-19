@@ -29,6 +29,8 @@ import { useBusiness } from "@/lib/business";
 import { formatPhone, initials, samePhone } from "@/lib/format";
 import type { ChatMessage, ConversationKind, ConversationSummary } from "@/lib/types";
 import { useLive } from "@/lib/live";
+import { touches, type Change } from "@/lib/live-event";
+import { mergeThread, refreshAfter, THREAD_PAGE, type ThreadPage } from "@/lib/thread";
 import { createSendQueue } from "@/lib/send-queue";
 
 function timeLabel(iso: string) {
@@ -358,9 +360,26 @@ export default function ConversacionesPage() {
   const [list, setList] = useState<ConversationSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [thread, setThread] = useState<ChatMessage[]>([]);
+  // El hilo va por páginas (lib/thread.ts): los últimos mensajes al abrir, los
+  // anteriores con «Cargar anteriores» y, con cada aviso de este chat, solo lo
+  // del final. El ref tiene siempre lo mismo que el estado, para leerlo al
+  // volver una respuesta sin esperar a otro render.
+  const [thread, setThreadState] = useState<ChatMessage[]>([]);
+  const threadRef = useRef<ChatMessage[]>([]);
+  const setThread = useCallback((next: ChatMessage[]) => {
+    threadRef.current = next;
+    setThreadState(next);
+  }, []);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const selectedRef = useRef<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Al poner los anteriores arriba, lo que se estaba leyendo no se mueve.
+  const keepScroll = useRef<{ height: number; top: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastCount = useRef(0);
+  // El último mensaje que ya se mostró: se baja al final solo si cambia.
+  const lastBottomId = useRef<number | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   // La pestaña va también en un ref: `loadList` la lee al volver del servidor,
   // y un sondeo que ya iba en camino no debe abrir un chat de la pestaña anterior.
@@ -371,7 +390,6 @@ export default function ConversacionesPage() {
   // en cuanto carga la lista. El número no se queda en la barra de direcciones.
   const wanted = useRef<string | null>(null);
   const lastList = useRef("");
-  const lastThread = useRef("");
   const intervenedIds = useRef(new Set<number>());
 
   // Si el operador tocó "Intervenir" y sale de Conversaciones (cambia a otra
@@ -397,6 +415,20 @@ export default function ConversacionesPage() {
     };
   }, []);
 
+  /** Otro chat: el hilo empieza vacío y una respuesta del anterior que venga en
+   *  camino ya no se pinta. */
+  const showChat = useCallback(
+    (id: number | null) => {
+      selectedRef.current = id;
+      lastBottomId.current = null;
+      keepScroll.current = null;
+      setThread([]);
+      setHasOlder(false);
+      setSelectedId(id);
+    },
+    [setThread],
+  );
+
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
     if (!res.ok) return;
@@ -415,29 +447,62 @@ export default function ConversacionesPage() {
       if (target) {
         tabRef.current = "all";
         setTab("all");
-        lastCount.current = 0;
-        lastThread.current = "";
-        setThread([]);
-        setSelectedId(target.id);
+        showChat(target.id);
       } else {
         setNotice(`Todavía no hay conversación con ${formatPhone(phone)}`);
       }
     }
     // En escritorio, abrir de entrada la conversación más reciente de la pestaña.
     const first = data.find((c) => inTab(c, tabRef.current));
-    if (first && isDesktop()) {
-      setSelectedId((current) => current ?? first.id);
-    }
-  }, []);
+    if (first && isDesktop() && selectedRef.current === null) showChat(first.id);
+  }, [showChat]);
 
-  const loadThread = useCallback(async (id: number) => {
-    const res = await fetch(`/api/conversations/${id}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const raw = await res.text();
-    if (raw === lastThread.current) return;
-    lastThread.current = raw;
-    setThread(JSON.parse(raw));
-  }, []);
+  /**
+   * Trae el hilo del chat `id`. Vacío: la última página. Si ya hay mensajes,
+   * solo lo nuevo y los últimos `REFRESH_OVERLAP` (por si cambió alguno), y se
+   * junta con lo que había: un hilo de miles de mensajes ya no se vuelve a
+   * bajar entero con cada aviso (H2).
+   */
+  const loadThread = useCallback(
+    async (id: number) => {
+      const current = threadRef.current;
+      const query = current.length === 0 ? `limit=${THREAD_PAGE}` : `after=${refreshAfter(current)}`;
+      const res = await fetch(`/api/conversations/${id}?${query}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const page = (await res.json()) as ThreadPage;
+      if (selectedRef.current !== id) return;
+      if (page.reset || threadRef.current.length === 0) {
+        setThread(page.messages);
+        setHasOlder(page.hasOlder ?? false);
+        return;
+      }
+      const next = mergeThread(threadRef.current, page.messages);
+      if (next !== threadRef.current) setThread(next);
+    },
+    [setThread],
+  );
+
+  /** «Cargar anteriores»: la página de antes del primer mensaje que se ve. */
+  const loadOlder = useCallback(async () => {
+    const id = selectedRef.current;
+    const first = threadRef.current[0];
+    if (id === null || !first || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const res = await fetch(`/api/conversations/${id}?before=${first.id}&limit=${THREAD_PAGE}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const page = (await res.json()) as ThreadPage;
+      if (selectedRef.current !== id) return;
+      const el = scrollRef.current;
+      keepScroll.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+      setThread(mergeThread(threadRef.current, page.messages));
+      setHasOlder(page.hasOlder ?? false);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [setThread]);
 
   // El número también puede llegar con la pantalla ya abierta: al tocar una
   // alerta del celular (components/AppBridge.tsx) cambia solo el fragmento.
@@ -462,7 +527,10 @@ export default function ConversacionesPage() {
   const pollThread = useCallback(() => {
     if (selectedId !== null) loadThread(selectedId);
   }, [selectedId, loadThread]);
-  useLive(pollThread, ["messages", "conversations"], selectedId !== null);
+  // Solo los avisos de este chat (o los que no dicen de cuál): un mensaje de
+  // otro restaurante ya no vuelve a pedir el hilo abierto.
+  const acceptThread = useCallback((change: Change) => selectedId !== null && touches(change, selectedId), [selectedId]);
+  useLive(pollThread, ["messages"], selectedId !== null, acceptThread);
   // Al cambiar de chat se carga el nuevo de una vez, sin esperar un aviso.
   // En un setTimeout: el setState de la respuesta no ocurre dentro del efecto.
   useEffect(() => {
@@ -471,16 +539,26 @@ export default function ConversacionesPage() {
     return () => clearTimeout(id);
   }, [selectedId, loadThread]);
 
-  // Bajar al último mensaje solo cuando llega uno nuevo, no en cada sondeo.
+  // Tras «Cargar anteriores», lo que se estaba leyendo queda en el mismo lugar.
+  useLayoutEffect(() => {
+    const keep = keepScroll.current;
+    const el = scrollRef.current;
+    if (!keep || !el) return;
+    keepScroll.current = null;
+    el.scrollTop = el.scrollHeight - keep.height + keep.top;
+  }, [thread]);
+
+  // Bajar al último mensaje solo cuando llega uno nuevo al final: no en cada
+  // sondeo ni al cargar los anteriores.
   useEffect(() => {
-    if (thread.length !== lastCount.current) {
-      const first = lastCount.current === 0;
-      bottomRef.current?.scrollIntoView({ behavior: first ? "auto" : "smooth" });
-      // Las burbujas fuera de pantalla miden un estimado hasta que se pintan: al abrir el
-      // chat, un segundo ajuste ya con las del final pintadas deja el hilo realmente abajo.
-      if (first) requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "auto" }));
-      lastCount.current = thread.length;
-    }
+    const lastId = thread.length > 0 ? thread[thread.length - 1].id : null;
+    if (lastId === null || lastId === lastBottomId.current) return;
+    const first = lastBottomId.current === null;
+    bottomRef.current?.scrollIntoView({ behavior: first ? "auto" : "smooth" });
+    // Las burbujas fuera de pantalla miden un estimado hasta que se pintan: al abrir el
+    // chat, un segundo ajuste ya con las del final pintadas deja el hilo realmente abajo.
+    if (first) requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "auto" }));
+    lastBottomId.current = lastId;
   }, [thread]);
 
 
@@ -554,10 +632,7 @@ export default function ConversacionesPage() {
   }, [selectedId, loadThread]);
 
   function open(id: number | null) {
-    lastCount.current = 0;
-    lastThread.current = "";
-    setThread([]);
-    setSelectedId(id);
+    showChat(id);
   }
 
   function switchTab(next: Tab) {
@@ -674,7 +749,7 @@ export default function ConversacionesPage() {
               <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-3 sm:gap-3 lg:px-5">
                 <button
                   type="button"
-                  onClick={() => setSelectedId(null)}
+                  onClick={() => showChat(null)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-2 lg:hidden"
                   aria-label="Volver"
                 >
@@ -725,7 +800,20 @@ export default function ConversacionesPage() {
               ) : null}
 
               {/* El hilo solo se mueve hacia arriba y abajo: nunca se arrastra de lado. */}
-              <div className={`no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 pt-4 lg:px-6 ${selected.botPaused && !businessPaused ? "pb-14" : "pb-4"}`}>
+              <div
+                ref={scrollRef}
+                className={`no-scrollbar flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-3 pt-4 lg:px-6 ${selected.botPaused && !businessPaused ? "pb-14" : "pb-4"}`}
+              >
+                {hasOlder && (
+                  <button
+                    type="button"
+                    onClick={() => void loadOlder()}
+                    disabled={loadingOlder}
+                    className="my-1 self-center rounded-lg bg-surface/90 px-3 py-1 text-xs font-medium text-clapi-ink shadow-sm hover:bg-surface disabled:opacity-60"
+                  >
+                    {loadingOlder ? "Cargando…" : "Cargar anteriores"}
+                  </button>
+                )}
                 <Thread
                   thread={thread}
                   contactName={name(selected)}

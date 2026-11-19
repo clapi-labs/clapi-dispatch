@@ -118,10 +118,17 @@ export const messages = pgTable(
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.id), index("messages_wa_message_idx").on(t.waMessageId)],
 );
 
-export const processedMessages = pgTable("processed_messages", {
-  waMessageId: text("wa_message_id").primaryKey(),
-  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/** Los wamid ya atendidos: Meta reintenta el webhook y no se responde dos
+ *  veces. Se borran a los 14 días (domain/retention.ts); el índice por fecha es
+ *  para esa limpieza. */
+export const processedMessages = pgTable(
+  "processed_messages",
+  {
+    waMessageId: text("wa_message_id").primaryKey(),
+    processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("processed_messages_processed_at_idx").on(t.processedAt)],
+);
 
 // ---------------------------------------------------------------------------
 // Restaurantes — registro liviano, no multi-tenant con login

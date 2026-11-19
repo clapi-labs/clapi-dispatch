@@ -183,6 +183,13 @@
       "when": 1794889151847,
       "tag": "0025_gps_en_movimiento",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795106520010,
+      "tag": "0026_retencion_y_avisos_por_chat",
+      "breakpoints": true
     }
   ]
 }
