@@ -2,6 +2,7 @@ import { getReturnDebt, resolveDebtClaim, resolveReturnDebtGroup } from "@dispat
 
 import { currentSession } from "@/lib/auth";
 import { callBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ type Params = { params: Promise<{ id: string }> };
  */
 export async function POST(request: Request, { params }: Params) {
   const id = Number((await params).id);
-  const { action } = (await request.json().catch(() => ({}))) as { action?: unknown };
+  const { action } = ((await readJsonObject(request)) ?? {}) as { action?: unknown };
   if (action === "handle_claim") {
     const session = await currentSession();
     const closed = Number.isInteger(id) ? await resolveDebtClaim(id, session?.userId ?? null) : null;

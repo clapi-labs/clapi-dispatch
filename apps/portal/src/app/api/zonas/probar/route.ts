@@ -3,6 +3,7 @@ import { db, listServiceZones, quoteByDistance, schema, type Quote } from "@disp
 import { eq } from "drizzle-orm";
 
 import { askBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ const REASONS: Record<string, string> = {
  * no lo toma. No crea pedidos ni manda mensajes.
  */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { address?: unknown; lat?: unknown; lng?: unknown; restaurantId?: unknown };
+  const body = ((await readJsonObject(request)) ?? {}) as { address?: unknown; lat?: unknown; lng?: unknown; restaurantId?: unknown };
 
   let pickup: { lat: number; lng: number } | null = null;
   let restaurantName: string | null = null;

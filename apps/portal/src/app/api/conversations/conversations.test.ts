@@ -363,10 +363,9 @@ describe("conversaciones del portal (Postgres)", { skip: integrationSkip }, () =
     });
 
     describe("acciones inválidas", () => {
-      // `null` es JSON válido: la ruta hace `body.action` sobre null y responde 500 en vez de 400 (problema
-      // conocido, `todo` para que quede a la vista sin tumbar el CI). Con `{}` y el resto, bien.
+      // `null` es JSON válido: antes la ruta hacía `body.action` sobre null y respondía 500 en vez de 400.
       for (const body of [{}, { action: "borrar" }, { action: 5 }, { text: "hola" }, null]) {
-        it(`${JSON.stringify(body)}: 400 «Acción inválida» y no cambia nada`, body === null ? { todo: "un cuerpo JSON null da 500 (body.action sobre null)" } : {}, async () => {
+        it(`${JSON.stringify(body)}: 400 «Acción inválida» y no cambia nada`, async () => {
           const chat = await createConversation({ botPaused: true, escalationReason: "x" });
           const res = await act(chat.id, body);
           assert.equal(res.status, 400);

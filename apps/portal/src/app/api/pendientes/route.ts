@@ -3,6 +3,7 @@ import { db, declareReturnDebt, getBotConfig, returnDebtsForPortal, saveDatafono
 import { and, desc, eq } from "drizzle-orm";
 
 import { currentSession } from "@/lib/auth";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET() {
  * sale del pedido.
  */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = ((await readJsonObject(request)) ?? {}) as {
     courierId?: unknown;
     reason?: unknown;
     restaurantId?: unknown;
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
 
 /** Los minutos del aviso del datáfono y del recordatorio antes del cierre (`settings.bot_config`). */
 export async function PUT(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { datafonoAlertMinutes?: unknown; closingDebtMinutes?: unknown };
+  const body = ((await readJsonObject(request)) ?? {}) as { datafonoAlertMinutes?: unknown; closingDebtMinutes?: unknown };
   const config = await getBotConfig();
   const minutes = body.datafonoAlertMinutes !== undefined ? Number(body.datafonoAlertMinutes) : config.datafonoAlertMinutes;
   const closingMinutes = body.closingDebtMinutes !== undefined ? Number(body.closingDebtMinutes) : config.closingDebtMinutes;

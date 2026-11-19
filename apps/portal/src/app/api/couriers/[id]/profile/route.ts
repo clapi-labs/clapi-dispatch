@@ -1,4 +1,5 @@
 import { getCourierProfile, saveCourierProfile } from "@/db/queries/couriers";
+import { readJsonObject } from "@/lib/json";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = await request.json();
+  const body = await readJsonObject(request);
+  // Sin un objeto no hay nada que guardar: con `{}` se borraría la ficha entera.
+  if (!body) return Response.json({ error: "Cuerpo inválido" }, { status: 400 });
 
   const profile = await saveCourierProfile(Number(id), {
     // La placa siempre igual: "abc 12d" y "ABC-12D" son la misma moto.

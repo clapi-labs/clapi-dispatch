@@ -1,5 +1,8 @@
+import type { CourierStatus } from "@dispatch/shared/db/schema";
+
 import { removeCourier, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
 import { notifyBot } from "@/lib/bot";
+import { readJsonObject } from "@/lib/json";
 import { isValidPhoto } from "@/lib/photo";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +11,7 @@ const VALID_STATUSES = ["available", "busy", "paused", "offline"];
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = await request.json();
+  const body = (await readJsonObject(request)) ?? {};
 
   if (body.active === false) {
     await removeCourier(Number(id));
@@ -31,11 +34,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return Response.json({ error: "Usa emergency" }, { status: 400 });
   }
 
-  if (!VALID_STATUSES.includes(body.status)) {
+  if (typeof body.status !== "string" || !VALID_STATUSES.includes(body.status)) {
     return Response.json({ error: "Estado inválido" }, { status: 400 });
   }
 
-  const { courier, returned } = await updateCourierStatus(Number(id), body.status);
+  const { courier, returned } = await updateCourierStatus(Number(id), body.status as CourierStatus);
   await notifyBot({ unassigned: returned.map((tripId) => ({ tripId, courierId: Number(id) })) });
   return Response.json(courier);
 }

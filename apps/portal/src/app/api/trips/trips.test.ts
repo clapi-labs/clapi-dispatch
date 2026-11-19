@@ -409,10 +409,35 @@ describe("viajes del portal (Postgres)", { skip: integrationSkip }, () => {
       });
     });
 
-    it("un cuerpo que no es JSON no se interpreta como una asignación: la ruta falla en vez de asignar a nadie", async () => {
-      const trip = await createTrip();
-      await assert.rejects(() => assign.POST(request("POST", `/api/trips/${trip.id}/assign`, { raw: "no es json" }), params({ id: trip.id })));
-      assert.equal((await getTrip(trip.id)).status, "pending");
+    describe("un cuerpo mal formado no le quita el pedido a nadie", () => {
+      for (const [name, raw] of [
+        ["que no es JSON", "no es json"],
+        ["null", "null"],
+        ["una lista", "[]"],
+        ["un número", "5"],
+        ["un objeto sin courierId", "{}"],
+        ["con un courierId que no es número ni null", '{"courierId":"7"}'],
+        ["con courierId undefined (otro campo)", '{"driver":3}'],
+      ] as const) {
+        it(`${name}: 400 «Falta courierId» y el viaje asignado sigue con su moto`, async () => {
+          const courier = await createCourier({ status: "available" });
+          const trip = await assignedTrip(courier.id);
+          const res = await assign.POST(request("POST", `/api/trips/${trip.id}/assign`, { raw }), params({ id: trip.id }));
+          assert.equal(res.status, 400);
+          assert.match(((await res.json()) as { error: string }).error, /^Falta courierId/);
+          assert.equal((await getTrip(trip.id)).status, "en_route");
+          assert.equal((await getAssignment(trip.id)).courierId, courier.id);
+          assert.equal(bot.calls.length, 0);
+        });
+      }
+
+      it("con courierId null sí se le quita (es lo que manda «Quitar»)", async () => {
+        const courier = await createCourier({ status: "available" });
+        const trip = await assignedTrip(courier.id);
+        const res = await assign.POST(request("POST", `/api/trips/${trip.id}/assign`, { raw: '{"courierId":null}' }), params({ id: trip.id }));
+        assert.equal(res.status, 200);
+        assert.equal((await getTrip(trip.id)).status, "pending");
+      });
     });
   });
 
@@ -453,7 +478,7 @@ describe("viajes del portal (Postgres)", { skip: integrationSkip }, () => {
       }
     });
 
-    it("un cuerpo que no es JSON también entrega al cliente", async () => {
+    it("un cuerpo que no es JSON (o es null) también entrega al cliente", async () => {
       const { trip } = await onTheWay();
       const res = await deliver.POST(request("POST", `/api/trips/${trip.id}/deliver`, { raw: "no es json" }), params({ id: trip.id }));
       assert.equal(res.status, 200);
