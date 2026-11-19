@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ ok: true });
   }
   if (body.action === "resume") {
-    await resumeBot(conversationId);
+    await resumeBot(conversationId, { onlyIfTakeover: body.onlyIfTakeover === true });
     return Response.json({ ok: true });
   }
   if (body.action === "address" && Array.isArray(body.respuestas)) {

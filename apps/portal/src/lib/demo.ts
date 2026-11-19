@@ -296,7 +296,11 @@ async function handle(method: string, path: string, body: string | null): Promis
     const c = conversations.find((x) => x.id === id);
     if (!c) return json({ error: "No existe" }, 404);
     if (data.action === "pause") Object.assign(c, { botPaused: true, escalationReason: TAKEOVER_REASON, draft: null });
-    if (data.action === "resume") Object.assign(c, { botPaused: false, escalationReason: null, draft: null });
+    if (data.action === "resume") {
+      if (!data.onlyIfTakeover || c.escalationReason === TAKEOVER_REASON) {
+        Object.assign(c, { botPaused: false, escalationReason: null, draft: null });
+      }
+    }
     if (data.action === "send" && typeof data.text === "string") {
       c.botPaused = true;
       c.escalationReason ??= TAKEOVER_REASON;

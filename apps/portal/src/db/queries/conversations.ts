@@ -142,12 +142,18 @@ export async function takeOver(conversationId: number) {
     .where(eq(schema.conversations.id, conversationId));
 }
 
-/** "Devolver al bot": el asesor terminó y el bot vuelve a atender ese chat. */
-export async function resumeBot(conversationId: number) {
+/** "Devolver al bot": el asesor terminó y el bot vuelve a atender ese chat.
+ *  Con `onlyIfTakeover`, solo aplica si el bot fue pausado manualmente con
+ *  "Intervenir", para no cerrar por error un escalado ni una emergencia. */
+export async function resumeBot(conversationId: number, { onlyIfTakeover = false } = {}) {
   await db
     .update(schema.conversations)
     .set({ botPaused: false, escalationReason: null, draft: null, failedAttempts: 0 })
-    .where(eq(schema.conversations.id, conversationId));
+    .where(
+      onlyIfTakeover
+        ? and(eq(schema.conversations.id, conversationId), eq(schema.conversations.escalationReason, TAKEOVER_REASON))
+        : eq(schema.conversations.id, conversationId),
+    );
 }
 
 /** Las entregas que el bot le preguntó a la central (ver `askAdvisor` y

@@ -372,6 +372,30 @@ export default function ConversacionesPage() {
   const wanted = useRef<string | null>(null);
   const lastList = useRef("");
   const lastThread = useRef("");
+  const intervenedIds = useRef(new Set<number>());
+
+  // Si el operador tocó "Intervenir" y sale de Conversaciones (cambia a otra
+  // pantalla del portal o cierra la pestaña), devuelve esos chats al bot.
+  useEffect(() => {
+    const release = () => {
+      if (intervenedIds.current.size === 0) return;
+      const ids = [...intervenedIds.current];
+      intervenedIds.current.clear();
+      for (const id of ids) {
+        void fetch(`/api/conversations/${id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "resume", onlyIfTakeover: true }),
+          keepalive: true,
+        });
+      }
+    };
+    window.addEventListener("pagehide", release);
+    return () => {
+      window.removeEventListener("pagehide", release);
+      release();
+    };
+  }, []);
 
   const loadList = useCallback(async () => {
     const res = await fetch("/api/conversations", { cache: "no-store" });
@@ -507,6 +531,8 @@ export default function ConversacionesPage() {
 
   async function act(action: "pause" | "resume") {
     if (!selected) return;
+    if (action === "pause") intervenedIds.current.add(selected.id);
+    else intervenedIds.current.delete(selected.id);
     // Optimista: el botón responde al toque, el sondeo confirma.
     const patch =
       action === "pause" ? { botPaused: true, escalationReason: TAKEOVER_REASON } : { botPaused: false, escalationReason: null };
