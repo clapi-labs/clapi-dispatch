@@ -2,10 +2,12 @@ import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, needsHelpCondition, schema } from "@dispatch/shared/db";
 import { normalizeDraft } from "@dispatch/shared";
+import { mediaConfig } from "@dispatch/shared/media";
 
 import type { AdvisorQueryItem, ChatMessage, DraftFields } from "@/lib/types";
 
 import { needsHelp, TAKEOVER_REASON } from "@/lib/chat";
+import { mediaOf } from "@/lib/media";
 
 /** La misma regla que `findCourier` en el bot (apps/bot/src/bot/intake.ts): un
  *  motorizado guardado como "3001234567" y el wa_id "573001234567" de
@@ -103,6 +105,12 @@ export async function getThread(conversationId: number): Promise<ChatMessage[]> 
         replyTo: schema.messages.replyToWaMessageId,
         incoming: schema.messages.incoming,
         tripId: schema.messages.tripId,
+        mediaStatus: schema.messages.mediaStatus,
+        mediaMime: schema.messages.mediaMime,
+        mediaBytes: schema.messages.mediaBytes,
+        mediaWidth: schema.messages.mediaWidth,
+        mediaHeight: schema.messages.mediaHeight,
+        mediaExpiredReason: schema.messages.mediaExpiredReason,
       })
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
@@ -113,6 +121,7 @@ export async function getThread(conversationId: number): Promise<ChatMessage[]> 
       .where(eq(schema.trips.conversationId, conversationId)),
   ]);
 
+  const { retentionDays } = mediaConfig();
   const byWaId = new Map(rows.filter((m) => m.waMessageId).map((m) => [m.waMessageId!, m]));
   const codesBySource = new Map<string, string[]>();
   for (const t of trips) if (t.source) codesBySource.set(t.source, [...(codesBySource.get(t.source) ?? []), t.code]);
@@ -130,6 +139,7 @@ export async function getThread(conversationId: number): Promise<ChatMessage[]> 
       createdAt: m.createdAt.toISOString(),
       quote: quoted ? { id: quoted.id, role: quoted.role, text: quoted.text } : null,
       tripCodes: own,
+      media: mediaOf(m, retentionDays),
     };
   });
 }

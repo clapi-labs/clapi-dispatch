@@ -137,6 +137,8 @@ Reglas del flujo:
 | `migrate` | Solo al desplegar: aplica las migraciones y termina | `dispatch-migrate` |
 | `engine` | Algoritmo de asignación (`POST /evaluar`), sin estado y sin base de datos. Sin puerto público. Ver `ALGORITMO.md` | `dispatch-engine` |
 
+Volúmenes: `pgdata` (la base), `media` (las fotos de los chats: la escribe y la limpia el bot, el portal la monta en solo lectura; **no entra en el `pg_dump`**, ver [OPERACION.md](OPERACION.md), «Fotos de los chats») y los de Caddy.
+
 Todas las imágenes propias son `ghcr.io/clapi-labs/dispatch-*:<hash del commit>` (públicas). Nunca se despliega `latest`. Los contenedores tienen `restart: unless-stopped`, healthchecks y límite de memoria.
 
 ## Cómo funciona por dentro

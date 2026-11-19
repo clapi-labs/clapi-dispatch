@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
+import type { StoredMedia } from "@/services/media/store";
+
 export type Conversation = typeof schema.conversations.$inferSelect;
 
 /** El hilo lo identifica el teléfono del RESTAURANTE, no el del cliente
@@ -29,7 +31,7 @@ export async function recordMessage(
   conversationId: number,
   role: schema.MessageRole,
   text: string,
-  extra?: { waMessageId?: string | null; tripId?: number | null; replyTo?: string | null; incoming?: schema.IncomingPayload; extraction?: (typeof schema.messages.$inferInsert)["extraction"] },
+  extra?: { waMessageId?: string | null; tripId?: number | null; replyTo?: string | null; incoming?: schema.IncomingPayload; extraction?: (typeof schema.messages.$inferInsert)["extraction"]; media?: StoredMedia | null },
 ): Promise<number> {
   const [row] = await db
     .insert(schema.messages)
@@ -42,6 +44,17 @@ export async function recordMessage(
       replyToWaMessageId: extra?.replyTo ?? null,
       incoming: extra?.incoming ?? null,
       extraction: extra?.extraction ?? null,
+      // La foto va en el mismo INSERT que el mensaje: el portal nunca ve uno sin la otra.
+      ...(extra?.media
+        ? {
+            mediaPath: extra.media.path,
+            mediaMime: extra.media.mime,
+            mediaBytes: extra.media.bytes,
+            mediaWidth: extra.media.width,
+            mediaHeight: extra.media.height,
+            mediaStatus: "stored" as const,
+          }
+        : {}),
     })
     .returning({ id: schema.messages.id });
 

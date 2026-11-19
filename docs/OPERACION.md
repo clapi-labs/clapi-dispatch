@@ -276,6 +276,41 @@ Mide qué tan bien ubica el bot las direcciones contra puntos verificados en Goo
 ```
 `measure-addresses.sh` no viaja con el despliegue. Se copia una vez, igual que `deploy.sh` (arriba, «Cambios en `deploy.sh`»), cambiando el nombre del archivo. Corre con la imagen desplegada (`.tag`): los casos nuevos solo entran después de desplegarlos.
 
+## 4f. Fotos de los chats
+
+Las fotos que mandan restaurantes y motorizados se ven en Conversaciones (miniatura en la burbuja y visor con zoom propio). **No se guardan en un servicio externo ni en PostgreSQL**: viven en el disco del mismo servidor, en el volumen Docker `media`. Decisión y números: [CAPACIDAD-CONVERSACIONES.md](CAPACIDAD-CONVERSACIONES.md), sección 3.
+
+**Cómo funciona**
+1. Llega la foto: el bot la baja de Meta (tope de 5 MB de entrada), comprueba que de verdad sea una imagen JPEG, PNG o WebP, la achica a 1.200 px de lado mayor y la guarda en WebP con calidad ~70 (suele quedar en 40–120 kB, sin ubicación ni datos de la cámara). Se procesan de a 2 a la vez (`MEDIA_CONCURRENCY`); las demás esperan su turno. El bot tiene `mem_limit: 768m` por esto.
+2. Queda en `/data/media/AAAA-MM-DD/<uuid>.webp`, una carpeta por día. En `messages` solo se guarda la referencia (`media_path`, `media_mime`, `media_bytes`, `media_width`, `media_height`, `media_status`): nunca los bytes, así que `pg_dump` y los backups no crecen con las fotos.
+3. El portal las sirve en `GET /api/media/<id del mensaje>`, solo con sesión, desde el mismo volumen montado en solo lectura.
+
+**Limpieza automática (doble candado).** Corre en el tick del bot, cada hora (el primer tick tras arrancar también la corre). Borra el archivo y deja la fila marcada `expired`; el chat muestra «Imagen expirada (eliminada tras 30 días)» o «Imagen eliminada para liberar espacio», nunca una imagen rota.
+
+| Variable (`.env` del servidor) | Por defecto | Qué hace |
+|---|---|---|
+| `MEDIA_RETENTION_DAYS` | `30` | Pasado este plazo, la foto se borra. |
+| `MEDIA_MAX_MB` | `3072` | Si la carpeta pasa de este tamaño, se borran las más viejas hasta bajar. |
+| `MEDIA_MAX_DISK_PERCENT` | `75` | Si el disco del servidor pasa de este porcentaje, igual: se borran las más viejas hasta bajar. |
+| `MEDIA_CONCURRENCY` | `2` | Cuántas fotos se procesan a la vez (1–8). |
+
+Cambiar un valor: editarlo en `/opt/dispatch/.env` y `docker compose up -d bot portal` (el portal usa `MEDIA_RETENTION_DAYS` solo para el texto de «expirada»).
+
+**Revisar cómo va**
+```bash
+cd /opt/dispatch
+docker compose exec bot du -sh /data/media                 # lo que ocupan
+docker compose exec bot sh -c 'ls /data/media | wc -l'     # cuántos días hay guardados
+df -h /                                                     # el disco del servidor
+docker compose logs bot | grep -E "fotos borradas|\[media\]"  # limpiezas y fotos descartadas
+```
+
+**Ojo con**
+- **Las fotos no entran en el backup de la base** (I-1): son a propósito efímeras (30 días) y no son lo único que hay del pedido. Un servidor perdido pierde las fotos de ese mes. Si algún día hay que respaldarlas, se copia el volumen aparte (`docker run --rm -v dispatch_media:/data -v "$PWD":/out alpine tar czf /out/media.tgz -C /data .`).
+- Si una foto no se puede bajar, pesa de más o no es una imagen, el mensaje queda solo con `[Imagen]` y el bot sigue (queda `[media] imagen descartada` o `no se pudo guardar` en el log).
+- Si el disco llega al 75 % por otra causa (Postgres, imágenes de Docker), la limpieza va a vaciar las fotos para compensar. Es lo esperado, pero es la señal de que hay que mirar qué más ocupa disco.
+- Solo imágenes por ahora: los PDF y otros documentos siguen sin guardarse (`PLAN.md`, C-3).
+
 ## 5. Usuarios del portal
 
 No hay registro público. Se crean en el servidor:

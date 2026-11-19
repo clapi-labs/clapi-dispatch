@@ -15,6 +15,7 @@ export * from "./trip-code";
 export * from "./simulator-flag";
 export * from "./simulator";
 export * from "./gps-retention";
+export * from "./media-retention";
 export * from "./push";
 export * from "./return-debts";
 export * from "./demand";

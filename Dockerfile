@@ -48,7 +48,7 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     APP=${APP}
 WORKDIR /app
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S app && adduser -S app -G app     && mkdir -p /data/media && chown app:app /data/media
 COPY --from=build --chown=app:app /repo/apps/${APP}/.next/standalone ./
 COPY --from=build --chown=app:app /repo/apps/${APP}/.next/static ./apps/${APP}/.next/static
 # Archivos estáticos (el mapa de zonas del portal). El bot tiene la carpeta vacía.

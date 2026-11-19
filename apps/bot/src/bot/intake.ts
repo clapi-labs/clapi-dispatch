@@ -10,6 +10,7 @@ import { handleRestaurant } from "@/bot/order";
 import { PICK_TRIP_PREFIX } from "@/bot/trip-updates";
 import { mergeTurns } from "@/bot/turns";
 import { recordMessage, upsertConversationOnInbound, type Conversation } from "@/db/queries/conversation";
+import { storeIncomingImage } from "@/services/media/store";
 import { simulatedSender } from "@/simulator/inbound";
 import { markRead, markReadAndTyping } from "@/services/whatsapp/client";
 import type { IncomingMessage } from "@/services/whatsapp/types";
@@ -106,9 +107,14 @@ export async function handleIncoming(incoming: IncomingMessage) {
   const message: IncomingMessage = actingFor ? { ...incoming, phone: actingFor.phone, profileName: null } : incoming;
 
   const conversation = await upsertConversationOnInbound(message.phone, message.profileName);
+  // La foto se baja, se achica y se guarda en disco antes de anotar el mensaje: así el
+  // mensaje y su foto entran juntos y el portal nunca muestra uno sin la otra. Si falla,
+  // el mensaje queda solo con su texto (`[Imagen]`).
+  const media = message.kind === "image" ? await storeIncomingImage(message.mediaId) : null;
   const messageId = await recordMessage(conversation.id, "restaurant", asText(message), {
     waMessageId: message.waMessageId,
     incoming: asPayload(message),
+    media,
   });
 
   // Pausa general: el bot no le responde a nadie. Solo sigue funcionando

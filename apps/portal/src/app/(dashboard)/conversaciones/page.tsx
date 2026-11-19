@@ -6,6 +6,7 @@ import {
   Check,
   Hand,
   Headset,
+  ImageOff,
   MessagesSquare,
   MoreVertical,
   Pin,
@@ -20,6 +21,7 @@ import { flushSync } from "react-dom";
 import { AdvisorQueryPanel } from "@/components/AdvisorQueryPanel";
 import { ChatContactActions } from "@/components/ChatContactActions";
 import { ForwardDialog } from "@/components/ForwardDialog";
+import { ImageViewer } from "@/components/ImageViewer";
 import { KINDS, KindChip } from "@/components/KindChip";
 import { MessageMenu } from "@/components/MessageMenu";
 import { conversationName as name, needsHelp, phoneFromHash, sendErrorText, TAKEOVER_REASON } from "@/lib/chat";
@@ -27,6 +29,7 @@ import { copyText } from "@/lib/clipboard";
 import { useSwipePanes } from "@/lib/use-swipe-panes";
 import { useBusiness } from "@/lib/business";
 import { formatPhone, initials, samePhone } from "@/lib/format";
+import { captionOf, mediaUrl, placeholderText } from "@/lib/media";
 import type { ChatMessage, ConversationKind, ConversationSummary } from "@/lib/types";
 import { useLive } from "@/lib/live";
 import { createSendQueue } from "@/lib/send-queue";
@@ -120,6 +123,45 @@ function ContactAvatar({
   );
 }
 
+/** La foto del mensaje: la miniatura (se abre en el visor) o, si ya no está, un aviso limpio en su lugar. */
+function ChatImage({ message, onOpen }: { message: ChatMessage; onOpen: () => void }) {
+  const media = message.media!;
+  const [failed, setFailed] = useState(false);
+
+  if (media.status !== "stored" || failed) {
+    return (
+      <div className="mb-1 flex w-60 max-w-full items-center gap-2.5 rounded-xl border border-dashed border-line bg-sunken/70 px-3 py-3 text-xs leading-snug text-ink-2">
+        <ImageOff size={18} className="shrink-0 text-ink-3" />
+        <span>{placeholderText(failed ? null : media)}</span>
+      </div>
+    );
+  }
+
+  // El espacio se reserva con su proporción: el hilo no salta cuando carga la foto.
+  const ratio = media.width && media.height ? media.width / media.height : 4 / 3;
+  const width = Math.round(Math.min(256, Math.max(140, 320 * ratio)));
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Abrir imagen"
+      style={{ width, aspectRatio: ratio }}
+      className="mb-1 block max-w-full cursor-zoom-in overflow-hidden rounded-xl bg-sunken"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- sale de un endpoint autenticado y ya viene achicada */}
+      <img
+        src={media.src ?? mediaUrl(message.id)}
+        alt={captionOf(message.text) || "Imagen del chat"}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
+      />
+    </button>
+  );
+}
+
 /**
  * `role: "restaurant"` es todo lo que entra por WhatsApp, también lo que
  * escribe un motorizado. Colores de WhatsApp: lo que llega va en blanco y lo
@@ -138,6 +180,7 @@ const Bubble = memo(function Bubble({
   highlighted,
   onMenu,
   onQuote,
+  onImage,
 }: {
   message: ChatMessage;
   /** Cómo se llama quien escribe del otro lado, para la cita. */
@@ -146,11 +189,15 @@ const Bubble = memo(function Bubble({
   highlighted: boolean;
   onMenu: (message: ChatMessage, anchor: DOMRect | null) => void;
   onQuote: (messageId: number) => void;
+  onImage: (message: ChatMessage) => void;
 }) {
   const mine = message.role !== "restaurant";
   const time = useMemo(() => messageTime(message.createdAt), [message.createdAt]);
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touched = useRef(false);
+  /** Presionar la burbuja abre el menú: el toque que sigue no debe abrir también la foto. */
+  const held = useRef(false);
+  const caption = message.media ? captionOf(message.text) : message.text;
 
   function cancelHold() {
     if (hold.current) clearTimeout(hold.current);
@@ -169,7 +216,13 @@ const Bubble = memo(function Bubble({
       <div
         onPointerDown={(e) => {
           touched.current = e.pointerType === "touch";
-          if (touched.current) hold.current = setTimeout(() => onMenu(message, null), 450);
+          held.current = false;
+          if (touched.current) {
+            hold.current = setTimeout(() => {
+              held.current = true;
+              onMenu(message, null);
+            }, 450);
+          }
         }}
         onPointerUp={cancelHold}
         onPointerCancel={cancelHold}
@@ -202,7 +255,16 @@ const Bubble = memo(function Bubble({
         )}
         {/* La hora al lado del texto, como en WhatsApp: una copia invisible le guarda el
             sitio al final de la última línea; si no cabe, salta sola a una línea nueva. */}
-        {message.text}
+        {message.media && (
+          <ChatImage
+            message={message}
+            onOpen={() => {
+              if (held.current) held.current = false;
+              else onImage(message);
+            }}
+          />
+        )}
+        {caption}
         <span aria-hidden className="invisible ml-2 inline-block whitespace-nowrap text-[10px] leading-none">
           {time}
         </span>
@@ -234,6 +296,7 @@ const Thread = memo(function Thread({
   highlight,
   onMenu,
   onQuote,
+  onImage,
   bottomRef,
 }: {
   thread: ChatMessage[];
@@ -241,6 +304,7 @@ const Thread = memo(function Thread({
   highlight: number | null;
   onMenu: (message: ChatMessage, anchor: DOMRect | null) => void;
   onQuote: (messageId: number) => void;
+  onImage: (message: ChatMessage) => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
 }) {
   // La etiqueta del día se calcula una vez por mensaje, no en cada pintada.
@@ -254,7 +318,7 @@ const Thread = memo(function Thread({
               {days[i]}
             </p>
           )}
-          <Bubble message={m} contactName={contactName} highlighted={highlight === m.id} onMenu={onMenu} onQuote={onQuote} />
+          <Bubble message={m} contactName={contactName} highlighted={highlight === m.id} onMenu={onMenu} onQuote={onQuote} onImage={onImage} />
         </Fragment>
       ))}
       <div ref={bottomRef} />
@@ -512,6 +576,11 @@ export default function ConversacionesPage() {
 
   const [menu, setMenu] = useState<{ message: ChatMessage; anchor: DOMRect | null } | null>(null);
   const [forwarding, setForwarding] = useState<ChatMessage | null>(null);
+  const [viewing, setViewing] = useState<{ src: string; caption: string; width: number | null; height: number | null } | null>(null);
+  const openImage = useCallback((message: ChatMessage) => {
+    if (message.media?.status !== "stored") return;
+    setViewing({ src: message.media.src ?? mediaUrl(message.id), caption: captionOf(message.text), width: message.media.width, height: message.media.height });
+  }, [setViewing]);
 
   const openMenu = useCallback(
     // En celular siempre es la hoja de abajo, se abra con los puntos o presionando.
@@ -732,6 +801,7 @@ export default function ConversacionesPage() {
                   highlight={highlight}
                   onMenu={openMenu}
                   onQuote={goToMessage}
+                  onImage={openImage}
                   bottomRef={bottomRef}
                 />
               </div>
@@ -773,6 +843,8 @@ export default function ConversacionesPage() {
           onClose={() => setMenu(null)}
         />
       )}
+
+      {viewing && <ImageViewer {...viewing} onClose={() => setViewing(null)} />}
 
       {forwarding && (
         <ForwardDialog

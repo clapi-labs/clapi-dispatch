@@ -230,6 +230,19 @@ export type ConversationSummary = {
   lastRole: "restaurant" | "bot" | "agent" | null;
 };
 
+/** La foto de un mensaje: en disco (se ve) o ya borrada por la limpieza (se avisa). */
+export type ChatMedia =
+  | {
+      status: "stored";
+      mime: string;
+      width: number | null;
+      height: number | null;
+      bytes: number;
+      /** Solo el modo demo: una imagen incrustada en lugar de pedirla al servidor. */
+      src?: string;
+    }
+  | { status: "expired"; reason: "ttl" | "space" | null; retentionDays: number };
+
 export type ChatMessage = {
   id: number;
   role: "restaurant" | "bot" | "agent";
@@ -239,4 +252,6 @@ export type ChatMessage = {
   quote?: { id: number; role: "restaurant" | "bot" | "agent"; text: string } | null;
   /** Los códigos de los pedidos que salieron de este mensaje del restaurante. */
   tripCodes?: string[];
+  /** La foto que trae el mensaje, si trae una. */
+  media?: ChatMedia | null;
 };

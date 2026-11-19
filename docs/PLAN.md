@@ -295,6 +295,8 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 - Las imágenes y los PDF que llegan se ven en el chat del portal y se abren con zoom propio (el portal bloquea el zoom de la página).
 - Decidido y anotado dónde se guardan y por cuánto tiempo (depende de la coexistencia con WhatsApp Business; ver «Decisiones del dueño»).
 
+**Hecho (#102), solo imágenes:** se guardan en el disco del VPS (volumen `media`), fuera de PostgreSQL, achicadas a 1.200 px en WebP; se limpian a los 30 días y por tope de 3 GB / 75 % de disco; el chat muestra la miniatura, la abre en un visor con zoom propio y, si ya se borró, un aviso de «imagen expirada». Cómo se opera: [OPERACION.md](OPERACION.md), «Fotos de los chats»; por qué se eligió el disco y no un almacenamiento externo: [CAPACIDAD-CONVERSACIONES.md](CAPACIDAD-CONVERSACIONES.md), sección 3. **Falta:** los PDF y otros documentos (hoy solo imágenes). Si la coexistencia con WhatsApp Business cambia de dónde llegan los archivos, revisar este diseño.
+
 **Fases siguientes, aparte:** enviar imágenes y PDF desde el portal; audios y video solo si hacen falta.
 
 **Dónde mirar:** `apps/bot/src/bot/intake.ts` (`asText`), `apps/bot/src/services/whatsapp/`, la vista de Conversaciones.

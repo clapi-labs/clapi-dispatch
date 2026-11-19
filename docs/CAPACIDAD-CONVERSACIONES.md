@@ -148,12 +148,24 @@ Comparado con el texto (~4,3 MB/día), **las fotos pesan de 4 a 90 veces más**.
 
 Regla práctica: no dedicarle más de ~10 GB al disco de fotos, para dejar sitio a Postgres, Docker y las imágenes de los contenedores. Eso son **~65.000 fotos** de 150 kB: 4 meses a 500 fotos/día, 3 semanas a 2.500/día.
 
-### Recomendación
+### Recomendación (la que se redactó al medir)
 
 1. Guardar las fotos en un almacenamiento de objetos (R2 o equivalente), con la ruta del archivo en la fila del mensaje, no los bytes. Así `pg_dump` sigue siendo del tamaño del texto.
 2. Antes de pagar nada, mirar si Meta conserva el archivo un tiempo y se puede pedir a demanda con el `mediaId` (hoy el id ya queda guardado en `messages.incoming`). Si fuera así, un primer paso sin almacenamiento propio sería pedirla a Meta al abrir el chat. **Hay que confirmar el plazo y las condiciones en la documentación de Meta antes de apoyarse en esto**, y también que cambia con la coexistencia con WhatsApp Business (pendiente del dueño, ver PLAN.md).
 3. Reducir el peso al guardar (redimensionar a ~1.600 px y recomprimir) y definir retención (p. ej. 90 días).
 4. Esto es la issue de C-3; no entra aquí.
+
+### Decisión tomada en C-3 (#102): disco del VPS, sin almacenamiento externo
+
+Se descartó R2 y cualquier almacenamiento de objetos externo. Las fotos van al **disco del mismo VPS**, fuera de PostgreSQL, y la fila del mensaje guarda solo la referencia (`messages.media_*`). Para que sea seguro con 800–1.000 servicios al día:
+
+- **Comprimir al entrar:** lado mayor de 1.200 px y WebP calidad ~70, unos 40–120 kB por foto en lugar de los 150 kB estimados arriba (y sin los datos de la cámara). Entrada máxima de 5 MB; de a 2 fotos a la vez para no disparar la memoria (el bot sube de 512 a 768 MB).
+- **Doble candado de limpieza**, cada hora: se borra lo de más de **30 días**, y si la carpeta pasa de **3 GB** o el disco del servidor de **75 %**, se borra lo más viejo hasta bajar.
+- **Cuentas:** a 800 fotos/día de ~80 kB, 30 días son ≈ 1,9 GB: caben bajo el tope de 3 GB, que queda como red de seguridad para días de muchas fotos. Con el disco de 38 GB (~24 GB libres en staging) sobra margen.
+- **Qué se acepta a cambio:** el servidor es la única copia. Un VPS perdido pierde las fotos de los últimos 30 días; los backups de la base (I-1) no las incluyen. Es el trato de una retención corta y efímera; si algún día hiciera falta más, el siguiente paso sería el almacenamiento de objetos de la recomendación de arriba.
+- La opción 2 (pedirlas a Meta al abrir el chat) no se tomó: depende de plazos de Meta sin confirmar.
+
+Operación, variables y comandos: [OPERACION.md](OPERACION.md), «Fotos de los chats».
 
 ---
 
@@ -164,14 +176,14 @@ Regla práctica: no dedicarle más de ~10 GB al disco de fotos, para dejar sitio
 | Contenedor | Límite |
 |---|---|
 | postgres | 1 GB |
-| bot | 512 MB |
+| bot | 768 MB (era 512 MB; sube por procesar fotos, C-3) |
 | portal | 512 MB |
 | osrm | 512 MB |
 | caddy | 128 MB |
 | engine | 128 MB |
 | worker | 128 MB |
 | simulator (solo staging) | 128 MB |
-| **Suma** | **3 GB** de los 4 GB del CX23 |
+| **Suma** | **≈ 3,25 GB** de los 4 GB del CX23 |
 
 Quedan ~1 GB para el sistema, Docker y el caché de disco. Sin imprevistos, cabe; con todos los contenedores cerca de su límite, el margen es corto.
 
@@ -222,7 +234,7 @@ Pegar el resultado en esta sección. Sin eso, la conclusión sobre «cuánto mar
 
 - Escribir en Conversaciones ya no repinta la bandeja ni el hilo, y el envío nunca bloquea la caja (implementado).
 - A 500 chats al día, el almacenamiento y las consultas aguantan; lo primero que falla es la vista previa de la bandeja (H1) y el hilo completo descargado en cada aviso (H2). Ambos son arreglos pequeños y van en issues aparte.
-- Las imágenes son lo que cambiaría el disco y los backups: no guardarlas en Postgres; usar almacenamiento de objetos.
+- Las imágenes son lo que cambiaría el disco y los backups: no se guardan en Postgres. Decisión de C-3 (#102): disco del VPS, comprimidas al entrar y con retención de 30 días y tope de 3 GB / 75 % de disco (sección 3).
 - La carga real de los contenedores en staging queda por medir (sin acceso SSH desde esta máquina); el comando está arriba.
 
 ---

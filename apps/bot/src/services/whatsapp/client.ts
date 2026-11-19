@@ -154,37 +154,50 @@ export function markRead(waMessageId: string) {
   return post({ status: "read", message_id: waMessageId });
 }
 
+/** Los bytes de un archivo que mandaron por WhatsApp. */
+export type MediaFile = { mimeType: string; bytes: Buffer };
+
 /** Las fotos se mandan al modelo en base64: así no hay que exponer la URL
- *  de Meta (que pide el token) ni guardar el archivo. */
+ *  de Meta (que pide el token). */
 export type DownloadedImage = { mimeType: string; base64: string };
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Tope de lo que se descarga: una foto más pesada se descarta. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
- * Descarga una foto que mandaron por WhatsApp: primero se pide a Meta la URL
+ * Descarga un archivo que mandaron por WhatsApp: primero se pide a Meta la URL
  * del archivo y luego el archivo, ambos con el token. En el chat simulado el
- * id es una ruta local. `null` si no se pudo: el turno sigue con el texto.
+ * id es una ruta local. `null` si no se pudo (o pesa más del tope).
  */
-export async function downloadImage(mediaId: string): Promise<DownloadedImage | null> {
+export async function fetchMedia(mediaId: string): Promise<MediaFile | null> {
   try {
     if (env.whatsappSimulated) {
       const { readFile } = await import("node:fs/promises");
       const bytes = await readFile(mediaId);
+      if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`muy pesada (${bytes.length} bytes)`);
       const ext = mediaId.toLowerCase().split(".").pop();
       const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-      return { mimeType, base64: bytes.toString("base64") };
+      return { mimeType, bytes };
     }
     const auth = { Authorization: `Bearer ${env.whatsapp.accessToken}` };
     const meta = await fetch(`https://graph.facebook.com/${env.whatsapp.apiVersion}/${mediaId}`, { headers: auth });
     if (!meta.ok) throw new Error(`media ${meta.status}`);
-    const { url, mime_type } = (await meta.json()) as { url: string; mime_type?: string };
+    const { url, mime_type, file_size } = (await meta.json()) as { url: string; mime_type?: string; file_size?: number };
+    // Meta dice el peso antes de descargar: una foto de más del tope ni se pide.
+    if (typeof file_size === "number" && file_size > MAX_IMAGE_BYTES) throw new Error(`muy pesada (${file_size} bytes)`);
     const file = await fetch(url, { headers: auth });
     if (!file.ok) throw new Error(`archivo ${file.status}`);
     const bytes = Buffer.from(await file.arrayBuffer());
     if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`muy pesada (${bytes.length} bytes)`);
-    return { mimeType: mime_type ?? "image/jpeg", base64: bytes.toString("base64") };
+    return { mimeType: mime_type ?? "image/jpeg", bytes };
   } catch (error) {
-    console.error("[whatsapp] no se pudo descargar la imagen", mediaId, error instanceof Error ? error.message : error);
+    console.error("[whatsapp] no se pudo descargar el archivo", mediaId, error instanceof Error ? error.message : error);
     return null;
   }
+}
+
+/** La foto lista para el modelo: en base64. `null` si no se pudo: el turno sigue con el texto. */
+export async function downloadImage(mediaId: string): Promise<DownloadedImage | null> {
+  const file = await fetchMedia(mediaId);
+  return file ? { mimeType: file.mimeType, base64: file.bytes.toString("base64") } : null;
 }
