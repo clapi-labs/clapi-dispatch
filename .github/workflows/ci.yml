@@ -35,6 +35,27 @@ jobs:
       # No necesita secretos: las variables se leen al usarlas, no al compilar.
       - run: npm run build
 
+  secrets:
+    name: Secretos (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Todo el historial: un secreto en un commit viejo sigue siendo público.
+          fetch-depth: 0
+      # Imagen oficial con versión fija. --redact: los registros de CI de un
+      # repositorio público también son públicos, así que nunca se imprime el
+      # valor encontrado. safe.directory: el repositorio montado es de otro
+      # usuario que el del contenedor. Reglas y excepciones: .gitleaks.toml.
+      - name: Buscar llaves y contraseñas en el historial
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            git /repo --config /repo/.gitleaks.toml --redact --no-banner --verbose \
+            --log-opts="--all"
+
   engine:
     name: Engine (casos y contrato)
     # Fijo, no ubuntu-latest: en Ubuntu 26.04 setup-python aún no tiene la

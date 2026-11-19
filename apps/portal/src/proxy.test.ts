@@ -209,5 +209,18 @@ describe("proxy.ts: protección de las rutas (Postgres)", { skip: integrationSki
       delete process.env.AUTH_DISABLED;
       assert.equal((await call("/api/trips")).status, 401);
     });
+
+    it("en producción (DEPLOY_ENV=production), AUTH_DISABLED=1 no tiene efecto", async () => {
+      const prev = process.env.DEPLOY_ENV;
+      try {
+        process.env.AUTH_DISABLED = "1";
+        process.env.DEPLOY_ENV = "production";
+        assert.equal((await call("/api/trips")).status, 401);
+        assert.equal((await call("/viajes")).status, 307);
+      } finally {
+        if (prev === undefined) delete process.env.DEPLOY_ENV;
+        else process.env.DEPLOY_ENV = prev;
+      }
+    });
   });
 });

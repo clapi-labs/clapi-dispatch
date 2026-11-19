@@ -1,8 +1,10 @@
+import { ESCALATION_MESSAGE } from "@dispatch/shared";
 import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 
 import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
 
 import { findCourier, handleCourier } from "@/bot/courier";
+import { say } from "@/bot/messaging";
 import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
 import { PICK_TRIP_PREFIX } from "@/bot/trip-updates";
@@ -17,10 +19,34 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  *
  * - **Motorizados** (su teléfono está en la flota): `bot/courier.ts`. Se les
  *   responde en el acto: tocan botones y esperan la confirmación.
- * - **Restaurantes** (cualquier otro número): `bot/order.ts`, que los reconoce
- *   por su número y su nombre (`bot/restaurant-identity.ts`). Se espera un
- *   momento antes de responder, como haría una persona.
+ * - **Restaurantes** (su número está en Restaurantes, activo): `bot/order.ts`.
+ *   Se espera un momento antes de responder, como haría una persona.
+ *
+ * Cualquier otro número no pide: recibe un único aviso y el chat pasa a la
+ * central (`holdUnknownNumber`).
  */
+
+/** Por qué el chat de un número no registrado está en la central. */
+export const UNKNOWN_NUMBER_REASON = "Número no registrado: agrégalo en Restaurantes y devuélvelo al bot, o déjalo así.";
+
+/**
+ * Un número que no es restaurante registrado ni motorizado no pide domicilios:
+ * cualquiera puede escribirle al número de la agencia, y un pedido confirmado
+ * despacha una moto de verdad. Recibe un solo aviso y el chat pasa a la
+ * central, que decide si lo registra como restaurante. Mientras tanto el bot no
+ * le contesta más (el chat queda en pausa) y no se gasta OpenAI en él.
+ *
+ * El chat se reclama con un UPDATE condicional: si llegan varios mensajes a la
+ * vez, solo uno envía el aviso.
+ */
+async function holdUnknownNumber(conversationId: number, phone: string) {
+  const [claimed] = await db
+    .update(schema.conversations)
+    .set({ botPaused: true, escalationReason: UNKNOWN_NUMBER_REASON, draft: null, failedAttempts: 0 })
+    .where(and(eq(schema.conversations.id, conversationId), eq(schema.conversations.botPaused, false)))
+    .returning({ id: schema.conversations.id });
+  if (claimed) await say(conversationId, phone, ESCALATION_MESSAGE);
+}
 
 /**
  * Cuánto espera el bot, desde el último mensaje del restaurante, antes de
@@ -99,6 +125,11 @@ export async function handleIncoming(incoming: IncomingMessage) {
   // Con un asesor al frente, el bot no contesta nada: escuchar y callar.
   // Tampoco marca leído: eso le toca al asesor.
   if (conversation.botPaused) return;
+
+  if (!(await findRestaurantByPhone(message.phone))) {
+    await holdUnknownNumber(conversation.id, message.phone);
+    return;
+  }
 
   // Espera natural. Si en medio llega otro mensaje, este se retira: el más
   // reciente es el que responde, con todo lo acumulado.

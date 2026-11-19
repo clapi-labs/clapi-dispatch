@@ -1,0 +1,12 @@
+# Reglas de gitleaks para el CI (job «Secretos» de .github/workflows/ci.yml).
+# Se usan las reglas por defecto (llaves de OpenAI, Google, Meta, GitHub, AWS,
+# llaves privadas, tokens genéricos...).
+#
+# Un falso positivo se excluye agregando su «Fingerprint» (sale en el registro
+# del CI, sin el valor) como una línea en .gitleaksignore. Un secreto real NO
+# se excluye: se revoca en el servicio y se cambia (docs/SEGURIDAD.md, «Si se
+# filtra una llave»).
+title = "clapi-dispatch"
+
+[extend]
+useDefault = true

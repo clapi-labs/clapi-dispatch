@@ -234,6 +234,31 @@ describe("intake.ts: a quién va cada mensaje (Postgres)", { skip: integrationSk
       const stored = await messagesOf(conversation.id);
       assert.equal(conversation.processedThroughMessageId, stored.filter((m) => m.role === "restaurant").at(-1)?.id, "quedó procesado hasta el último");
     });
+
+    it("un número no registrado recibe un único aviso y pasa a la central sin gastar OpenAI", async () => {
+      const stranger = "573009998877";
+      const started = Date.now();
+      await intake.handleIncoming(text(stranger, "hola quiero un domicilio"));
+      assert.ok(Date.now() - started < 2_000, "no espera ni llama a OpenAI");
+      assert.equal(modelCalls.length, 0);
+      assert.equal(sentTo(stranger).length, 1);
+      const conv = await conversationByPhone(stranger);
+      assert.equal(conv.botPaused, true);
+      assert.equal(conv.escalationReason, intake.UNKNOWN_NUMBER_REASON);
+
+      // Si vuelve a escribir mientras sigue pausado, el bot se mantiene callado.
+      await intake.handleIncoming(text(stranger, "¿hola?"));
+      assert.equal(sentTo(stranger).length, 1);
+      assert.equal(modelCalls.length, 0);
+    });
+
+    it("un restaurante inactivo tampoco pide y pasa a la central", async () => {
+      const inactive = await createRestaurant({ name: "Cerrado", active: false, knownPickupLocation: PICKUP });
+      await intake.handleIncoming(text(inactive.phone!, "un domi porfa"));
+      assert.equal(modelCalls.length, 0);
+      assert.equal(sentTo(inactive.phone!).length, 1);
+      assert.equal((await conversationByPhone(inactive.phone!)).botPaused, true);
+    });
   });
 
   describe("modo simulador (staging)", () => {

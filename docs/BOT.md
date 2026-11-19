@@ -62,15 +62,15 @@ en 10
 | --- | --- | --- |
 | Registrado | Coincide, no viene o solo es el perfil (suele ser personal) | Lo atiende como ese restaurante |
 | Registrado | Dice en el mensaje ser otro | Pregunta una vez «¿Hablo con Donde Lucho?». Solo un «no» pasa a la central. No crea ni renombra nada |
-| No registrado | Coincide con uno sin número | Lo atiende como ese restaurante, le guarda el número y se lo avisa («Te reconocí como…») |
-| No registrado | Coincide con uno que tiene otro número | Pasa a la central con el pedido guardado. El otro número no cambia |
-| No registrado | Parecido a varios, no coincide o no viene | Restaurante nuevo |
+| No registrado (o restaurante inactivo) | Cualquiera | No pide. Recibe un solo aviso («Te transferiré con un asesor…») y el chat pasa a la central con el motivo «Número no registrado». El bot no le contesta nada más ni gasta OpenAI en él |
+
+**Números no registrados.** Cualquiera puede escribirle al número de la agencia, y un pedido confirmado despacha una moto de verdad: por eso solo piden los restaurantes registrados (issue #32). La central decide qué hacer con el chat: si es un restaurante que va a trabajar con la agencia, lo agrega en **Restaurantes** con ese número y devuelve el chat al bot; si no, lo deja como está y el bot sigue callado. Un restaurante registrado sin número tampoco se reconoce solo por el nombre: la central le agrega el número. Lo decide `bot/intake.ts` (`holdUnknownNumber`), antes de esperar o llamar a OpenAI.
 
 Los nombres se comparan sin mayúsculas, tildes, orden ni palabras genéricas («La Nona Pizzería» = «Pizzería La Nona»), sin gastar una llamada. Si no son iguales, el modelo da un puntaje de 0 a 1 y el código decide: hace falta 0.85 y 0.15 de ventaja sobre el segundo. Una palabra que distingue («El Paisa Express» y «El Paisa») deja el puntaje en 0.8 como máximo, diga lo que diga el modelo. Si OpenAI falla, gana el número; sin número, sigue como restaurante nuevo y lo intenta otra vez con el siguiente mensaje. Un nombre escrito como destino o referencia («domi para…», «al lado de…») no cuenta como identificación. Cada nombre se compara una vez por pedido. Al cambiar el prompt, el modelo o el umbral: `npm run bot:eval:restaurantes`.
 
 **El número de una moto gana:** un número registrado en Flota nunca se trata como restaurante.
 
-Un restaurante nuevo dice de dónde se recoge en su primer pedido. Al confirmarlo, queda guardado (nombre de WhatsApp y dirección ubicada en el mapa) y se le avisa. Desde el siguiente pedido solo manda la dirección de entrega. También se puede registrar a mano: `npm run restaurant:create`.
+Los restaurantes se registran en el portal (**Restaurantes**) o a mano: `npm run restaurant:create`.
 
 ## La dirección: el formato lo pone la agencia
 

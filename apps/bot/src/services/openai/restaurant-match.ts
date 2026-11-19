@@ -35,6 +35,8 @@ export async function scoreRestaurantName(name: string, candidates: { id: number
         model: env.openai.chatModel,
         response_format: { type: "json_object" },
         temperature: 0,
+        // Tope de la respuesta: solo los restaurantes parecidos, con su puntaje.
+        max_completion_tokens: 800,
         messages: [
           { role: "system", content: PROMPT },
           { role: "user", content: JSON.stringify({ nombre: name, restaurantes: candidates.map(({ id, name }) => ({ id, nombre: name })) }) },

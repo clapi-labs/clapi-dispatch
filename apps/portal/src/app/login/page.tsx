@@ -8,6 +8,21 @@ import logotipo from "@/assets/logotipo-clapi.svg";
 import { BRAND } from "@/lib/brand";
 import { isStandalone } from "@/lib/push";
 
+/**
+ * A dónde ir después del login: solo una ruta del mismo portal. Se compara ya
+ * interpretada por el navegador, que trata `\` como `/`: «/\otro.com» empieza
+ * con una barra pero lleva a otro sitio.
+ */
+function safeNext(next: string | null): string {
+  if (!next) return "/viajes";
+  try {
+    const url = new URL(next, window.location.origin);
+    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : "/viajes";
+  } catch {
+    return "/viajes";
+  }
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -26,9 +41,7 @@ function LoginForm() {
       body: JSON.stringify({ email: form.get("email"), password: form.get("password"), installed: isStandalone() }),
     }).catch(() => null);
     if (res?.ok) {
-      // Solo rutas internas: `next` no puede mandar a otro sitio.
-      const next = params.get("next");
-      const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/viajes";
+      const target = safeNext(params.get("next"));
       // El fragmento (#tel=…, #pedido=… de una alerta) sobrevive la redirección
       // al login pero no va en `next`: se le vuelve a poner, con una carga
       // completa para que la pantalla lo lea al abrir.
