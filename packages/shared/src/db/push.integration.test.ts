@@ -272,7 +272,11 @@ describe("alertas al celular (Postgres)", { skip }, () => {
       assert.deepEqual(await run(), []);
     });
 
+    /** Abierto todo el día (apertura igual al límite): estas pruebas miran el aviso por tiempo, no el del cierre, y no deben depender de la hora a la que corren. */
+    const openAllDay = () => client.db.insert(schema.settings).values({ key: "service_hours", value: { opensAt: "00:00", defaultDeadline: "00:00" } });
+
     it("un datáfono afuera más de datafonoAlertMinutes", async () => {
+      await openAllDay();
       const c = await courier("available");
       await client.db.insert(schema.returnDebts).values({ courierId: c.id, restaurantName: "Donde Lucho", reason: "datafono", declaredBy: "central", createdAt: ago(31) });
       const alerts = await run();
@@ -281,6 +285,7 @@ describe("alertas al celular (Postgres)", { skip }, () => {
     });
 
     it("un datáfono de hace 10 minutos todavía no", async () => {
+      await openAllDay();
       const c = await courier("available");
       await client.db.insert(schema.returnDebts).values({ courierId: c.id, restaurantName: "Donde Lucho", reason: "datafono", declaredBy: "central", createdAt: ago(10) });
       assert.deepEqual(await run(), []);

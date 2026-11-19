@@ -7,7 +7,7 @@ import { after, before, beforeEach, describe, it, mock } from "node:test";
 import { eq } from "drizzle-orm";
 import sharp from "sharp";
 
-import { db, schema, setBusinessPaused, saveFareRanges } from "@dispatch/shared/db";
+import { db, schema, setBusinessPaused, saveFareRanges, setServiceHours } from "@dispatch/shared/db";
 import { closeTestDatabase, createCourier, createRestaurant, integrationSkip, resetDatabase } from "@dispatch/shared/db/test-db";
 
 import {
@@ -92,6 +92,8 @@ beforeEach(async () => {
   resetMocks();
   modelCalls.length = 0;
   delete process.env.SIMULATOR_ENABLED;
+  // Abierto todo el día: sin esto, la prueba de la espera falla de noche («ya no recibimos servicios»).
+  await setServiceHours({ opensAt: "00:00", defaultDeadline: "00:00" });
   await saveFareRanges([
     { upToKm: 3, price: 5_000 },
     { upToKm: null, price: 8_000 },
