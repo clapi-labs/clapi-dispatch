@@ -1,0 +1,5 @@
+# Falsos positivos comprobados de gitleaks (ver .gitleaks.toml y
+# docs/SEGURIDAD.md). Un secreto real NUNCA va aquí: se revoca y se cambia.
+
+# SESSION_SECRET inventado de las pruebas del portal (test-support/portal-env.ts), no es una llave real.
+54cda765a4d879f1f869900c0958be3ffc36f65f:apps/portal/src/test-support/portal-env.ts:generic-api-key:26
