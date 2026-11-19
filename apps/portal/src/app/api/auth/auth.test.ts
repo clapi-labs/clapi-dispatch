@@ -142,7 +142,7 @@ describe("autenticación y sesiones del portal (Postgres)", { skip: integrationS
       await createUser({ email: "ana@clapi.test" });
       const res = await attempt({ email: "ana@clapi.test", password: "otra-clave" });
       assert.equal(res.status, 401);
-      assert.deepEqual(await res.json(), { error: "Correo o contraseña incorrectos" });
+      assert.deepEqual(await res.json(), { error: "Usuario o contraseña incorrectos" });
       assert.equal(setCookieOf(res), null, "no deja cookie");
       assert.equal(await sessionCount(), 0);
     });
@@ -170,11 +170,11 @@ describe("autenticación y sesiones del portal (Postgres)", { skip: integrationS
       ["con tipos que no son texto", { email: 123, password: { x: 1 } }],
       ["con un cuerpo vacío", {}],
     ] as const) {
-      it(`${name}: 400 «Falta correo o contraseña»`, async () => {
+      it(`${name}: 400 «Falta usuario o contraseña»`, async () => {
         await createUser({ email: "ana@clapi.test" });
         const res = await attempt(body);
         assert.equal(res.status, 400);
-        assert.deepEqual(await res.json(), { error: "Falta correo o contraseña" });
+        assert.deepEqual(await res.json(), { error: "Falta usuario o contraseña" });
       });
     }
 

@@ -99,6 +99,13 @@ export async function closeSession(sessionId: number) {
   cache.set(sessionId, { alive: false, checkedAt: Date.now() });
 }
 
+/** Cierra todas las sesiones de un usuario (al cambiarle la contraseña). */
+export async function closeUserSessions(userId: number) {
+  const rows = await db.delete(schema.portalSessions).where(eq(schema.portalSessions.userId, userId)).returning({ id: schema.portalSessions.id });
+  const now = Date.now();
+  for (const row of rows) cache.set(row.id, { alive: false, checkedAt: now });
+}
+
 /** Las sesiones abiertas de todos los usuarios, la más reciente primero. */
 export async function listOpenSessions() {
   const rows = await db

@@ -18,6 +18,18 @@ export function adminEmails(env: Record<string, string | undefined> = process.en
   return list.length > 0 ? list : null;
 }
 
+/**
+ * Quién puede crear usuarios y generar enlaces de contraseña: solo los de
+ * `PORTAL_ADMIN_EMAILS` (usuario o correo, en minúsculas). Sin la variable,
+ * nadie: con ella vacía cualquiera con sesión podría quedarse con la cuenta de
+ * otro. Con el login apagado (staging) sí, como `isAdmin`.
+ */
+export async function isUserAdmin(): Promise<boolean> {
+  if (authDisabled()) return true;
+  if (!adminEmails()) return false;
+  return isAdmin();
+}
+
 export async function isAdmin(): Promise<boolean> {
   if (authDisabled()) return true;
   const session = await currentSession();
