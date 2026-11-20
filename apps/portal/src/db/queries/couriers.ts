@@ -152,6 +152,13 @@ export async function ensureGpsDeviceId(courierId: number): Promise<string> {
   return row?.id ?? generated;
 }
 
+/** Administrador de la agencia que también domicilia (#120): el algoritmo le da
+ *  una ventaja pequeña en la asignación (`VENTAJA_ADMIN`, docs/ALGORITMO.md). */
+export async function setCourierAdmin(id: number, isAdmin: boolean) {
+  const [courier] = await db.update(schema.couriers).set({ isAdmin }).where(and(eq(schema.couriers.id, id), eq(schema.couriers.active, true))).returning();
+  return courier ?? null;
+}
+
 export async function setCourierPhoto(id: number, photo: string | null) {
   const [courier] = await db.update(schema.couriers).set({ photo }).where(eq(schema.couriers.id, id)).returning();
   return courier ?? null;

@@ -37,6 +37,8 @@ export type SnapshotCourier = {
   lng: number | null;
   locationUpdatedAt: Date | null;
   locationMoving?: boolean | null;
+  /** Administrador de la agencia que también domicilia (#120): el engine le da `VENTAJA_ADMIN`. */
+  isAdmin?: boolean;
   deliveriesThisShift: number;
   shiftStartedAt: Date | null;
   lastDeliveredAt: Date | null;
@@ -95,6 +97,7 @@ export type EvaluarRequest = {
     disponible_desde_ts: number;
     paradas: Parada[];
     pendientes: Pendiente[];
+    admin: boolean;
   }[];
   tiempos: "haversine" | "osrm";
 };
@@ -187,6 +190,7 @@ export function buildEvaluarRequest(
           disponible_desde_ts: desde.length ? Math.max(...desde.map(seconds)) : seconds(now),
           paradas: paradasDe(c, c.activeTrips.filter((t) => t.id !== trip.id), settings.demanda),
           pendientes: pendientesDe(c),
+          admin: Boolean(c.isAdmin),
         };
       }),
       tiempos: settings.porCalle ? "osrm" : "haversine",

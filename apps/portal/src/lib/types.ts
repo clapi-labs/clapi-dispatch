@@ -86,6 +86,8 @@ export type Courier = {
   /** Si la central puede asignarle pedidos (con el simulador: las simuladas y,
    *  para un viaje de prueba, las reales con GPS). */
   assignable?: boolean;
+  /** Administrador de la agencia que también domicilia: prioridad sutil en la asignación (#120). */
+  isAdmin?: boolean;
   /** Tiene identificador de GPS: su celular reporta la ubicación. */
   hasGps?: boolean;
   /** Con el simulador: moto simulada, número de prueba o moto real con GPS, y

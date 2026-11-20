@@ -10,7 +10,7 @@ import math
 
 import calles
 
-ENGINE_VERSION = "2026.11.3"
+ENGINE_VERSION = "2026.11.4"
 
 RADIO_TIERRA_KM = 6371.0
 
@@ -44,6 +44,13 @@ DEFAULTS = {
     "VENTAJA_MISMO_RESTAURANTE": 8.0,
     "MISMO_LUGAR_KM": 0.05,       # sin id de restaurante, dos paradas a menos de esto son el mismo lugar
 
+    # Administradores de la agencia que también domicilian (#120): ventaja pequeña, en puntos de Score,
+    # para preferirlos en condiciones parecidas. Entre motos libres, llegar hasta MARGEN_DESPACHO_MIN
+    # antes que otra no da puntos (las dos llegan a tiempo), así que ahí desempata; pasado ese margen,
+    # cada minuto de más pesa ~6,6 puntos en pico y ~2,8 en valle, y la moto mejor ubicada gana. Con dos
+    # administradores, los dos la tienen y se turnan por la equidad (docs/ALGORITMO.md, «Administradores»).
+    "VENTAJA_ADMIN": 3.5,
+
     "PESOS": {"pico": (0.70, 0.20, 0.10), "valle": (0.30, 0.10, 0.60)},
     "BETA": {"pico": 0.2, "valle": 0.5},
 }
@@ -53,7 +60,8 @@ DEFAULTS = {
 ESPERA_CLIENTE_MIN = 10.0
 
 NOMBRES_FACTOR = {"tiempo": "tiempo de llegada al restaurante", "ruta": "optimización de ruta",
-                  "equidad": "equidad del turno", "pendiente": "un pendiente en el mismo restaurante"}
+                  "equidad": "equidad del turno", "pendiente": "un pendiente en el mismo restaurante",
+                  "admin": "prioridad admin"}
 
 # La demanda decide cuándo se vuelve al restaurante. Mientras el sistema no la mida (#59), sale del
 # modo: pico = alta, valle = baja.
@@ -256,7 +264,7 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
     """Calcula el Score de cada moto para un pedido y las ordena de mejor a peor.
 
     motos: dicts con id, lat, lon, sin_senal, entregas, cuota, disponible_desde_ts, paradas
-    pendientes (ver mejor_insercion) y, opcional, pendientes que no están en su ruta. Los tiempos
+    pendientes (ver mejor_insercion) y, opcionales, pendientes que no están en su ruta y admin. Los tiempos
     (t_listo) van en minutos desde `ahora`.
     tiempo: función (a, b) -> minutos de viaje. Por defecto, Haversine × FACTOR_RUTA.
     demanda: "alta" o "baja"; por defecto, la del modo.
@@ -332,6 +340,9 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
         aprovecha = ruta["aprovecha"]
         if aprovecha:
             aportes["pendiente"] = c["VENTAJA_MISMO_RESTAURANTE"]
+        admin = bool(m.get("admin", False))
+        if admin:
+            aportes["admin"] = c["VENTAJA_ADMIN"]
         planes[m["id"]] = ruta["plan"]
 
         r.update({
@@ -339,6 +350,7 @@ def evaluar(motos, restaurante, cliente, radio_km, ahora, modo="pico", t_listo=0
             "aprovecha": [{"pendiente": p["pedido"], "motivo": p.get("motivo")} for p in aprovecha],
             "regreso_aplazado": [p["pedido"] for p in ruta["aplazados"]],
             "ventaja_pendiente": c["VENTAJA_MISMO_RESTAURANTE"] if aprovecha else 0.0,
+            "ventaja_admin": c["VENTAJA_ADMIN"] if admin else 0.0,
             "elegible": True,
             "score": round(sum(aportes.values()), 1),
             "f_tiempo": round(ft, 1), "f_ruta": round(fr, 1) if multipedido else None,
@@ -383,6 +395,8 @@ def explicar(elegibles):
         que = " y ".join(dict.fromkeys(QUE_HACE.get(p["motivo"], "regresa") for p in ganador["aprovecha"]))
         notas.append(f"recoge donde tiene un pendiente y {que} en la misma vuelta "
                      f"(+{ganador['ventaja_pendiente']:g})")
+    if ganador.get("ventaja_admin"):
+        notas.append(f"es admin (+{ganador['ventaja_admin']:g})")
     if ganador["regreso_aplazado"]:
         notas.append("el regreso del datáfono se aplaza por demanda alta")
     return frase + "".join(f"; {n}" for n in notas)

@@ -1,6 +1,6 @@
 import type { CourierStatus } from "@dispatch/shared/db/schema";
 
-import { removeCourier, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
+import { removeCourier, setCourierAdmin, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
 import { notifyBot } from "@/lib/bot";
 import { readJsonObject } from "@/lib/json";
 import { isValidPhoto } from "@/lib/photo";
@@ -21,6 +21,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if ("photo" in body) {
     if (!isValidPhoto(body.photo)) return Response.json({ error: "Foto inválida" }, { status: 400 });
     const courier = await setCourierPhoto(Number(id), body.photo);
+    return courier ? Response.json(courier) : Response.json({ error: "No existe" }, { status: 404 });
+  }
+
+  // Admin con prioridad en la asignación (#120). Solo cambia el algoritmo, no su estado.
+  if ("isAdmin" in body) {
+    if (typeof body.isAdmin !== "boolean") return Response.json({ error: "isAdmin tiene que ser true o false" }, { status: 400 });
+    const courier = await setCourierAdmin(Number(id), body.isAdmin);
     return courier ? Response.json(courier) : Response.json({ error: "No existe" }, { status: 404 });
   }
 

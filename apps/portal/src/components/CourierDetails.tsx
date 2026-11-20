@@ -86,7 +86,7 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: CourierProfile; o
  * y los datos personales se piden recién acá, al abrir, para que una flota
  * grande no cargue la ficha de todos en cada sondeo.
  */
-export function CourierDetails({ courier }: { courier: Courier }) {
+export function CourierDetails({ courier, onAdmin }: { courier: Courier; onAdmin: (on: boolean) => Promise<void> }) {
   const { trips, loaded } = useTrips();
   const now = new Date(useNow(30_000));
   const [profile, setProfile] = useState<CourierProfile | null>(null);
@@ -146,6 +146,16 @@ export function CourierDetails({ courier }: { courier: Courier }) {
     return true;
   }
 
+  // Admin con prioridad en la asignación (#120).
+  const [savingAdmin, setSavingAdmin] = useState(false);
+  const [adminFailed, setAdminFailed] = useState(false);
+  async function toggleAdmin() {
+    setSavingAdmin(true);
+    setAdminFailed(false);
+    await onAdmin(!courier.isAdmin).catch(() => setAdminFailed(true));
+    setSavingAdmin(false);
+  }
+
   const mine = trips.filter((t) => t.courierId === courier.id);
   const current = mine.find((t) => isTripOpen(t));
   // De asignado a entregado: lo que le toma un viaje completo.
@@ -154,6 +164,27 @@ export function CourierDetails({ courier }: { courier: Courier }) {
 
   return (
     <div className="flex flex-col gap-4 border-t border-line pt-4 text-xs">
+      <section>
+        <Heading>Asignación</Heading>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!courier.isAdmin}
+          disabled={savingAdmin}
+          onClick={toggleAdmin}
+          className="ease-ui flex w-full items-center justify-between gap-3 rounded-xl bg-sunken px-3 py-2 text-left disabled:opacity-60 can-hover:hover:bg-clapi-soft"
+        >
+          <span className="min-w-0">
+            <span className="block font-semibold text-ink">Admin (prioridad en asignación)</span>
+            <span className="block text-[11px] text-ink-3">Se le prefiere cuando está igual de cerca que otra moto. No le quita pedidos a una mucho mejor ubicada.</span>
+          </span>
+          <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${courier.isAdmin ? "bg-clapi" : "bg-ink-3/40"}`}>
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${courier.isAdmin ? "left-[18px]" : "left-0.5"}`} />
+          </span>
+        </button>
+        {adminFailed && <p className="mt-1.5 rounded-lg bg-danger-soft px-2.5 py-1.5 text-[11px] font-medium text-danger">No se pudo guardar. Intenta de nuevo.</p>}
+      </section>
+
       <section>
         <Heading>Viaje en curso</Heading>
         {!loaded ? (
