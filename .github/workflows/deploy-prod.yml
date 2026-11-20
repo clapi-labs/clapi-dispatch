@@ -1,0 +1,118 @@
+name: Desplegar a producción
+
+# Despliega un commit a producción por SSH, con la llave restringida del usuario
+# `deploy` (solo puede ejecutar /opt/dispatch/deploy.sh). Solo a mano, desde
+# Actions: nunca con un push.
+#
+# Reglas (docs/OPERACION.md, «Desplegar a producción»):
+# - El commit tiene que estar en `main`: a producción solo llega lo que ya pasó
+#   por dev, staging y el PR a main. Un hash de una rama de trabajo se rechaza.
+# - Sus imágenes tienen que existir en GHCR: images.yml las publica en cada push
+#   a main.
+# - En el servidor, `deploy` (con DEPLOY_ENV=production) aborta si AUTH_DISABLED
+#   o SIMULATOR_ENABLED están activos, aplica las migraciones antes de tocar las
+#   apps y vuelve solo a la versión anterior si algo no queda sano.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Hash completo (40 caracteres) de un commit de main; vacío = el último de la rama elegida (tiene que ser main)"
+        type: string
+        required: false
+
+# Un despliegue a la vez; los que lleguen en el medio esperan (no se cancela uno en curso).
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Desplegar a producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://dispatch.clapi.solutions
+    env:
+      PROD_HOST: ${{ vars.PROD_HOST || 'dispatch.clapi.solutions' }}
+      HEALTH_URL: ${{ vars.PROD_HEALTH_URL || 'https://bot.dispatch.clapi.solutions/api/health' }}
+      LOGIN_URL: ${{ vars.PROD_LOGIN_URL || 'https://dispatch.clapi.solutions/login' }}
+      INPUT_SHA: ${{ inputs.sha }}
+      SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Validar el hash y los secretos
+        run: |
+          SHA="${INPUT_SHA:-$GITHUB_SHA}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::El hash debe ser de 40 caracteres hexadecimales en minúscula (recibido: '$SHA')."
+            exit 1
+          fi
+          for name in SSH_KEY KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Falta el secreto PROD_${name} (docs/OPERACION.md, «Desplegar a producción»)."
+              exit 1
+            fi
+          done
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+
+      - name: Traer main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Comprobar que el commit está en main
+        run: |
+          if ! git cat-file -e "${SHA}^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::El commit ${SHA} no está en main. A producción solo se despliega lo que ya llegó a main (PR de dev a main)."
+            exit 1
+          fi
+          echo "El commit está en main: $(git log -1 --format='%h %s' "$SHA")"
+
+      - name: Preparar SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # La huella del servidor viene fijada en el secreto: no se confía en lo que conteste la red.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Desplegar ${{ inputs.sha || github.sha }}
+        run: |
+          # `deploy` valida el hash otra vez, aplica migraciones, cambia las apps y,
+          # si algo no queda sano, vuelve solo a la versión anterior (y sale con error).
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "deploy@${PROD_HOST}" "deploy ${SHA}"
+
+      - name: Comprobar que producción responde
+        run: |
+          # /api/health recuerda su respuesta 10 s y el worker tarda en dar su primer latido.
+          body="$(curl -fsS --max-time 10 --retry 12 --retry-delay 5 --retry-all-errors "$HEALTH_URL")"
+          echo "bot: $body"
+          echo "$body" | grep -q '"ok":true'
+          # El portal: la página de entrada carga (200) por HTTPS.
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 --retry 6 --retry-delay 5 --retry-all-errors "$LOGIN_URL")"
+          echo "portal: HTTP $code"
+          [ "$code" = 200 ]
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Producción"
+            echo "- Commit: \`${SHA:-sin validar}\`"
+            echo "- Resultado: ${{ job.status }}"
+            echo "- Salud: ${HEALTH_URL}"
+            echo "- Portal: ${LOGIN_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Borrar la llave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

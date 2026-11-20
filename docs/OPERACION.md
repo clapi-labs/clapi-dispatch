@@ -33,6 +33,7 @@ Lo importante:
 | Entorno | Portal | Bot (webhook de Meta) |
 |---|---|---|
 | Staging | https://staging.dispatch.clapi.solutions | https://bot.staging.dispatch.clapi.solutions |
+| Producción | https://dispatch.clapi.solutions | https://bot.dispatch.clapi.solutions |
 
 Salud del sistema: `https://bot.staging.dispatch.clapi.solutions/api/health` → `{"ok":true}` (200) o `{"ok":false}` (503). Qué falló queda en los registros del bot (`docker logs dispatch-bot-1 | grep health`). Lo vigila el monitoreo externo: ver «Avisos».
 
@@ -143,6 +144,19 @@ No se actualiza solo (pertenece a root). Hay que copiarlo:
 scp deploy/deploy.sh tu_usuario@staging.dispatch.clapi.solutions:/opt/dispatch/deploy.sh.new
 ssh tu_usuario@staging.dispatch.clapi.solutions 'cd /opt/dispatch && sudo install -o root -g docker -m 755 deploy.sh.new deploy.sh && rm deploy.sh.new'
 ```
+
+## 3b. Desplegar a producción
+
+Servidor `dispatch-prod` (`116.203.152.235`), con la misma estructura que staging: todo en `/opt/dispatch`, `DEPLOY_ENV=production` en el `.env`. Issue #118.
+
+**Solo a mano y solo desde `main`.** En GitHub → *Actions* → **Desplegar a producción** → *Run workflow*, con la rama `main` y, si se quiere un commit anterior, su hash completo (vacío = el último de `main`). Lo que hace `.github/workflows/deploy-prod.yml`:
+
+1. Valida el hash y que existan los secretos `PROD_SSH_KEY` y `PROD_SSH_KNOWN_HOSTS`.
+2. **Rechaza un commit que no esté en `main`**: a producción solo llega lo que ya pasó por `dev`, staging y el PR de `dev` a `main`.
+3. Entra como `deploy@dispatch.clapi.solutions`, que solo puede correr `deploy.sh`, y despliega. Con `DEPLOY_ENV=production`, `deploy.sh` aborta si `AUTH_DISABLED` o `SIMULATOR_ENABLED` están activos, aplica las migraciones antes de tocar las apps y vuelve solo a la versión anterior si algo no queda sano.
+4. Comprueba que `https://bot.dispatch.clapi.solutions/api/health` responda `{"ok":true}` y que `https://dispatch.clapi.solutions/login` cargue (200).
+
+Un despliegue a la vez (`concurrency: deploy-prod`); nunca se dispara con un push. Las imágenes del commit las publica `images.yml` al hacer push a `main`. Volver atrás: el mismo botón con el hash anterior (de `main`); las migraciones no se revierten, igual que en staging.
 
 ## 4. Secretos y configuración
 
