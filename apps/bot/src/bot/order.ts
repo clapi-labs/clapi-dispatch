@@ -26,6 +26,7 @@ import {
   type RoadSource,
 } from "@dispatch/shared";
 import {
+  db,
   getBotConfig,
   getEngineConfig,
   getServiceHours,
@@ -34,13 +35,17 @@ import {
   listServiceZones,
   quoteByDistance,
   saveRestaurant,
+  schema,
   type BotConfig,
   type Restaurant,
   type ServiceZone,
 } from "@dispatch/shared/db";
 
+import { and, desc, eq, inArray } from "drizzle-orm";
+
 import { coverageAt, coverageQueryReason, nearEdgeText, noServiceText } from "@/bot/coverage";
-import { say } from "@/bot/messaging";
+import { ASK_DESTINATION, IDENTITY_QUESTION, IDENTITY_TEXT, asksWhoIAm, dayGreeting, firstOfDay, isBareGreeting, onlyAsksWhoIAm } from "@/bot/greeting";
+import { greetingPending, inGreetingTurn, say } from "@/bot/messaging";
 import { dispatchTrip } from "@/dispatch/engine";
 import { handleRestaurantDebtClaim, notifyAssigned } from "@/bot/notify";
 import { recognizeRestaurant } from "@/bot/restaurant-identity";
@@ -407,7 +412,28 @@ function placePin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">
   Object.assign(target, { direccionUbicada: target.direccionEntrega, ubicacionEntrega: { lat: pin.lat, lng: pin.lng }, cotizacion: null });
 }
 
+/** Lo último que nuestro lado (el bot o la central) le escribió a este chat. */
+async function lastOutgoingAt(conversationId: number): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: schema.messages.createdAt })
+    .from(schema.messages)
+    .where(and(eq(schema.messages.conversationId, conversationId), inArray(schema.messages.role, ["bot", "agent"])))
+    .orderBy(desc(schema.messages.createdAt))
+    .limit(1);
+  return row?.at ?? null;
+}
+
+/**
+ * Un turno del restaurante. Si es la primera respuesta del día (hora de Cali),
+ * el primer mensaje que se le envíe lleva el saludo encima (bot/greeting.ts).
+ */
 export async function handleRestaurant(ctx: Context) {
+  const now = ctx.message.timestamp;
+  const greeting = firstOfDay(await lastOutgoingAt(ctx.conversation.id), now) ? dayGreeting(now) : null;
+  return inGreetingTurn(ctx.conversation.id, greeting, () => respond(ctx));
+}
+
+async function respond(ctx: Context) {
   const { message } = ctx;
   const rawKnown = normalizeDraft(ctx.conversation.draft);
   const stale = isStaleDraft(rawKnown, message.timestamp);
@@ -464,6 +490,27 @@ export async function handleRestaurant(ctx: Context) {
   if (pick) {
     await pickTrip({ conversation, phone: message.phone }, pick, known);
     return;
+  }
+
+  // Un saludo suelto («hola», «buenas tardes»): no pide nada, así que no pasa
+  // por el modelo, no suma intentos y no va a la central (#121).
+  const onlyText = !!text.trim() && !imageIds.length && !pins.length && !buttons.length;
+  if (onlyText && isBareGreeting(text)) {
+    if (!open) {
+      await closedForOrders(ctx, hours.opensAt, now);
+      return;
+    }
+    const midOrder = known.entregas.some((d) => d.direccionEntrega);
+    await say(conversation.id, message.phone, midOrder ? "¡Hola! 🙌 Aquí sigo con tu pedido." : ASK_DESTINATION);
+    return;
+  }
+
+  // «¿Quién eres?», «¿eres un bot?»: se presenta, solo si lo preguntan. Si el
+  // mensaje además trae un pedido, el pedido sigue normal después.
+  if (text.trim() && asksWhoIAm(text)) {
+    const only = onlyText && onlyAsksWhoIAm(text);
+    await say(conversation.id, message.phone, only ? `${IDENTITY_TEXT} ${IDENTITY_QUESTION}` : IDENTITY_TEXT);
+    if (only) return;
   }
   if (!reads && !pins.length) {
     // Confirmar pasada la hora límite: el pedido ya no se recibe (y el tick
@@ -677,7 +724,9 @@ export async function handleRestaurant(ctx: Context) {
     if (!progressed && countFields(known) <= (restaurant ? 1 : 0) && conversation.failedAttempts === 0) {
       const name = restaurant ? `, ${restaurant.name}` : "";
       await save(ctx, draft);
-      await say(conversation.id, message.phone, `¡Hola${name}! 🛵 Envíame la dirección de entrega y te cotizo.`);
+      // Con el saludo del día encima, un segundo «¡Hola!» sobra.
+      const ask = greetingPending(conversation.id) ? "Envíame la dirección de entrega y te cotizo 🛵" : `¡Hola${name}! 🛵 Envíame la dirección de entrega y te cotizo.`;
+      await say(conversation.id, message.phone, ask);
       return;
     }
     if (await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos sin dirección de entrega.`)) {
