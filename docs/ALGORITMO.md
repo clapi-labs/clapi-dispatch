@@ -109,7 +109,8 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
     ],
     "pendientes": [                // regresos que no van en la ruta (la plata con demanda alta)
       { "pedido": 32, "motivo": "plata", "punto": [3.45, -76.53], "restaurante_id": 9 }
-    ]
+    ],
+    "admin": false                 // opcional: administrador de la agencia con prioridad sutil (#120)
   }],
   "tiempos": "haversine",          // haversine | osrm (km por calle); google, pendiente
   "config": {}                     // opcional: sobrescribe constantes
@@ -125,6 +126,7 @@ Acordado el 27 de octubre de 2026. Coordenadas siempre como `[lat, lon]` (en la 
 | `motos[].paradas` | El `plan` guardado de la última asignación, quitando lo ya hecho. `R` desaparece con el botón «Recogí» y `C` al marcar la entrega |
 | `paradas[].listo_ts` | En `R`, cuándo está lista esa comida. En `W`, hasta cuándo se espera al cliente |
 | `demanda` | Alta o baja, medida en vivo por el tick (`getDemand` / `getDemandLevel` en `packages/shared/src/db/demand.ts`, ver «Demanda»). El bot manda los dos, `modo` y `demanda` |
+| `motos[].admin` | `couriers.is_admin`, que se marca en Flota («Ver más» → Asignación). Opcional: sin el campo es `false`. Ver «Administradores» |
 | `paradas[]` tipo `B`, `pendientes[]` | Los pendientes de regreso abiertos (`return_debts`), uno por grupo de restaurante y motivo; `pedido` es el id del pendiente más viejo del grupo. Ver «Regresos al restaurante» |
 
 Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no contesta, `V` devolver al restaurante un pedido no entregado, `B` regresar al restaurante por un pendiente: devolver el datáfono (`motivo: "datafono"`) o pagar la comida (`"plata"`). Un `B` no ocupa lugar en la moto, pero su tiempo cuenta en la ruta.
@@ -133,7 +135,7 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 
 ```jsonc
 {
-  "engine_version": "2026.11.3",
+  "engine_version": "2026.11.4",
   "modo": "pico",
   "demanda": "alta",
   "pesos": [0.70, 0.20, 0.10],
@@ -156,6 +158,7 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
     "t_a_min": 6.1, "g_min": -1.9, "desvio_min": 2.0, "min_sin_pedido": 0.0,
     "aprovecha": [],               // pendientes que hace en la misma vuelta: [{ "pendiente": 32, "motivo": "plata" }]
     "ventaja_pendiente": 0.0,      // los puntos que eso le sumó
+    "ventaja_admin": 0.0,          // VENTAJA_ADMIN si la moto es admin; si no, 0
     "regreso_aplazado": [],        // datáfonos que quedan después del pedido nuevo por demanda alta
     "secuencia": "Recoge nuevo → Recoge #101 → Entrega #101 → Entrega nuevo",
     "ruta_puntos": [[3.45, -76.53], [3.4516, -76.5320]]
@@ -167,7 +170,29 @@ Tipos de parada: `R` recoger, `C` entregar, `W` esperar a un cliente que no cont
 
 Códigos de `motivo`: `sin_senal`, `fuera_radio`, `cliente_no_contesta`, `ocupada_sin_multipedido`, `capacidad`, `retraso`.
 
-Si pesó un pendiente, la `explicacion` lo dice al final: «…; recoge donde tiene un pendiente y paga en la misma vuelta (+8)» o «…; el regreso del datáfono se aplaza por demanda alta». Se ve en el mapa del simulador y queda en `engine_evaluations.response`.
+Si pesó un pendiente, la `explicacion` lo dice al final: «…; recoge donde tiene un pendiente y paga en la misma vuelta (+8)» o «…; el regreso del datáfono se aplaza por demanda alta». Si la ganadora es admin, también: «Servicio asignado a 17 por prioridad admin (…); es admin (+3.5)» cuando eso la definió, o solo «…; es admin (+3.5)» si ganó por otro factor. Se ve en el mapa del simulador y queda en `engine_evaluations.response`.
+
+### Administradores
+
+Issue #120. Los dueños de la agencia también salen a domiciliar y se les prefiere un poco. En Flota, «Ver más» → **Asignación** → «Admin (prioridad en asignación)» marca `couriers.is_admin`, y la tarjeta muestra la insignia **Admin**. El bot manda `admin: true` en esa moto y el engine le suma `VENTAJA_ADMIN` = **3,5 puntos** de Score (configurable en `config`).
+
+Es sutil a propósito: desempata y los prefiere cuando están parecido, pero no le quita el pedido a una moto mucho mejor ubicada ni atrasa la comida.
+
+- **Con la comida lista,** cada minuto de más hasta el restaurante pesa ~6,6 puntos en pico y ~2,8 en valle (la cuenta está en «Regresos al restaurante», «Mismo restaurante»). 3,5 puntos son ~30 s en pico y ~1,2 min en valle.
+- **Con la comida para más tarde,** las motos libres que llegan a tiempo empatan en `F_tiempo` (la asignación diferida las hace esperar a todas hasta la hora de salir), así que el admin gana aunque esté un poco más lejos: llega igual a tiempo.
+- **La equidad sigue pesando.** En valle (peso 0,6), un admin con varias entregas de más que las otras no se lleva el pedido. Una moto cargada con una ruta que el pedido nuevo atrasa tampoco: gana la libre.
+- **Dos admins se turnan.** Los dos tienen la misma ventaja, así que entre ellos decide la equidad: uno y uno.
+
+Medido con el engine (`haversine`), una moto normal a 100 m del restaurante y el admin cada vez más lejos:
+
+| Modo | Comida | El admin gana hasta |
+|---|---|---|
+| Pico | Lista ya | ~260 m (160 m más que la otra) |
+| Valle | Lista ya | ~500 m |
+| Pico | Lista en 15 min | ~900 m |
+| Valle | Lista en 15 min | ~1,1 km |
+
+A 1,5 km contra una a 100 m, siempre gana la cercana. Pruebas: `apps/engine/tests/test_admin.py` (empate, pocos metros, dos admins que se turnan, la cercana gana, admin cargado, equidad en valle, sin el campo todo igual, la ventaja se configura).
 
 ### Regresos al restaurante
 

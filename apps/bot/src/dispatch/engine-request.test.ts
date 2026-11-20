@@ -80,6 +80,14 @@ describe("buildEvaluarRequest: señal de GPS", () => {
   });
 });
 
+describe("buildEvaluarRequest: administradores (#120)", () => {
+  it("cada moto lleva `admin`: true si está marcada en Flota, false si no o si no se sabe", () => {
+    const built = buildEvaluarRequest(trip, [{ ...moto(1, ago(0)), isAdmin: true }, { ...moto(2, ago(0)), isAdmin: false }, moto(3, ago(0))], now, settings);
+    assert.ok(built.ok);
+    assert.deepEqual(Object.fromEntries(built.request.motos.map((m) => [m.id, m.admin])), { 1: true, 2: false, 3: false });
+  });
+});
+
 describe("buildEvaluarRequest: interruptor de km por calle", () => {
   it("apagado (o sin definir) pide tiempos en línea recta, como siempre", () => {
     for (const s of [settings, { ...settings, porCalle: false }]) {

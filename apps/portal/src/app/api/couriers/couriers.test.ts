@@ -232,6 +232,42 @@ describe("flota del portal (Postgres)", { skip: integrationSkip }, () => {
       });
     });
 
+    describe("admin con prioridad en la asignación (#120)", () => {
+      it("se marca y se desmarca, y se ve en la lista", async () => {
+        const courier = await createCourier({ status: "available" });
+        assert.equal((await getCourier(courier.id)).isAdmin, false, "por defecto no es admin");
+        const res = await patch(courier.id, { isAdmin: true });
+        assert.equal(res.status, 200);
+        assert.equal((await res.json()).isAdmin, true);
+        assert.equal((await getCourier(courier.id)).isAdmin, true);
+        const list = (await (await couriers.GET()).json()) as { id: number; isAdmin: boolean }[];
+        assert.equal(list.find((c) => c.id === courier.id)?.isAdmin, true);
+        assert.equal((await patch(courier.id, { isAdmin: false })).status, 200);
+        assert.equal((await getCourier(courier.id)).isAdmin, false);
+      });
+
+      it("no le cambia el estado ni avisa al bot", async () => {
+        const courier = await createCourier({ status: "available" });
+        const before = bot.calls.length;
+        await patch(courier.id, { isAdmin: true });
+        assert.equal((await getCourier(courier.id)).status, "available");
+        assert.equal(bot.calls.length, before);
+      });
+
+      it("un valor que no es true o false: 400 y no cambia nada", async () => {
+        const courier = await createCourier();
+        for (const isAdmin of ["true", 1, null]) {
+          const res = await patch(courier.id, { isAdmin });
+          assert.equal(res.status, 400, String(isAdmin));
+        }
+        assert.equal((await getCourier(courier.id)).isAdmin, false);
+      });
+
+      it("de un motorizado que no existe: 404", async () => {
+        assert.equal((await patch(99_999, { isAdmin: true })).status, 404);
+      });
+    });
+
     describe("emergencia (rojo): un accidente, una moto varada", () => {
       it("pausa a la moto y deja su chat en manos de la central, con el motivo", async () => {
         const courier = await createCourier({ name: "Pedro Gómez", status: "available" });

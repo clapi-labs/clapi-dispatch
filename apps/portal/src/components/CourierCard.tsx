@@ -32,6 +32,7 @@ export function CourierCard({
   onEmergency,
   onRemove,
   onPhoto,
+  onAdmin,
 }: {
   courier: Courier;
   /** La hora con la que se calcula si la moto sigue «en vivo» (la página la avanza sola). */
@@ -40,6 +41,8 @@ export function CourierCard({
   onEmergency: (on: boolean) => void;
   onRemove: () => void;
   onPhoto: (photo: string | null) => Promise<void>;
+  /** Marca o desmarca al administrador con prioridad en la asignación (#120). */
+  onAdmin: (on: boolean) => Promise<void>;
 }) {
   const status = STATUS[courier.status];
   const { trips } = useTrips();
@@ -68,7 +71,15 @@ export function CourierCard({
           />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{courier.name}</p>
+          <p className="flex min-w-0 items-center gap-1.5 font-semibold">
+            <span className="truncate">{courier.name}</span>
+            {/* Admin de la agencia que también domicilia: el algoritmo lo prefiere en empates (#120). */}
+            {courier.isAdmin && (
+              <span title="Admin: prioridad en la asignación" className="shrink-0 rounded-md bg-clapi-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-clapi-ink">
+                Admin
+              </span>
+            )}
+          </p>
           <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${status.chip}`}>
             {current ? `${PHASE_LABEL[tripPhase(current)]} · ${current.code}${open.length > 1 ? ` · +${open.length - 1}` : ""}` : status.label}
           </span>
@@ -317,7 +328,7 @@ export function CourierCard({
         <ChevronDown size={14} className={`ease-ui ${expanded ? "rotate-180" : ""}`} />
       </button>
 
-      {expanded && <CourierDetails courier={courier} />}
+      {expanded && <CourierDetails courier={courier} onAdmin={onAdmin} />}
     </article>
   );
 }

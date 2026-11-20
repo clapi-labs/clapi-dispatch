@@ -312,6 +312,11 @@ export const couriers = pgTable("couriers", {
   shiftStartedAt: timestamp("shift_started_at", { withTimezone: true }),
 
   active: boolean("active").notNull().default(true),
+  /** Administrador de la agencia que también sale a domiciliar (#120): el
+   *  algoritmo le da una ventaja pequeña (`VENTAJA_ADMIN`, docs/ALGORITMO.md)
+   *  para preferirlo en condiciones parecidas, sin quitarle el pedido a una moto
+   *  mucho mejor ubicada. Se marca en Flota. */
+  isAdmin: boolean("is_admin").notNull().default(false),
   /** Moto del simulador de staging (docs/OPERACION.md): una fila más para el
    *  algoritmo y el portal, con un número que no existe. Solo se usa con
    *  `SIMULATOR_ENABLED`. */

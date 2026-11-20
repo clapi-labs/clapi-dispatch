@@ -68,6 +68,16 @@ export default function FlotaPage() {
     refresh();
   }
 
+  async function setAdmin(id: number, isAdmin: boolean) {
+    const res = await fetch(`/api/couriers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isAdmin }),
+    });
+    if (!res.ok) throw new Error("No se guardó");
+    setCouriers((prev) => prev.map((c) => (c.id === id ? { ...c, isAdmin } : c)));
+  }
+
   async function setPhoto(id: number, photo: string | null) {
     const res = await fetch(`/api/couriers/${id}`, {
       method: "PATCH",
@@ -192,6 +202,7 @@ export default function FlotaPage() {
             onEmergency={(on) => setEmergency(courier.id, on)}
             onRemove={() => remove(courier.id)}
             onPhoto={(photo) => setPhoto(courier.id, photo)}
+            onAdmin={(on) => setAdmin(courier.id, on)}
           />
         ))}
         {couriers.length > 0 && shown.length === 0 && <p className="col-span-full py-12 text-center text-sm text-ink-3">Ninguno coincide.</p>}

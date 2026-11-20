@@ -197,6 +197,13 @@
       "when": 1795111848948,
       "tag": "0027_retencion_y_avisos_por_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795158182320,
+      "tag": "0028_admin_prioridad",
+      "breakpoints": true
     }
   ]
 }

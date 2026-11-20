@@ -138,6 +138,7 @@ async function loadCouriers(): Promise<SnapshotCourier[]> {
     lng: c.lng,
     locationUpdatedAt: c.locationUpdatedAt,
     locationMoving: c.locationMoving,
+    isAdmin: c.isAdmin,
     deliveriesThisShift: c.deliveriesThisShift,
     shiftStartedAt: c.shiftStartedAt,
     lastDeliveredAt: lastDelivered.get(c.id) ?? null,
