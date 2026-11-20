@@ -221,9 +221,9 @@ function chat(phone = PHONE) {
     async pin(lat: number, lng: number, label: string | null = null, extra: Extra = {}) {
       return deliver((head) => ({ ...head, kind: "location", lat, lng, label }), extra);
     },
-    /** Lo último que el bot contestó, sin espacios raros. */
+    /** Lo último que el bot contestó, sin espacios raros y sin el saludo del día. */
     get reply() {
-      return plain(outbox[outbox.length - 1]?.text ?? "");
+      return ungreeted(plain(outbox[outbox.length - 1]?.text ?? ""));
     },
     get replyButtons(): { id: string; title: string }[] {
       return outbox[outbox.length - 1]?.buttons ?? [];
@@ -243,7 +243,10 @@ function chat(phone = PHONE) {
 
 /** `$ 5.000` sale con espacio duro en es-CO: se compara con espacio normal. */
 const plain = (s: string) => s.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
-const texts = (sent: Sent[]) => sent.map((s) => plain(s.text));
+/** El saludo del día (#121) encabeza la primera respuesta de cada prueba. Las
+ *  comparaciones de siempre lo quitan; las del saludo miran el texto completo. */
+const ungreeted = (s: string) => s.replace(/^¡Buen(os días|as tardes|as noches)! Gracias por confiar en Express Cali 🙌 /u, "");
+const texts = (sent: Sent[]) => sent.map((s) => ungreeted(plain(s.text)));
 
 const allTrips = () => db.select().from(schema.trips).orderBy(schema.trips.id);
 
@@ -786,11 +789,11 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await c.say("para Marta", understood([delivery({ nombreCliente: "Marta Ríos" })]));
         assert.match(c.reply, /¿A qué dirección es la entrega\?/);
         // Primer mensaje que no aporta: un intento, el bot sigue preguntando.
-        await c.say("hola?", understood([delivery({ nombreCliente: "Marta Ríos" })]));
+        await c.say("mmm", understood([delivery({ nombreCliente: "Marta Ríos" })]));
         assert.equal((await c.conversation()).failedAttempts, 1);
         await assertNotEscalated(c);
         // Segundo: se acabaron los intentos.
-        await c.say("hola??", understood([delivery({ nombreCliente: "Marta Ríos" })]));
+        await c.say("mmm??", understood([delivery({ nombreCliente: "Marta Ríos" })]));
         await assertEscalated(c, "2 mensajes seguidos sin dirección de entrega.", "cleared");
         assert.equal(c.reply, ESCALATION_MESSAGE);
       });
@@ -799,18 +802,19 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await registered();
         const c = chat();
         await c.say("para Marta", understood([delivery({ nombreCliente: "Marta Ríos" })]));
-        await c.say("hola?", understood([delivery({ nombreCliente: "Marta Ríos" })]));
+        await c.say("mmm", understood([delivery({ nombreCliente: "Marta Ríos" })]));
         assert.equal((await c.conversation()).failedAttempts, 1);
         await c.say("su teléfono es 3001234567", understood([delivery({ nombreCliente: "Marta Ríos", telefonoCliente: "3001234567" })]));
         assert.equal((await c.conversation()).failedAttempts, 0);
         await assertNotEscalated(c);
       });
 
-      it("el primer mensaje vacío solo saluda: no cuenta como intento", async () => {
+      it("el primer mensaje sin datos pide la dirección: no cuenta como intento", async () => {
         await registered();
         const c = chat();
-        await c.say("hola", understood([]));
-        assert.match(c.reply, /¡Hola, Pizza Nona! 🛵 Envíame la dirección de entrega/);
+        await c.say("necesito un domi", understood([], { intent: "pedir" }));
+        // Ya lleva el saludo del día encima: no se repite el «¡Hola!».
+        assert.equal(c.reply, "Envíame la dirección de entrega y te cotizo 🛵");
         assert.equal((await c.conversation()).failedAttempts, 0);
       });
 
@@ -842,10 +846,10 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         const c = chat();
         await c.say("calle", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
         assert.match(c.reply, /Nombre del cliente:/);
-        // Saluda sin dar nada: un intento. Con el precio ya mostrado, un «ok» sería silencio; el saludo no.
-        await c.say("hola", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
+        // Escribe sin dar nada: un intento. Con el precio ya mostrado, un «ok» sería silencio; esto no.
+        await c.say("y?", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
         assert.equal((await c.conversation()).failedAttempts, 1);
-        await c.say("hola", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
+        await c.say("y?", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
         await assertEscalated(c, "2 mensajes seguidos sin los datos que faltan.", "cleared");
         assert.equal(c.reply, ESCALATION_MESSAGE);
       });
@@ -855,9 +859,9 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         const c = chat();
         await c.say("pedido", understood([complete()]));
         assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
-        await c.say("hola", understood([complete()]));
+        await c.say("y?", understood([complete()]));
         assert.equal((await c.conversation()).failedAttempts, 1);
-        await c.say("hola", understood([complete()]));
+        await c.say("y?", understood([complete()]));
         await assertEscalated(c, "2 mensajes seguidos sin confirmar el servicio.", "cleared");
         assert.equal((await allTrips()).length, 0);
       });
@@ -1219,7 +1223,7 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await registered();
         const c = chat();
         await c.say("calle", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
-        await c.say("hola", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
+        await c.say("y?", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
         const attempts = (await c.conversation()).failedAttempts;
         assert.equal(attempts, 1);
         const draftBefore = await c.conversation().then((r) => r.draft);
@@ -1347,8 +1351,9 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
     it("caso 8: «Hola, buenas» primero y los datos después: el saludo no cuenta como intento fallido", async () => {
       await registered();
       const c = chat();
-      await c.say("Hola, buenas.", understood([]));
-      assert.match(c.reply, /Envíame la dirección de entrega/);
+      await c.raw((head) => ({ ...head, kind: "text", text: "Hola, buenas." }));
+      assert.match(c.reply, /¿Para dónde necesitas el servicio hoy\?/);
+      assert.equal(modelCalls.length, 0, "un saludo suelto no pasa por el modelo");
       assert.equal((await c.conversation()).failedAttempts, 0);
       await c.say("Calle 10 # 5-20\nConjunto Bosques apto 301\n3001234567\nMarta Ríos\nEn 10", understood([complete({ detalleDireccion: "Apto 301" })]));
       assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
@@ -1451,6 +1456,105 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
       assert.equal((await c.draft())?.soloPrecio, false);
       await c.press(order.CONFIRM_BUTTON_ID);
       assert.equal((await allTrips()).length, 1);
+    });
+  });
+
+  describe("saludo del día y presentación (#121)", () => {
+    const AFTERNOON = "¡Buenas tardes! Gracias por confiar en Express Cali 🙌";
+    const IDENTITY =
+      "Soy un asistente implementado por Clapi Solutions, una empresa líder en automatizaciones que ayuda a Express Cali a mejorar sus flujos y tiempos de trabajo, agilizando la toma de servicios y brindando la mejor atención posible.";
+    const raw = (sent: Sent[]) => sent.map((s) => s.text.replace(/\u00a0/g, " "));
+    const text = (c: ReturnType<typeof chat>, body: string) => c.raw((head) => ({ ...head, kind: "text", text: body }));
+    /** Lo que se le escribió quedó «ayer»: el próximo mensaje es el primero del día. */
+    const yesterday = () => db.update(schema.messages).set({ createdAt: new Date("2020-01-01T12:00:00Z") });
+
+    it("el primer mensaje del día lleva el saludo encima de la cotización, en un solo envío", async () => {
+      await registered();
+      const c = chat();
+      const first = await c.say("domi a la calle 10 # 5-20", understood([complete()]));
+      assert.equal(first.sent.length, 1, "un solo mensaje de WhatsApp");
+      assert.ok(raw(first.sent)[0].startsWith(`${AFTERNOON}\n\n`), "el saludo va arriba, separado por una línea");
+      assert.deepEqual(first.sent[0].buttons.map((b) => b.id), [order.CONFIRM_BUTTON_ID], "y con el botón de la cotización");
+    });
+
+    it("el segundo mensaje del mismo día no repite el saludo", async () => {
+      await registered();
+      const c = chat();
+      await c.say("domi a la calle 10 # 5-20", understood([complete()]));
+      const second = await c.say("y otro a la carrera 5", understood([complete(), complete({ direccionEntrega: "Carrera 5 # 1-10" })]));
+      assert.ok(second.sent.length > 0);
+      for (const t of raw(second.sent)) assert.ok(!t.includes("Gracias por confiar en Express Cali"), t);
+    });
+
+    it("al otro día vuelve a saludar", async () => {
+      await registered();
+      const c = chat();
+      await c.say("domi a la calle 10 # 5-20", understood([complete()]));
+      await yesterday();
+      const next = await c.say("y otro a la carrera 5", understood([complete(), complete({ direccionEntrega: "Carrera 5 # 1-10" })]));
+      assert.ok(raw(next.sent)[0].startsWith(AFTERNOON));
+    });
+
+    it("de mañana dice «Buenos días», también si el mensaje es que todavía no abren", async () => {
+      await registered();
+      const c = chat();
+      const r = await c.say("domi a la calle 10 # 5-20", understood([complete()]), { at: new Date(MORNING_AT) });
+      assert.ok(raw(r.sent)[0].startsWith("¡Buenos días! Gracias por confiar en Express Cali 🙌\n\n"), raw(r.sent)[0]);
+    });
+
+    it("un «hola» suelto: saludo y para dónde es el servicio, sin el modelo, sin intentos y sin la central", async () => {
+      await registered();
+      const c = chat();
+      const r = await text(c, "Hola, buenas tardes 👋");
+      assert.deepEqual(raw(r.sent), [`${AFTERNOON}\n\n¿Para dónde necesitas el servicio hoy? 🛵`]);
+      assert.equal(modelCalls.length, 0);
+      assert.equal((await c.conversation()).failedAttempts, 0);
+      await assertNotEscalated(c);
+      // Otro «hola» el mismo día: sin saludo, y tampoco suma intentos.
+      const again = await text(c, "hola");
+      assert.deepEqual(raw(again.sent), ["¿Para dónde necesitas el servicio hoy? 🛵"]);
+      assert.equal((await c.conversation()).failedAttempts, 0);
+      await assertNotEscalated(c);
+    });
+
+    it("un «hola» con un pedido a medio armar no lo borra ni suma intentos", async () => {
+      await registered();
+      const c = chat();
+      await c.say("domi a la calle 10", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
+      const before = await c.draft();
+      const r = await text(c, "holaa");
+      assert.deepEqual(raw(r.sent), ["¡Hola! 🙌 Aquí sigo con tu pedido."]);
+      assert.deepEqual(await c.draft(), before);
+      assert.equal((await c.conversation()).failedAttempts, 0);
+    });
+
+    it("«¿quién eres?»: se presenta como el asistente de Clapi Solutions, sin el modelo y sin la central", async () => {
+      await registered();
+      const c = chat();
+      const r = await text(c, "Buenas, ¿con quién hablo?");
+      assert.deepEqual(raw(r.sent), [`${AFTERNOON}\n\n${IDENTITY} ¿En qué te puedo colaborar hoy?`]);
+      assert.equal(modelCalls.length, 0);
+      assert.equal((await c.conversation()).failedAttempts, 0);
+      await assertNotEscalated(c);
+      const again = await text(c, "¿eres un bot?");
+      assert.deepEqual(raw(again.sent), [`${IDENTITY} ¿En qué te puedo colaborar hoy?`]);
+    });
+
+    it("si pregunta quién es y además pide, se presenta y sigue con el pedido", async () => {
+      await registered();
+      const c = chat();
+      const r = await c.say("¿eres un bot? necesito un domi a la calle 10 # 5-20", understood([complete()]));
+      assert.equal(r.sent.length, 2);
+      assert.equal(raw(r.sent)[0], `${AFTERNOON}\n\n${IDENTITY}`, "la presentación sin la pregunta del final: el pedido sigue");
+      assert.deepEqual(r.sent[1].buttons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
+      assert.equal(modelCalls.length, 1);
+    });
+
+    it("si no pregunta quién es, nunca sale la presentación", async () => {
+      await registered();
+      const c = chat();
+      const r = await c.say("domi a la calle 10 # 5-20 para un bot de cumpleaños", understood([complete()]));
+      for (const t of raw(r.sent)) assert.ok(!t.includes("Clapi Solutions"), t);
     });
   });
 });

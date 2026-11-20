@@ -20,7 +20,7 @@ Regla para construir: si algo solo aplica a un cliente, va a la configuración, 
 
 El restaurante ya está registrado: por su número se conoce su nombre, su dirección y sus coordenadas de recogida.
 
-1. **Todo empieza con una dirección de entrega.** Cotizar o pedir, siempre llega una dirección. Si el mensaje no la trae (y no es solo un saludo), se le pide.
+1. **Todo empieza con una dirección de entrega.** Cotizar o pedir, siempre llega una dirección. Si el mensaje no la trae, se le pide; si es solo un saludo, se le pregunta para dónde es el servicio (ver «Saludo suelto» en las decisiones).
 2. **Siempre se cotiza primero.** Con la dirección se geocodifica una vez y se calcula la distancia desde el restaurante. La respuesta depende de lo que quiere el restaurante (el modelo lo dice en `intencion`):
    - **Mientras falten datos** (pide el servicio con solo la dirección o un pin, o solo pregunta el precio): el precio y, debajo, el formato con lo que falta para llenar y mandar en un solo mensaje. **Sin botón**: confirmar sin los datos no pide ninguna moto.
      ```
@@ -153,6 +153,10 @@ Qué hace la central con una novedad: [INTERVENCION-MANUAL.md](INTERVENCION-MANU
 |---|---|
 | Confirmación | Botón «Confirmar servicio» o escrita («sí», «dale», «confirmo»), sobre el resumen del pedido completo. Dar los datos o el tiempo no confirma: completa el pedido y se le muestra el resumen |
 | Tono | Corto con lo esencial: «Serían $6.000 hasta Valle del Lili 🛵» |
+| Saludo del día (#121) | La primera respuesta del día a un restaurante (día de Cali, `America/Bogota`) va encabezada, en el mismo mensaje, por «¡Buenos días! / ¡Buenas tardes! / ¡Buenas noches! Gracias por confiar en Express Cali 🙌» (mañana hasta las 11:59, tarde hasta las 18:59, noche desde las 19:00). Es primera si nadie de nuestro lado (bot o central) le escribió desde la medianoche. Las siguientes del día no lo llevan. Lo lleva el primer mensaje que salga en ese turno, sea cual sea: la cotización, lo que falta, el estado o el aviso de que no han abierto (`bot/greeting.ts`, `inGreetingTurn` en `bot/messaging.ts`) |
+| Saludo suelto | «Hola», «buenas tardes», «buenos días, ¿cómo va?» sin nada más: «¿Para dónde necesitas el servicio hoy? 🛵» (con el saludo del día si es el primero). No pasa por OpenAI, no suma intentos y no va a la central. Con un pedido a medio armar: «¡Hola! 🙌 Aquí sigo con tu pedido.», sin tocar el borrador |
+| «¿Quién eres?» | «¿Quién eres?», «¿con quién hablo?», «¿eres un bot?», «¿qué es esto?»: «Soy un asistente implementado por Clapi Solutions… ¿En qué te puedo colaborar hoy?», sin OpenAI y sin la central. Si en el mismo mensaje pide un domicilio, se presenta (sin la pregunta del final) y sigue con el pedido. Si no lo pregunta, nunca sale |
+| Textos de pruebas en producción | Con `SIMULATOR_ENABLED` apagado, ningún mensaje puede decir 🧪, «simulador», «número de prueba» ni «staging»: los únicos están en las ramas del simulador de `courier.ts`, lo comprueba `bot/production-texts.test.ts`, y `say` no envía uno así (queda en el hilo del portal con la advertencia) |
 | Cobertura | Solo por las zonas de servicio marcadas en el portal ([DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Zonas de servicio»); sin tope fijo de km |
 | Datos obligatorios | `settings.bot_config.requiredFields`; por defecto dirección de entrega, nombre y teléfono del cliente, y tiempo de preparación. Lo que falte se pide como un formato para llenar, junto al precio |
 | Ubicación | Dirección escrita (se geocodifica una vez) o pin de WhatsApp (coordenadas exactas, sin costo) |
