@@ -12,10 +12,10 @@ Todo corre en un VPS de Hetzner, sin Vercel. Este documento describe **qué hay 
 | Migraciones versionadas (Drizzle) | Hecho |
 | CI (lint, tipos, pruebas, build, migraciones) | Hecho, corre en todo PR hacia `dev` y `main`, y `dev` exige que pasen sus tres jobs para mezclar ([PLAN](PLAN.md) I-4) |
 | Publicación de imágenes en GHCR | Hecho, en cada push a `dev` y `main` |
-| Despliegue automático desde GitHub | **Pendiente**: hoy se despliega a mano, ver `OPERACION.md` ([PLAN](PLAN.md) I-3) |
-| Servidor de producción (separado de staging) | Pendiente ([PLAN](PLAN.md) I-5) |
-| Backups | **Pendiente: no hay ninguno** ([PLAN](PLAN.md) I-1) |
-| Aviso de caídas | Pendiente ([PLAN](PLAN.md) I-2) |
+| Despliegue automático desde GitHub | Hecho en staging (`deploy-staging.yml` al merge a `dev`); producción es manual por botón (`deploy-prod.yml` solo desde `main`) |
+| Servidor de producción (separado de staging) | Hecho (`dispatch-prod`, `116.203.152.235`, `infra/prod`, desplegado y verificado con HTTPS y 77 zonas) |
+| Backups | Hecho en producción: `backup-db.sh` nocturno por cron (3:30 a. m. Colombia, retención 7 días, simulacro `pg_restore` verificado en 780 ms) + backups de Hetzner (`backups = true`) |
+| Aviso de caídas | Configurado en staging (HetrixTools → Telegram); pendiente pasar los 2 monitores a producción |
 | Motor de asignación (`engine`) | En staging asigna en modo `auto` con motos simuladas. Con motos reales falta el GPS: sin él no elige a nadie |
 | Simulador (solo staging) | Encendido: motos simuladas que se mueven y reportan GPS, y números de prueba que reciben sus mensajes (`OPERACION.md`, «Simulador») |
 | GPS (Traccar Client) | Receptor en el bot (`/api/gps`), usado por el simulador. Falta instalar la app en los celulares y la autorización por escrito ([PLAN](PLAN.md) D-1) |
@@ -112,11 +112,11 @@ flowchart LR
 | | Staging | Producción |
 |---|---|---|
 | Rama | `dev` | `main` |
-| Servidor | Hetzner CX23 (existe) | Otro Hetzner (pendiente: `infra/prod`) |
+| Servidor | Hetzner CX23 (`2.31.0.79`) | Hetzner CX23 (`116.203.152.235`, `infra/prod`, `backups = true`) |
 | Portal / bot | `staging.dispatch…` / `bot.staging.dispatch…` | `dispatch…` / `bot.dispatch…` |
 | WhatsApp | Número de prueba de Meta | Número real del cliente |
-| Datos | De prueba, se pueden borrar | Reales, con backups |
-| Cómo se despliega | Automático al push (pendiente; hoy a mano) | Por botón, con un hash ya probado en staging |
+| Datos | De prueba, se pueden borrar | Reales, con backups diarios + Hetzner |
+| Cómo se despliega | Automático al merge a `dev` (`deploy-staging.yml`) | Por botón (`deploy-prod.yml`), solo commits de `main` |
 | Quién entra por SSH | Todo el equipo | Solo quien lo necesite |
 
 Reglas del flujo:
@@ -349,6 +349,7 @@ flowchart LR
 | `ci.yml` | PR hacia `dev` o `main`, y push a `main` | Tres jobs: `checks` (lint, typecheck, `npm test` con las pruebas de `packages/shared`, `apps/bot` y `apps/portal`, y build), `engine` (los casos y las pruebas del contrato, en Python) y `migrations` (base vacía aplicada dos veces, que `schema.ts` no tenga cambios sin migración, y el seed). Sin red ni secretos. Al hacer merge en `dev` corre `images.yml`, no CI ([PLAN](PLAN.md) I-4) |
 | `images.yml` | Push a `dev` y `main`, o manual | Construye `bot`, `portal`, `migrate`, `worker`, `engine` y los publica en GHCR con el hash y el nombre de la rama |
 | `deploy-staging.yml` | Lo llama `images.yml` al publicar las imágenes de un push a `dev`; también manual (con un hash opcional) | Entra por SSH como `deploy` (llave restringida) a staging y ejecuta `deploy <hash>`; después comprueba que `https://bot.staging.dispatch.clapi.solutions/api/health` responda 200 `{"ok":true}`. Un despliegue a la vez (`concurrency`) y, si `deploy.sh` falla, el trabajo falla y staging vuelve a la versión anterior |
+| `deploy-prod.yml` | Únicamente manual (`workflow_dispatch`, nunca en push) | Exige que el hash pertenezca a `main`, entra como `deploy@dispatch.clapi.solutions` (`PROD_SSH_KEY` / `PROD_SSH_KNOWN_HOSTS`), ejecuta `deploy <hash>` con `DEPLOY_ENV=production` y comprueba `/api/health` (200 `{"ok":true}`) y `/login` (200) |
 
 El despliegue va como un trabajo de `images.yml` (y no como `workflow_run`) porque un push a `dev` usa el archivo de `dev`, mientras que `workflow_run` solo se dispara con el archivo de la rama principal. Solo corre si **las seis imágenes** se publicaron, y siempre con el hash de 40 caracteres de ese push. `main` no despliega nada.
 

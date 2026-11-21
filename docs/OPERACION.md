@@ -158,6 +158,19 @@ Servidor `dispatch-prod` (`116.203.152.235`), con la misma estructura que stagin
 
 Un despliegue a la vez (`concurrency: deploy-prod`); nunca se dispara con un push. Las imágenes del commit las publica `images.yml` al hacer push a `main`. Volver atrás: el mismo botón con el hash anterior (de `main`); las migraciones no se revierten, igual que en staging.
 
+**Estado verificado de producción (21 de noviembre de 2026, commit `a86cda08`):**
+- Primer despliegue vía `deploy-prod.yml` (1m27s): los 7 contenedores (`caddy`, `portal`, `bot`, `worker`, `engine`, `osrm`, `postgres`) sanos, consumiendo ~274 MiB en total del CX23 (4 GB).
+- Base limpia con las **77 zonas de servicio** (`service_zones`) importadas desde staging (0 viajes, 0 chats, 0 datos de prueba).
+- **Respaldo nocturno activo:** `/etc/cron.d/dispatch-backup` corre `30 8 * * *` UTC (3:30 a. m. Colombia) + backups de Hetzner (`backups = true`).
+- **Simulacro real de restauración verificado:** `dispatch-20261121-184602.dump` (`97K`) restaurado en una base temporal en **780 ms** con las 77 zonas íntegras:
+  ```bash
+  docker exec dispatch-postgres-1 psql -U dispatch -d postgres -c "CREATE DATABASE dispatch_restore_test;"
+  sudo docker exec -i dispatch-postgres-1 pg_restore -U dispatch -d dispatch_restore_test --no-owner < /opt/dispatch/backups/db/<archivo>.dump
+  docker exec dispatch-postgres-1 psql -U dispatch -d dispatch_restore_test -tAc "SELECT count(*) FROM service_zones;"
+  docker exec dispatch-postgres-1 psql -U dispatch -d postgres -c "DROP DATABASE dispatch_restore_test;"
+  ```
+- **Pendiente en consolas externas antes de abrir operación:** agregar la IP `116.203.152.235` (y opcionalmente IPv6 `2a01:4f8:1c18:68a8::/64`) a la restricción de `GOOGLE_MAPS_API_KEY` en Google Cloud Console, pasar los 2 monitores de HetrixTools → Telegram de staging a producción, y conectar el número real de WhatsApp en Meta (`BOT_ACTIVE=true`).
+
 ## 4. Secretos y configuración
 
 Viven en `/opt/dispatch/.env`. Nunca los pegues en el chat, el repo ni la terminal en claro.
