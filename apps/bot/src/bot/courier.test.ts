@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { declareReturnDebt, db, getReturnDebt, openReturnDebts, schema } from "@dispatch/shared/db";
+import { completeCourierOnboarding, declareReturnDebt, db, getReturnDebt, openReturnDebts, schema } from "@dispatch/shared/db";
 import { closeTestDatabase, createConversation, createCourier, integrationSkip, resetDatabase } from "@dispatch/shared/db/test-db";
 
 import {
@@ -1019,8 +1019,9 @@ describe("courier.ts: flujo del motorizado (Postgres)", { skip: integrationSkip 
   });
 
   describe("conectarse escribiendo", () => {
-    it("desconectado y sin pedidos: escribir lo conecta y le da la bienvenida", async () => {
+    it("desconectado y sin pedidos (ya activado): escribir lo conecta y le da la bienvenida", async () => {
       const w = await world({ courier: { status: "offline" } });
+      await completeCourierOnboarding(w.courier.id);
       classifier.next({ tipo: "otro" });
       await write(w, "hola");
       assert.equal((await getCourier(w.courier.id)).status, "available");

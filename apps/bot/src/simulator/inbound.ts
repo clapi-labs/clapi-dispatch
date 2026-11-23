@@ -18,6 +18,8 @@ export async function simulatedSender(sender: Courier, message: IncomingMessage)
   if (!simulatorEnabled() || sender.simulated || (sender.status !== "available" && sender.status !== "busy")) return null;
 
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
+  // Los botones de activación inicial son siempre de la moto real, nunca de una simulada.
+  if (button?.kind === "onboarding") return null;
   // Cerrar un pendiente de regreso: es de la moto que lo declaró.
   if (button?.kind === "debt_done") {
     const debt = await getReturnDebt(button.debtId);

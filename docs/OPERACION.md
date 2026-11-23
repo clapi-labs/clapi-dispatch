@@ -248,6 +248,15 @@ La ubicación en vivo llega de la app gratuita [Traccar Client](https://www.trac
 
 **Las posiciones se borran a las 24 horas.** Solo se guarda la última de cada moto; la de una moto que lleva más de un día sin reportar se borra, y a las evaluaciones del algoritmo de más de un día se les quitan las posiciones de las motos. Lo hace el tick cada 10 minutos (`purgeOldPositions`, `packages/shared/src/db/gps-retention.ts`). Las horas de cada servicio (llegó, recogió, entregó) se conservan con el pedido.
 
+**Activación guiada por WhatsApp y video de bienvenida.** Cuando un domiciliario real nuevo (sin activación previa ni señal GPS) escribe su primer «hola», el bot le pide autorización de datos/GPS (Ley 1581 de 2012, guardada en `courier_profiles`), le envía el video guía si ya está cargado junto con sus datos de Traccar Client y un botón **«✅ Listo, verificar»** que comprueba en vivo si ya llegó señal GPS antes de activarlo. Para cargar o reemplazar el video MP4 (H.264 + AAC, máximo **16 MB**; vive en `/data/media/onboarding/domiciliarios.mp4`, fuera de PostgreSQL y a salvo de `purgeOldMedia`):
+```bash
+scp deploy/upload-courier-video.sh tu_usuario@IP:/opt/dispatch/upload-courier-video.sh.new
+ssh tu_usuario@IP 'cd /opt/dispatch && sudo install -o root -g docker -m 755 upload-courier-video.sh.new upload-courier-video.sh && rm upload-courier-video.sh.new'
+scp domiciliarios.mp4 tu_usuario@IP:/tmp/domiciliarios.mp4
+ssh tu_usuario@IP '/opt/dispatch/upload-courier-video.sh /tmp/domiciliarios.mp4 && rm -f /tmp/domiciliarios.mp4'
+```
+El bot sube el archivo a Meta Cloud API una sola vez, cachea el `media_id` en `settings` (`courier_onboarding_video`) y lo renueva automáticamente antes de que venza a los 30 días (o si cambia el archivo). Si todavía no se ha cargado ningún video, el flujo sigue funcionando normal enviando las instrucciones de Traccar y el botón de verificación.
+
 ## 4d. Mapa de calles (OSRM)
 
 El precio del domicilio y los minutos de viaje del engine se pueden medir con los **km reales por calle**, en vez de la línea recta × 1,3. Los mide un OSRM propio, en el mismo servidor (contenedor `dispatch-osrm-1`, sin puertos públicos): no cuesta por consulta y no manda datos afuera. Qué cambia en el bot y el portal: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Distancia por calle»; en el engine: [ALGORITMO.md](ALGORITMO.md).

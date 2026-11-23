@@ -423,6 +423,8 @@ describe("flota del portal (Postgres)", { skip: integrationSkip }, () => {
         emergencyContactName: null,
         emergencyContactPhone: null,
         gpsDeviceId: null,
+        gpsConsentAt: null,
+        onboardingCompletedAt: null,
       });
     });
 

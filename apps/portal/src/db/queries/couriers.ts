@@ -169,7 +169,11 @@ export type CourierProfile = Pick<
   "vehiclePlate" | "vehicleType" | "documentId" | "emergencyContactName" | "emergencyContactPhone"
 >;
 
-export type CourierProfileWithGps = CourierProfile & { gpsDeviceId: string | null };
+export type CourierProfileWithGps = CourierProfile & {
+  gpsDeviceId: string | null;
+  gpsConsentAt: Date | null;
+  onboardingCompletedAt: Date | null;
+};
 
 /** La ficha de "Ver más": vehículo y datos personales. Un motorizado al que
  *  todavía no se le ha llenado no tiene fila, y sale con todo vacío. */
@@ -182,6 +186,8 @@ export async function getCourierProfile(courierId: number): Promise<CourierProfi
     emergencyContactName: row?.emergencyContactName ?? null,
     emergencyContactPhone: row?.emergencyContactPhone ?? null,
     gpsDeviceId: row?.gpsDeviceId ?? null,
+    gpsConsentAt: row?.gpsConsentAt ?? null,
+    onboardingCompletedAt: row?.onboardingCompletedAt ?? null,
   };
 }
 

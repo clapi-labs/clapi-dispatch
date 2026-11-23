@@ -17,9 +17,13 @@ const DONE_PREFIX = "done:";
 const BACK_PREFIX = "back:";
 const NO_ANSWER_PREFIX = "noanswer:";
 const RETURNED_PREFIX = "returned:";
+/** Flujo de activación inicial del domiciliario (consentimiento + verificación GPS). */
+const ONBOARD_PREFIX = "onboard:";
 /** Los botones de la ficha anterior: los ya enviados tienen que seguir sirviendo. */
 const OLD_SEEN_PREFIX = "seen:";
 const OLD_DELIVER_PREFIX = "deliver:";
+
+export type OnboardingAction = "accept" | "help" | "check";
 
 export type CourierButton =
   | { kind: "going"; tripId: number; old: boolean }
@@ -29,7 +33,8 @@ export type CourierButton =
   | { kind: "debt_done"; debtId: number }
   | { kind: "back"; tripId: number }
   | { kind: "no_answer"; tripId: number }
-  | { kind: "returned"; tripId: number };
+  | { kind: "returned"; tripId: number }
+  | { kind: "onboarding"; action: OnboardingAction };
 
 /** Qué tocó el motorizado; `null` si el botón no es de su flujo. */
 export function parseCourierButton(id: string): CourierButton | null {
@@ -46,6 +51,11 @@ export function parseCourierButton(id: string): CourierButton | null {
   if (id.startsWith(BACK_PREFIX)) return { kind: "back", tripId: after(BACK_PREFIX) };
   if (id.startsWith(NO_ANSWER_PREFIX)) return { kind: "no_answer", tripId: after(NO_ANSWER_PREFIX) };
   if (id.startsWith(RETURNED_PREFIX)) return { kind: "returned", tripId: after(RETURNED_PREFIX) };
+  if (id.startsWith(ONBOARD_PREFIX)) {
+    const action = id.slice(ONBOARD_PREFIX.length);
+    if (action === "accept" || action === "help" || action === "check") return { kind: "onboarding", action };
+    return null;
+  }
   if (id.startsWith(OLD_DELIVER_PREFIX)) return { kind: "delivered", tripId: after(OLD_DELIVER_PREFIX), place: "customer" };
   // `done:<lugar>:<finish|return>:<id>`: el «vuelvo» de la lista anterior ya no
   // existe, así que una opción vieja con «vuelvo» solo marca la entrega.
@@ -78,3 +88,19 @@ export const deliveryButtons = (tripId: number, { waiting = false } = {}) => [
 ];
 
 export const debtButton = (debtId: number, reason: ReturnDebtReason) => ({ id: `${DEBT_DONE_PREFIX}${debtId}`, title: debtCloseButtonTitle(reason) });
+
+/** Botones de activación inicial del domiciliario (títulos <= 20 caracteres, límite de Meta). */
+export const onboardingConsentButtons = () => [
+  { id: `${ONBOARD_PREFIX}accept`, title: "✅ Acepto y seguir" },
+  { id: `${ONBOARD_PREFIX}help`, title: "🙋 Tengo dudas" },
+];
+
+export const onboardingCheckButtons = () => [
+  { id: `${ONBOARD_PREFIX}check`, title: "✅ Listo, verificar" },
+  { id: `${ONBOARD_PREFIX}help`, title: "🙋 Necesito ayuda" },
+];
+
+export const onboardingRetryButtons = () => [
+  { id: `${ONBOARD_PREFIX}check`, title: "🔄 Volver a probar" },
+  { id: `${ONBOARD_PREFIX}help`, title: "🙋 Necesito ayuda" },
+];

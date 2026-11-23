@@ -357,6 +357,14 @@ export const courierProfiles = pgTable("courier_profiles", {
   /** El identificador con que su celular reporta el GPS. Aleatorio y difícil de
    *  adivinar: es lo único que autoriza a reportar la posición de esta moto. */
   gpsDeviceId: text("gps_device_id").unique(),
+  /** Cuándo aceptó el uso de sus datos y ubicación GPS (Ley 1581 de 2012). */
+  gpsConsentAt: timestamp("gps_consent_at", { withTimezone: true }),
+  /** Versión del aviso de privacidad que aceptó (p. ej. "2026-11-v1"). */
+  gpsConsentVersion: text("gps_consent_version"),
+  /** wamid del mensaje de WhatsApp con que tocó «Acepto y seguir» (prueba auditable). */
+  gpsConsentWaMessageId: text("gps_consent_wa_message_id"),
+  /** Cuándo terminó su activación inicial y se verificó su señal GPS en vivo. */
+  onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

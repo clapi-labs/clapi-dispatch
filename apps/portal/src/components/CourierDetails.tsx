@@ -278,6 +278,15 @@ export function CourierDetails({ courier, onAdmin }: { courier: Courier; onAdmin
                   </button>
                 </span>
               </Row>
+              <Row label="Activación">
+                {profile.onboardingCompletedAt ? (
+                  <span className="text-ok">Activa · datos autorizados</span>
+                ) : profile.gpsConsentAt ? (
+                  <span className="text-warn">Autorizó datos · falta señal GPS</span>
+                ) : (
+                  <span className="font-normal text-ink-3">Pendiente (al escribir «hola»)</span>
+                )}
+              </Row>
             </dl>
             {gpsStatus && (
               <p className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${gpsStatus.ok ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>

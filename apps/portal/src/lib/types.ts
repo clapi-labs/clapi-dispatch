@@ -148,6 +148,10 @@ export type CourierProfile = {
   emergencyContactPhone: string | null;
   /** Lo que se configura en la app de su celular para reportar el GPS. */
   gpsDeviceId?: string | null;
+  /** Cuándo autorizó el uso de datos y ubicación GPS (Ley 1581). */
+  gpsConsentAt?: string | null;
+  /** Cuándo completó la activación inicial por WhatsApp con señal GPS verificada. */
+  onboardingCompletedAt?: string | null;
 };
 
 export type SettlementRow = {

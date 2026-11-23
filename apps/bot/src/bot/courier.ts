@@ -14,6 +14,7 @@ import {
 } from "@dispatch/shared/db";
 import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPhase, type DeliveryPlace, type ReturnDebtReason } from "@dispatch/shared";
 
+import { handleOnboardingButton, handleOnboardingMessage } from "@/bot/courier-onboarding";
 import { isAck, isDisconnect, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
 import { courierSay, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
@@ -210,6 +211,10 @@ async function markReturned(tripId: number) {
  */
 export async function handleCourier(courier: Courier, conversation: Conversation, message: IncomingMessage) {
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
+  if (button?.kind === "onboarding") {
+    await handleOnboardingButton(courier, conversation, message, button.action);
+    return;
+  }
   if (button?.kind === "debt_done") {
     const debt = await getReturnDebt(button.debtId);
     if (!debt || debt.courierId !== courier.id) return;
@@ -288,6 +293,16 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     return;
   }
 
+  // Simulador: un número de prueba no recibe pedidos propios, controla motos
+  // simuladas. Se le dice, para que sepa qué esperar.
+  const testNumber = simulatorEnabled() && !courier.simulated;
+
+  // Primera conexión de un domiciliario real: consentimiento de datos/GPS,
+  // video guía y verificación de señal antes de quedar disponible.
+  if (!trips.length && courier.status === "offline" && !testNumber && !courier.simulated) {
+    if (await handleOnboardingMessage(courier, conversation, message)) return;
+  }
+
   const written = message.kind === "text" ? parseCourierText(message.text) : null;
   if (written) {
     const applies = trips.filter((t) => {
@@ -322,10 +337,6 @@ export async function handleCourier(courier: Courier, conversation: Conversation
     for (const { trip, assignment } of trips) await sendCourierTicket(message.phone, trip, courier.name, assignment);
     return;
   }
-
-  // Simulador: un número de prueba no recibe pedidos propios, controla motos
-  // simuladas. Se le dice, para que sepa qué esperar.
-  const testNumber = simulatorEnabled() && !courier.simulated;
 
   // Sin viajes y desconectado: escribir es conectarse. En pausa no: esa la
   // pone y la quita la central.

@@ -49,6 +49,10 @@ function simulate(payload: Record<string, unknown>): SendResult {
       ? buttons.map((b) => `[${b.reply.title}] (${b.reply.id})`).join("  ")
       : `[${button}] ▾\n${sections?.flatMap((section) => section.rows).map((r) => `   · ${r.title} (${r.id})`).join("\n")}`;
     console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}${interactive.body.text}\n   ${options}\n`);
+  } else if (payload.type === "video") {
+    const video = payload.video as { id?: string; link?: string; caption?: string };
+    const src = video.id ? `id:${video.id}` : (video.link ?? "video");
+    console.log(`\n🤖 → ${payload.to} [${messageId}]\n${quote}[Video ${src}]${video.caption ? `\n${video.caption}` : ""}\n`);
   }
   return { ok: true, messageId };
 }
@@ -138,6 +142,60 @@ export function sendList(phone: string, text: string, list: ListOption, options?
       },
     },
   });
+}
+
+export type VideoSource = { id: string } | { link: string };
+
+/** Envía un video MP4 por WhatsApp (por `media_id` subido a Meta o por URL HTTPS). */
+export function sendVideo(phone: string, video: VideoSource, caption?: string, options?: SendOptions) {
+  return post({
+    to: phone,
+    ...context(options),
+    type: "video",
+    video: { ...video, ...(caption ? { caption } : {}) },
+  });
+}
+
+/** Tope de video en WhatsApp Cloud API (16 MB). */
+export const MAX_VIDEO_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Sube un archivo multimedia a Meta Cloud API (`POST /{phoneNumberId}/media`)
+ * para reutilizar su `media_id` en envíos de WhatsApp. Devuelve `null` si está
+ * apagado, excede el tope o Meta rechaza la subida.
+ */
+export async function uploadMedia(bytes: Buffer, mimeType: string, filename: string): Promise<string | null> {
+  if (bytes.length === 0 || bytes.length > MAX_VIDEO_BYTES) {
+    console.error(`[whatsapp] archivo fuera de tamaño permitido (${bytes.length} bytes): ${filename}`);
+    return null;
+  }
+  if (env.whatsappSimulated) return "sim-media-id";
+  if (!env.botActive) return null;
+
+  try {
+    const form = new FormData();
+    form.set("messaging_product", "whatsapp");
+    form.set("type", mimeType);
+    form.set("file", new Blob([new Uint8Array(bytes)], { type: mimeType }), filename);
+    const response = await fetch(
+      `https://graph.facebook.com/${env.whatsapp.apiVersion}/${env.whatsapp.phoneNumberId}/media`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.whatsapp.accessToken}` },
+        body: form,
+      },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      console.error("[whatsapp] subida de media rechazada", response.status, JSON.stringify(body));
+      return null;
+    }
+    const data = (await response.json().catch(() => null)) as { id?: string } | null;
+    return typeof data?.id === "string" && data.id ? data.id : null;
+  } catch (error) {
+    console.error("[whatsapp] error subiendo media", filename, error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 /**

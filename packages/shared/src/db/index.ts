@@ -22,3 +22,4 @@ export * from "./push";
 export * from "./return-debts";
 export * from "./demand";
 export * from "./courier-route";
+export * from "./courier-onboarding";
