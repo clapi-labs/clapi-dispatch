@@ -20,6 +20,7 @@ import {
   tripBlockage,
 } from "./alerts";
 import { errandReason } from "./errand";
+import { removedCourierReason } from "./fleet-removal";
 
 const AT = new Date("2026-11-10T19:30:00Z");
 
@@ -54,6 +55,13 @@ describe("chatHelpMessage", () => {
     assert.equal(m.severity, "attention");
     assert.equal(m.body, "«necesito que me compren un queso tajado en la salsamentaria»");
     assert.equal(m.url, "/conversaciones#tel=573001112233");
+  });
+
+  it("un domiciliario que la central quitó de la flota y escribió se anuncia como que quiere volver", () => {
+    const m = chatHelpMessage({ id: 22, phone: "573001112233", name: "Lauri", reason: removedCourierReason("Lauri Gómez"), lastText: "hola", at: AT });
+    assert.equal(m.title, "🛵 Quiere volver a la flota · Lauri");
+    assert.equal(m.severity, "attention");
+    assert.match(m.body, /^Lauri Gómez pide volver\. Si lo agregas de nuevo en Flota/);
   });
 
   it("sin nombre usa el teléfono, y sin razón el último mensaje", () => {

@@ -1185,4 +1185,21 @@ describe("notify.ts: avisos y tick (Postgres)", { skip: integrationSkip }, () =>
       assert.deepEqual(await notify.notifyCourierGpsConfig(w.courier.id, "https://x/api/gps"), { ok: false, reason: "send_failed" });
     });
   });
+
+  describe("quitado de la flota (notifyCourierRemoved)", () => {
+    it("le avisa que la central lo quitó y cómo pedir volver", async () => {
+      const courier = await createCourier({ name: "Lauri Gómez", active: false, status: "offline" });
+      await notify.notifyCourierRemoved(courier.id);
+      const sent = outbox.filter((m) => m.phone === courier.phone);
+      assert.equal(sent.length, 1);
+      assert.match(sent[0].text, /^Lauri, la central te quitó de la flota/);
+    });
+
+    it("no avisa a uno que sigue en la flota, a una moto simulada ni a uno que no existe", async () => {
+      const active = await createCourier({ name: "Activo" });
+      const simulated = await createCourier({ name: "Simulada", active: false, simulated: true });
+      for (const id of [active.id, simulated.id, 99_999]) await notify.notifyCourierRemoved(id);
+      assert.equal(outbox.length, 0);
+    });
+  });
 });

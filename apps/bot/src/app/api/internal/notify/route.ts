@@ -1,4 +1,4 @@
-import { notifyAssigned, notifyCourierGpsConfig, notifyDebtNudge, notifyDelivered, notifyUnassigned } from "@/bot/notify";
+import { notifyAssigned, notifyCourierGpsConfig, notifyCourierRemoved, notifyDebtNudge, notifyDelivered, notifyUnassigned } from "@/bot/notify";
 
 import { isInternal } from "../auth";
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
  * del motorizado) y le pide al bot que avise por WhatsApp.
  * - `debtNudge`: «Mandar ya» de un pendiente de regreso.
  * - `courierGps`: «Enviar por WhatsApp» los datos de Traccar Client (#53).
+ * - `removedCourier`: la central lo quitó de la flota; se le avisa.
  */
 export async function POST(request: Request) {
   if (!isInternal(request)) return new Response("Unauthorized", { status: 401 });
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     debtNudge,
     courierGps,
     gpsUrl,
+    removedCourier,
   } = (await request.json()) as {
     assigned?: number[];
     delivered?: number[];
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
     debtNudge?: number;
     courierGps?: number;
     gpsUrl?: string;
+    removedCourier?: number;
   };
 
   if (typeof debtNudge === "number") {
@@ -40,6 +43,11 @@ export async function POST(request: Request) {
     if (sent.ok) return Response.json({ ok: true });
     const status = sent.reason === "outside_window" || sent.reason === "no_gps_id" ? 409 : sent.reason === "not_found" ? 404 : 502;
     return Response.json({ ok: false, reason: sent.reason }, { status });
+  }
+
+  if (typeof removedCourier === "number") {
+    await notifyCourierRemoved(removedCourier);
+    return Response.json({ ok: true });
   }
 
   for (const { tripId, courierId } of unassigned) await notifyUnassigned(tripId, courierId);

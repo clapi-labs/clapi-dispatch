@@ -172,6 +172,34 @@ describe("flota del portal (Postgres)", { skip: integrationSkip }, () => {
       assert.deepEqual([row.lat, row.lng, row.locationUpdatedAt], [null, null, null]);
     });
 
+    it("un número que la central quitó de la flota vuelve con su misma ficha, y su chat pidiendo volver regresa al bot", async () => {
+      const former = await createCourier({ name: "Lauri", phone: "573001234567", active: false, status: "offline", deliveriesThisShift: 4 });
+      await createConversation({ phone: "573001234567", botPaused: true, escalationReason: "Quitado de la flota: Lauri pide volver." });
+      const res = await create({ name: "Lauri Gómez", phone: "300 123 4567" });
+      assert.equal(res.status, 201);
+      const body = (await res.json()) as { id: number };
+      assert.equal(body.id, former.id, "la misma ficha, con su historial");
+      const row = await getCourier(former.id);
+      assert.deepEqual([row.name, row.active, row.status, row.deliveriesThisShift], ["Lauri Gómez", true, "offline", 0]);
+      assert.equal((await db.select().from(schema.couriers)).length, 1);
+      const [chat] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, "573001234567"));
+      assert.deepEqual([chat.botPaused, chat.escalationReason], [false, null]);
+    });
+
+    it("al volver no le suelta a la central un chat que tiene por otro motivo", async () => {
+      await createCourier({ phone: "573001234567", active: false, status: "offline" });
+      await createConversation({ phone: "573001234567", botPaused: true, escalationReason: "Lo atiende la central." });
+      await create({ name: "Lauri", phone: "3001234567" });
+      const [chat] = await db.select().from(schema.conversations).where(eq(schema.conversations.phone, "573001234567"));
+      assert.equal(chat.botPaused, true);
+    });
+
+    it("una moto simulada quitada no se reactiva: se crea otra", async () => {
+      const sim = await createCourier({ phone: "573001234567", active: false, simulated: true });
+      const body = (await (await create({ name: "Real", phone: "3001234567" })).json()) as { id: number };
+      assert.notEqual(body.id, sim.id);
+    });
+
     for (const [name, body] of [
       ["sin nombre", { phone: "3001234567" }],
       ["sin teléfono", { name: "Pedro" }],
@@ -198,12 +226,23 @@ describe("flota del portal (Postgres)", { skip: integrationSkip }, () => {
         assert.deepEqual([row.active, row.status], [false, "offline"]);
       });
 
-      it("un motorizado en un viaje (ocupado) no se puede quitar", async () => {
+      it("le pide al bot que le avise, una sola vez", async () => {
+        const courier = await createCourier({ status: "available" });
+        await patch(courier.id, { active: false });
+        await patch(courier.id, { active: false });
+        assert.deepEqual(
+          notifications().map((c) => c.body),
+          [{ removedCourier: courier.id }],
+        );
+      });
+
+      it("un motorizado en un viaje (ocupado) no se puede quitar, y no se le avisa nada", async () => {
         const courier = await createCourier({ status: "available" });
         await assignedTrip(courier.id);
         await patch(courier.id, { active: false });
         const row = await getCourier(courier.id);
         assert.deepEqual([row.active, row.status], [true, "busy"]);
+        assert.equal(notifications().length, 0);
       });
     });
 
