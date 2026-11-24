@@ -55,8 +55,30 @@ before(async () => {
 });
 
 describe("courier-onboarding: textos y verificación pura", () => {
-  it("el aviso de consentimiento cabe en un mensaje interactivo de WhatsApp (<= 1024) y menciona Ley 1581", () => {
-    const text = onboarding.consentPromptText("Carlos Pérez");
+  it("con el dominio del portal, el consentimiento es corto y enlaza la política completa", () => {
+    const text = onboarding.consentPromptText("Carlos Pérez", "https://dispatch.clapi.solutions/tratamiento-de-datos");
+    assert.ok(text.length <= 1024, `muy largo: ${text.length}`);
+    assert.match(text, /Carlos/);
+    assert.match(text, /Ley 1581/);
+    assert.ok(text.includes("https://dispatch.clapi.solutions/tratamiento-de-datos"));
+    assert.doesNotMatch(text, /24 horas/);
+  });
+
+  it("la política se enlaza en el dominio del portal; sin él, no hay enlace", () => {
+    const saved = process.env.PORTAL_HOST;
+    try {
+      process.env.PORTAL_HOST = "https://dispatch.clapi.solutions/";
+      assert.equal(onboarding.privacyPolicyUrl(), "https://dispatch.clapi.solutions/tratamiento-de-datos");
+      delete process.env.PORTAL_HOST;
+      assert.equal(onboarding.privacyPolicyUrl(), "");
+    } finally {
+      if (saved === undefined) delete process.env.PORTAL_HOST;
+      else process.env.PORTAL_HOST = saved;
+    }
+  });
+
+  it("sin el dominio del portal, el aviso de consentimiento va completo, cabe en un mensaje interactivo de WhatsApp (<= 1024) y menciona Ley 1581", () => {
+    const text = onboarding.consentPromptText("Carlos Pérez", "");
     assert.ok(text.length <= 1024, `muy largo: ${text.length}`);
     assert.match(text, /Carlos/);
     assert.match(text, /Ley 1581/);
@@ -297,5 +319,47 @@ describe("courier-onboarding: flujo completo por WhatsApp (Postgres)", { skip: i
     assert.equal((await getCourier(w.courier.id)).status, "available");
     assert.ok((await getCourierOnboardingState(w.courier.id)).onboardingCompletedAt);
     assert.match(plain(sentTo(w.courier.phone)[0].text), /tu cuenta quedó activa/);
+  });
+  it("en staging, un domiciliario real nuevo también pasa por la activación, y puede quedarse como número de prueba", async () => {
+    process.env.SIMULATOR_ENABLED = "1";
+    try {
+      const real = await world({ courier: { status: "offline" } });
+      await write(real, "hola");
+      assert.equal((await getCourier(real.courier.id)).status, "offline", "no se conecta antes de autorizar");
+      const prompt = sentTo(real.courier.phone);
+      assert.equal(prompt.length, 1);
+      assert.match(plain(prompt[0].text), /Ley 1581/);
+      assert.deepEqual(prompt[0].buttons.map((b) => b.id), ["onboard:accept", "onboard:help", "onboard:test"]);
+
+      // «Número de prueba»: queda conectado como antes de la activación, sin consentimiento ni GPS.
+      outbox.length = 0;
+      await tap(real, "onboard:test");
+      assert.equal((await getCourier(real.courier.id)).status, "available");
+      const state = await getCourierOnboardingState(real.courier.id);
+      assert.equal(state.gpsConsentAt, null);
+      assert.ok(state.onboardingCompletedAt);
+      assert.match(plain(sentTo(real.courier.phone)[0].text), /número de prueba/);
+
+      // Al día siguiente escribe «hola» y conecta directo, sin volver a la activación.
+      await db.update(schema.couriers).set({ status: "offline" }).where(eq(schema.couriers.id, real.courier.id));
+      outbox.length = 0;
+      classifier.next({ tipo: "otro" });
+      await write(real, "hola");
+      assert.equal((await getCourier(real.courier.id)).status, "available");
+      assert.doesNotMatch(plain(sentTo(real.courier.phone)[0].text), /Ley 1581/);
+    } finally {
+      delete process.env.SIMULATOR_ENABLED;
+    }
+  });
+
+  it("en producción no existe «Número de prueba»: el botón no hace nada", async () => {
+    const w = await world({ courier: { status: "offline" } });
+    await write(w, "hola");
+    assert.deepEqual(sentTo(w.courier.phone)[0].buttons.map((b) => b.id), ["onboard:accept", "onboard:help"]);
+    outbox.length = 0;
+    await tap(w, "onboard:test");
+    assert.equal((await getCourier(w.courier.id)).status, "offline");
+    assert.equal((await getCourierOnboardingState(w.courier.id)).onboardingCompletedAt, null);
+    assert.equal(sentTo(w.courier.phone).length, 0);
   });
 });

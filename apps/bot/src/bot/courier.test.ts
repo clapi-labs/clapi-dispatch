@@ -1044,9 +1044,10 @@ describe("courier.ts: flujo del motorizado (Postgres)", { skip: integrationSkip 
       assert.equal((await getCourier(w.courier.id)).status, "available");
     });
 
-    it("simulador de staging: un número real que se conecta se entera de que es de prueba", async () => {
+    it("simulador de staging: un número real que ya eligió ser de prueba se conecta y se entera de que es de prueba", async () => {
       process.env.SIMULATOR_ENABLED = "1";
       const w = await world({ courier: { status: "offline" } });
+      await completeCourierOnboarding(w.courier.id);
       classifier.next({ tipo: "otro" });
       await write(w, "hola");
       assert.equal((await getCourier(w.courier.id)).status, "available");

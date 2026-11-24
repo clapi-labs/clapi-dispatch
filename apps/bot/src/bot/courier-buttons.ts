@@ -23,7 +23,7 @@ const ONBOARD_PREFIX = "onboard:";
 const OLD_SEEN_PREFIX = "seen:";
 const OLD_DELIVER_PREFIX = "deliver:";
 
-export type OnboardingAction = "accept" | "help" | "check";
+export type OnboardingAction = "accept" | "help" | "check" | "test";
 
 export type CourierButton =
   | { kind: "going"; tripId: number; old: boolean }
@@ -53,7 +53,7 @@ export function parseCourierButton(id: string): CourierButton | null {
   if (id.startsWith(RETURNED_PREFIX)) return { kind: "returned", tripId: after(RETURNED_PREFIX) };
   if (id.startsWith(ONBOARD_PREFIX)) {
     const action = id.slice(ONBOARD_PREFIX.length);
-    if (action === "accept" || action === "help" || action === "check") return { kind: "onboarding", action };
+    if (action === "accept" || action === "help" || action === "check" || action === "test") return { kind: "onboarding", action };
     return null;
   }
   if (id.startsWith(OLD_DELIVER_PREFIX)) return { kind: "delivered", tripId: after(OLD_DELIVER_PREFIX), place: "customer" };
@@ -90,9 +90,11 @@ export const deliveryButtons = (tripId: number, { waiting = false } = {}) => [
 export const debtButton = (debtId: number, reason: ReturnDebtReason) => ({ id: `${DEBT_DONE_PREFIX}${debtId}`, title: debtCloseButtonTitle(reason) });
 
 /** Botones de activación inicial del domiciliario (títulos <= 20 caracteres, límite de Meta). */
-export const onboardingConsentButtons = () => [
+/** `testNumber` (solo staging, con el simulador): un tercer botón para quedarse como número de prueba en vez de activarse. */
+export const onboardingConsentButtons = ({ testNumber = false } = {}) => [
   { id: `${ONBOARD_PREFIX}accept`, title: "✅ Acepto y seguir" },
   { id: `${ONBOARD_PREFIX}help`, title: "🙋 Tengo dudas" },
+  ...(testNumber ? [{ id: `${ONBOARD_PREFIX}test`, title: "Solo pruebas" }] : []),
 ];
 
 export const onboardingCheckButtons = () => [
