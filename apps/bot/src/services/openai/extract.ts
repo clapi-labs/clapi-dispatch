@@ -3,6 +3,7 @@ import {
   buildExtractionPrompt,
   DOUBTFUL_FIELDS,
   fixPaymentMethod,
+  looksLikeErrand,
   mergeDebtClaim,
   parseDebtClaim,
   rescuePriceQuestion,
@@ -21,10 +22,14 @@ import type { DownloadedImage } from "@/services/whatsapp/client";
 /** `query`: el mensaje pregunta algo en vez de pedir (docs/BOT.md, consultas). */
 /** `claim`: el restaurante reclama su plata o su datáfono, o avisa que cierra (#61). */
 /** `intent`: «cotizar» si solo pregunta el precio, «pedir» si pide el servicio (null: ninguno). */
+/** `errand`: pide que le compren o le traigan algo, no llevar su comida a un
+ *  cliente (`byModel` lo vio el modelo, `byText` la red de seguridad en código);
+ *  null si ninguno lo vio. Va a la central. */
 export type ExtractionOutcome = {
   fields: Interpretation;
   query: "estado" | "cobertura" | null;
   claim?: DebtClaim | null;
+  errand?: { byModel: boolean; byText: boolean } | null;
   intent: "cotizar" | "pedir" | null;
   confirms: boolean;
   confused: boolean;
@@ -207,6 +212,9 @@ export async function interpretMessage(
     }
 
     const claim = mergeDebtClaim(parseModelClaim(raw.reclamo), parseDebtClaim(messageText));
+    // Basta con que uno de los dos lo vea: un encargo tomado como domicilio crea un viaje al revés.
+    const errandByModel = raw.encargo === true;
+    const errandByText = looksLikeErrand(messageText);
 
     return {
       fields: {
@@ -217,6 +225,7 @@ export async function interpretMessage(
       },
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       claim,
+      errand: errandByModel || errandByText ? { byModel: errandByModel, byText: errandByText } : null,
       intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : rescue.rescued ? "cotizar" : null,
       confirms: raw.confirma === true,
       confused: rescue.confused && !claim,

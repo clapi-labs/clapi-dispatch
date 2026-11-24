@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, it, mock } from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { ESCALATION_MESSAGE, MAX_CLARIFICATION_ATTEMPTS, normalizeDraft, type Interpretation, type OrderDraft } from "@dispatch/shared";
+import { ERRAND_RECEIVED_MESSAGE, ESCALATION_MESSAGE, MAX_CLARIFICATION_ATTEMPTS, normalizeDraft, type Interpretation, type OrderDraft } from "@dispatch/shared";
 import { db, schema, saveFareRanges, createServiceZone, type Restaurant } from "@dispatch/shared/db";
 import {
   closeTestDatabase,
@@ -172,7 +172,7 @@ const delivery = (over: Partial<Fields> = {}): Fields => ({
 const complete = (over: Partial<Fields> = {}): Fields =>
   delivery({ direccionEntrega: "Calle 10 # 5-20", nombreCliente: "Marta Ríos", telefonoCliente: "3001234567", listoEnMinutos: 10, ...over });
 
-type Said = Partial<Pick<Outcome, "query" | "intent" | "confirms" | "confused" | "failed">> & { nombreRestaurante?: string | null; quitar?: number[]; origen?: string | null };
+type Said = Partial<Pick<Outcome, "query" | "intent" | "confirms" | "confused" | "failed" | "errand">> & { nombreRestaurante?: string | null; quitar?: number[]; origen?: string | null };
 
 /** Lo que devuelve el modelo: la lista completa de entregas hasta ahora. */
 const understood = (entregas: Fields[], said: Said = {}): Outcome => ({
@@ -183,6 +183,7 @@ const understood = (entregas: Fields[], said: Said = {}): Outcome => ({
   confused: said.confused ?? false,
   failed: said.failed ?? false,
   claim: null,
+  errand: said.errand ?? null,
 });
 
 let clock = OPEN_AT;
@@ -1079,6 +1080,27 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await assertEscalated(c, /datos confusos o pidió hablar con una persona/, "cleared");
       });
 
+      it("encargo (le compran o le traen algo): no cotiza, escala con su motivo y le confirma al restaurante", async () => {
+        await registered();
+        const c = chat();
+        await c.say("Necesito un domi", understood([delivery({})], { intent: "pedir" }));
+        await c.say(
+          "necesito que me compren un queso tajado en la salsamentaria ciudadela",
+          understood([delivery({ direccionEntrega: "Salsamentaria Ciudadela" })], { intent: "pedir", errand: { byModel: true, byText: true } }),
+        );
+        await assertEscalated(c, "Encargo: «necesito que me compren un queso tajado en la salsamentaria ciudadela»", "cleared");
+        assert.equal(c.reply, ERRAND_RECEIVED_MESSAGE);
+        assert.equal((await allTrips()).length, 0, "no crea ningún viaje");
+        assert.ok(!outbox.some((m) => /\$/.test(m.text ?? "")), "no le cotizó la tienda como si fuera una entrega");
+      });
+
+      it("encargo visto solo por la red de seguridad en código: igual escala", async () => {
+        await registered();
+        const c = chat();
+        await c.say("Me traes 30 envases k1 porfis", understood([], { errand: { byModel: false, byText: true } }));
+        await assertEscalated(c, /^Encargo: «Me traes 30 envases k1 porfis»$/, "cleared");
+      });
+
       it("tabla de tarifas vacía: no hay con qué cotizar, escala y avisa dónde llenarla", async () => {
         await registered();
         await db.delete(schema.settings);
@@ -1134,6 +1156,14 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await c.press(order.CONFIRM_BUTTON_ID, { at: new Date(CLOSED_AT) });
         assert.match(c.reply, /ya no recibimos servicios/);
         assert.equal((await allTrips()).length, 0);
+        await assertNotEscalated(c);
+      });
+
+      it("un encargo sin pedidos abiertos: es fuera de horario, no escala", async () => {
+        await registered();
+        const c = chat();
+        await c.say("me compran 2 bolsas de hielo en el D1", understood([], { errand: { byModel: true, byText: true } }), { at: new Date(CLOSED_AT) });
+        assert.match(c.reply, /A esta hora ya no recibimos servicios para tu restaurante/);
         await assertNotEscalated(c);
       });
 

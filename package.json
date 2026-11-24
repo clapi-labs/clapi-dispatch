@@ -13,6 +13,7 @@
     "bot:mensajes": "npm run mensajes --workspace=@dispatch/bot --",
     "bot:gps": "npm run gps:sim --workspace=@dispatch/bot --",
     "bot:eval:restaurantes": "npm run eval:restaurantes --workspace=@dispatch/bot --",
+    "bot:eval:encargos": "npm run eval:encargos --workspace=@dispatch/bot --",
     "bot:direcciones:medir": "npm run direcciones:medir --workspace=@dispatch/bot --",
     "bot:direcciones:referencia": "npm run direcciones:referencia --workspace=@dispatch/bot --",
     "sim:demo": "node --env-file-if-exists=.env.simulador tools/simulador-demo/servidor.mjs",

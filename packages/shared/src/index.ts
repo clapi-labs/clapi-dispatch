@@ -6,6 +6,7 @@ export * from "./domain/service-zones";
 export * from "./domain/fare";
 export * from "./domain/fare-examples";
 export * from "./domain/return-debts";
+export * from "./domain/errand";
 export * from "./domain/road-distance";
 export * from "./domain/phase";
 export * from "./domain/route";

@@ -1,3 +1,5 @@
+import { ERRAND_REASON_PREFIX, isErrandReason } from "./errand";
+
 /**
  * Alertas al celular (docs/INTERVENCION-MANUAL.md, «Alertas al celular»): el
  * texto de cada notificación y las reglas que no dependen de la base. La
@@ -92,10 +94,12 @@ export function chatHelpMessage(chat: {
   const who = chat.name?.trim() || formatPhoneCO(chat.phone);
   const why = chat.reason?.trim() || chat.lastText?.trim() || "Escribió y espera respuesta.";
   const severity: AlertSeverity = chat.courier ? "critical" : "attention";
+  // Un encargo (comprar o traer algo) lo coordina la central: se anuncia como tal, con lo que pidió.
+  const errand = !chat.courier && isErrandReason(chat.reason);
   return {
     severity,
-    title: `${SEVERITY_PREFIX[severity]} ${who} pide ayuda`,
-    body: clip(why),
+    title: errand ? `🛍️ Encargo · ${who}` : `${SEVERITY_PREFIX[severity]} ${who} pide ayuda`,
+    body: clip(errand ? why.slice(ERRAND_REASON_PREFIX.length).trim() : why),
     // El mismo enlace que usa el portal para abrir un chat por su número.
     url: `/conversaciones#tel=${digits(chat.phone)}`,
     tag: `chat-${chat.id}`,
