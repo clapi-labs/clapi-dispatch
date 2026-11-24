@@ -279,8 +279,10 @@ export function CourierDetails({ courier, onAdmin }: { courier: Courier; onAdmin
                 </span>
               </Row>
               <Row label="Activación">
-                {profile.onboardingCompletedAt ? (
+                {profile.onboardingCompletedAt && profile.gpsConsentAt ? (
                   <span className="text-ok">Activa · datos autorizados</span>
+                ) : profile.onboardingCompletedAt ? (
+                  <span className="font-normal text-ink-3">🧪 Número de prueba (sin activación)</span>
                 ) : profile.gpsConsentAt ? (
                   <span className="text-warn">Autorizó datos · falta señal GPS</span>
                 ) : (

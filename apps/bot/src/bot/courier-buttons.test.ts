@@ -59,12 +59,16 @@ describe("los botones caben en WhatsApp", () => {
   });
 
   it("los botones de activación inicial (onboarding) caben en WhatsApp y se reconocen", () => {
-    for (const group of [onboardingConsentButtons(), onboardingCheckButtons(), onboardingRetryButtons()]) {
+    for (const group of [onboardingConsentButtons(), onboardingConsentButtons({ testNumber: true }), onboardingCheckButtons(), onboardingRetryButtons()]) {
       fitsWhatsApp(group);
     }
     assert.deepEqual(parseCourierButton("onboard:accept"), { kind: "onboarding", action: "accept" });
     assert.deepEqual(parseCourierButton("onboard:check"), { kind: "onboarding", action: "check" });
     assert.deepEqual(parseCourierButton("onboard:help"), { kind: "onboarding", action: "help" });
+    assert.deepEqual(parseCourierButton("onboard:test"), { kind: "onboarding", action: "test" });
+    // «Número de prueba» solo existe en staging.
+    assert.equal(onboardingConsentButtons().length, 2);
+    assert.equal(onboardingConsentButtons({ testNumber: true }).at(-1)?.id, "onboard:test");
     assert.equal(parseCourierButton("onboard:otro"), null);
   });
 

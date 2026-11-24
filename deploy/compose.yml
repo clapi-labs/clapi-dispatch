@@ -78,6 +78,8 @@ services:
       OSRM_URL: http://osrm:5000
       BOT_ACTIVE: ${BOT_ACTIVE:-false}
       BOT_HOST: ${BOT_HOST:-}
+      # El enlace a la política de tratamiento de datos que se le manda al domiciliario.
+      PORTAL_HOST: ${PORTAL_HOST:-}
       # Solo en staging: "1" enciende el simulador (docs/OPERACION.md, «Simulador»).
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
       # Fotos de los chats: el bot las baja de Meta, las achica y las guarda aquí; el
@@ -121,6 +123,12 @@ services:
       SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-}
       BOT_URL: http://bot:3001
       BOT_HOST: ${BOT_HOST:-}
+      # Política de tratamiento de datos (/tratamiento-de-datos): el responsable. Fuera del repo, que es público.
+      PRIVACY_OWNER_NAME: ${PRIVACY_OWNER_NAME:-}
+      PRIVACY_OWNER_NIT: ${PRIVACY_OWNER_NIT:-}
+      PRIVACY_OWNER_ADDRESS: ${PRIVACY_OWNER_ADDRESS:-}
+      PRIVACY_OWNER_EMAIL: ${PRIVACY_OWNER_EMAIL:-}
+      PRIVACY_OWNER_PHONE: ${PRIVACY_OWNER_PHONE:-}
       # Km por calle para la vista previa de Tarifas y «Probar un punto».
       OSRM_URL: http://osrm:5000
       # Las fotos de los chats, solo lectura: las escribe y las limpia el bot.

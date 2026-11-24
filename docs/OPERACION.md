@@ -257,6 +257,18 @@ ssh tu_usuario@IP '/opt/dispatch/upload-courier-video.sh /tmp/domiciliarios.mp4 
 ```
 El bot sube el archivo a Meta Cloud API una sola vez, cachea el `media_id` en `settings` (`courier_onboarding_video`) y lo renueva automáticamente antes de que venza a los 30 días (o si cambia el archivo). Si todavía no se ha cargado ningún video, el flujo sigue funcionando normal enviando las instrucciones de Traccar y el botón de verificación.
 
+**La política de tratamiento de datos** vive en el portal, en `https://<PORTAL_HOST>/tratamiento-de-datos` (pública, sin login). El mensaje de consentimiento es corto y la enlaza; sin `PORTAL_HOST`, el resumen va completo en el mensaje. Los datos del responsable no van en el repositorio (es público): se ponen en el `.env` del servidor con `./set-secret.sh` y se redespliega. Los que falten no se muestran, y el WhatsApp de la central queda siempre como canal.
+
+| Variable | Qué es |
+|---|---|
+| `PRIVACY_OWNER_NAME` | Razón social del responsable. Vacía: el nombre del cliente del portal |
+| `PRIVACY_OWNER_NIT` | NIT |
+| `PRIVACY_OWNER_ADDRESS` | Domicilio |
+| `PRIVACY_OWNER_EMAIL` | Correo para consultas y reclamos |
+| `PRIVACY_OWNER_PHONE` | Teléfono |
+
+**En staging** la activación también corre para una moto real nueva (agregada en Flota). El consentimiento trae un tercer botón, **«Solo pruebas»**: quien solo va a controlar motos simuladas lo toca, se salta la activación y queda como número de prueba (en Flota: «🧪 Número de prueba»). En producción ese botón no existe.
+
 ## 4d. Mapa de calles (OSRM)
 
 El precio del domicilio y los minutos de viaje del engine se pueden medir con los **km reales por calle**, en vez de la línea recta × 1,3. Los mide un OSRM propio, en el mismo servidor (contenedor `dispatch-osrm-1`, sin puertos públicos): no cuesta por consulta y no manda datos afuera. Qué cambia en el bot y el portal: [DIRECCIONES-Y-ZONAS.md](DIRECCIONES-Y-ZONAS.md), «Distancia por calle»; en el engine: [ALGORITMO.md](ALGORITMO.md).

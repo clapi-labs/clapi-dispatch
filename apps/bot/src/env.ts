@@ -86,6 +86,10 @@ export const env = {
   get botHost() {
     return optional("BOT_HOST").replace(/^https?:\/\//, "").replace(/\/+$/, "");
   },
+  /** El dominio del portal: ahí vive la política de tratamiento de datos que se le enlaza al domiciliario. */
+  get portalHost() {
+    return optional("PORTAL_HOST").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  },
 
   get internalSecret() {
     return required("INTERNAL_SECRET");

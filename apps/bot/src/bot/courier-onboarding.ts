@@ -15,6 +15,7 @@ import {
   recordCourierConsent,
   saveOnboardingVideoSetting,
   schema,
+  simulatorEnabled,
   type CourierOnboardingState,
 } from "@dispatch/shared/db";
 import { mediaConfig } from "@dispatch/shared/media";
@@ -64,8 +65,30 @@ function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || "compañero";
 }
 
-/** Mensaje 1: bienvenida + autorización de datos y GPS (Ley 1581 de 2012). */
-export function consentPromptText(courierName: string): string {
+/** La política completa de tratamiento de datos, en el portal (página pública). */
+export const PRIVACY_POLICY_PATH = "/tratamiento-de-datos";
+
+export function privacyPolicyUrl(): string {
+  return env.portalHost ? `https://${env.portalHost}${PRIVACY_POLICY_PATH}` : "";
+}
+
+/**
+ * Mensaje 1: bienvenida + autorización de datos y GPS (Ley 1581 de 2012). Lo
+ * largo de la ley vive en la política del portal: aquí va un resumen corto y el
+ * enlace. Sin dominio del portal, el resumen va completo en el mensaje.
+ */
+export function consentPromptText(courierName: string, policyUrl = privacyPolicyUrl()): string {
+  if (policyUrl) {
+    return [
+      `👋 ¡Hola, ${firstName(courierName)}! Bienvenido al sistema de domicilios de Express Cali 🛵`,
+      "",
+      "Para activar tu cuenta necesitamos tu autorización para usar tus datos y tu ubicación GPS mientras estás en turno (Ley 1581 de 2012).",
+      "",
+      `📄 Léela completa aquí: ${policyUrl}`,
+      "",
+      "¿Autorizas el tratamiento de tus datos para activar tu cuenta?",
+    ].join("\n");
+  }
   return [
     `👋 ¡Hola, ${firstName(courierName)}! Bienvenido al sistema de domicilios de Express Cali 🛵`,
     "",
@@ -221,7 +244,26 @@ async function finishOnboarding(courier: Courier, conversation: Conversation, ph
   await say(conversation.id, phone, onboardingDoneText(courier.name));
 }
 
-/** Atiende los botones `onboard:accept`, `onboard:check` y `onboard:help`. */
+/** Los botones del consentimiento: en staging, además, quedarse como número de prueba. */
+function consentButtons() {
+  return onboardingConsentButtons({ testNumber: simulatorEnabled() });
+}
+
+/**
+ * Staging: quien solo va a controlar motos simuladas se salta la activación.
+ * Queda marcada como completada sin consentimiento ni GPS, así su próximo
+ * «hola» lo conecta como número de prueba. `false` si no aplica: sin simulador,
+ * o si ya autorizó o ya terminó la activación.
+ */
+export async function skipOnboardingAsTestNumber(courierId: number): Promise<boolean> {
+  if (!simulatorEnabled()) return false;
+  const state = await getCourierOnboardingState(courierId);
+  if (state.gpsConsentAt || state.onboardingCompletedAt) return false;
+  await completeCourierOnboarding(courierId);
+  return true;
+}
+
+/** Atiende los botones `onboard:accept`, `onboard:check` y `onboard:help` (`onboard:test` lo atiende courier.ts). */
 export async function handleOnboardingButton(
   courier: Courier,
   conversation: Conversation,
@@ -261,7 +303,7 @@ export async function handleOnboardingButton(
   if (!fresh) return;
 
   if (!state.gpsConsentAt) {
-    await say(conversation.id, message.phone, consentPromptText(fresh.name), { buttons: onboardingConsentButtons() });
+    await say(conversation.id, message.phone, consentPromptText(fresh.name), { buttons: consentButtons() });
     return;
   }
 
@@ -288,7 +330,7 @@ export async function handleOnboardingMessage(
   if (!needsOnboarding(courier, state)) return false;
 
   if (!state.gpsConsentAt) {
-    await say(conversation.id, message.phone, consentPromptText(courier.name), { buttons: onboardingConsentButtons() });
+    await say(conversation.id, message.phone, consentPromptText(courier.name), { buttons: consentButtons() });
     return true;
   }
 

@@ -14,7 +14,7 @@ import {
 } from "@dispatch/shared/db";
 import { debtClosedText, isBeforePickup, matchRestaurant, parseDebtText, tripPhase, type DeliveryPlace, type ReturnDebtReason } from "@dispatch/shared";
 
-import { handleOnboardingButton, handleOnboardingMessage } from "@/bot/courier-onboarding";
+import { handleOnboardingButton, handleOnboardingMessage, skipOnboardingAsTestNumber } from "@/bot/courier-onboarding";
 import { isAck, isDisconnect, parseCourierText } from "@/bot/courier-text";
 import { say } from "@/bot/messaging";
 import { courierSay, notifyCustomerNoAnswer, notifyDelivered, notifyFinished, notifyGoing, notifyPicked, parseCourierButton, sendCourierTicket } from "@/bot/notify";
@@ -23,6 +23,9 @@ import { classifyCourierMessage } from "@/services/openai/courier";
 import type { IncomingMessage } from "@/services/whatsapp/types";
 
 export type Courier = typeof schema.couriers.$inferSelect;
+
+/** Solo con `testNumber` (el simulador encendido): el saludo de un número de prueba al conectarse. */
+const testNumberWelcome = (name: string) => `🧪 ${name.split(" ")[0]}, quedaste conectado como número de prueba del simulador. Te llega el próximo pedido que reciba una moto simulada 🛵 Para desconectarte escribe desactivado.`;
 
 /** Los últimos 10 dígitos: un motorizado guardado como "3001234567" y el
  *  wa_id "573001234567" de WhatsApp son la misma persona. */
@@ -211,6 +214,15 @@ async function markReturned(tripId: number) {
  */
 export async function handleCourier(courier: Courier, conversation: Conversation, message: IncomingMessage) {
   const button = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
+  if (button?.kind === "onboarding" && button.action === "test") {
+    // Staging: «Número de prueba» en el consentimiento. Sin el simulador el botón
+    // no existe, y si llegara uno viejo no hace nada.
+    const testNumber = simulatorEnabled() && !courier.simulated;
+    if (!testNumber || !(await skipOnboardingAsTestNumber(courier.id))) return;
+    await db.update(schema.couriers).set({ status: "available" }).where(eq(schema.couriers.id, courier.id));
+    await say(conversation.id, message.phone, testNumberWelcome(courier.name));
+    return;
+  }
   if (button?.kind === "onboarding") {
     await handleOnboardingButton(courier, conversation, message, button.action);
     return;
@@ -298,8 +310,10 @@ export async function handleCourier(courier: Courier, conversation: Conversation
   const testNumber = simulatorEnabled() && !courier.simulated;
 
   // Primera conexión de un domiciliario real: consentimiento de datos/GPS,
-  // video guía y verificación de señal antes de quedar disponible.
-  if (!trips.length && courier.status === "offline" && !testNumber && !courier.simulated) {
+  // video guía y verificación de señal antes de quedar disponible. También en
+  // staging: ahí el consentimiento trae el botón «Número de prueba» para quien
+  // solo va a controlar motos simuladas.
+  if (!trips.length && courier.status === "offline" && !courier.simulated) {
     if (await handleOnboardingMessage(courier, conversation, message)) return;
   }
 
@@ -347,7 +361,7 @@ export async function handleCourier(courier: Courier, conversation: Conversation
       conversation.id,
       message.phone,
       testNumber
-        ? `🧪 ${first}, quedaste conectado como número de prueba del simulador. Te llega el próximo pedido que reciba una moto simulada 🛵 Para desconectarte escribe desactivado.`
+        ? testNumberWelcome(courier.name)
         : `👋 ${first}, quedaste conectado. Te escribo apenas tengas un servicio 🛵 Para desconectarte escribe desactivado.`,
     );
     return;
