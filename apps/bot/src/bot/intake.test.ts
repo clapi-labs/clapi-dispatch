@@ -158,6 +158,42 @@ describe("intake.ts: a quién va cada mensaje (Postgres)", { skip: integrationSk
     });
   });
 
+  describe("domiciliario quitado de la flota", () => {
+    it("si escribe no es un restaurante nuevo: se le dice que ya no está en la flota y su chat pasa a la central", async () => {
+      const removed = await createCourier({ name: "Lauri Gómez", active: false, status: "offline" });
+      const started = Date.now();
+      await intake.handleIncoming(text(removed.phone, "hola"));
+      assert.ok(Date.now() - started < 2_000, "no espera ni llama a OpenAI");
+      assert.equal(modelCalls.length, 0);
+      assert.equal(sentTo(removed.phone).length, 1);
+      assert.match(sentTo(removed.phone)[0].text, /^Hola Lauri 👋 Ya no estás en la flota/);
+      const conv = await conversationByPhone(removed.phone);
+      assert.equal(conv.botPaused, true);
+      assert.match(conv.escalationReason ?? "", /^Quitado de la flota: Lauri Gómez pide volver/);
+
+      // Si vuelve a escribir, el bot se mantiene callado: ya lo tiene la central.
+      await intake.handleIncoming(text(removed.phone, "¿hola?"));
+      assert.equal(sentTo(removed.phone).length, 1);
+    });
+
+    it("si ese número ahora es un restaurante registrado, se le atiende como restaurante", async () => {
+      const restaurant = await createRestaurant({ name: "Pizza Nona", knownPickupLocation: PICKUP, knownPickupAddress: "Calle 5 # 38-10" });
+      await createCourier({ name: "Antes Domi", phone: restaurant.phone!, active: false, status: "offline" });
+      await intake.handleIncoming(text(restaurant.phone!, "Calle 10 # 5-20"));
+      assert.equal(modelCalls.length, 1, "pasa por el flujo del restaurante");
+      assert.equal((await conversationByPhone(restaurant.phone!)).botPaused, false);
+    });
+
+    it("si la central lo volvió a agregar, es domiciliario otra vez", async () => {
+      const w = await world();
+      await createCourier({ name: "Ficha vieja", phone: w.courier.phone, active: false, status: "offline" });
+      const { trip } = await assignedTrip(w);
+      await intake.handleIncoming(text(w.courier.phone, "ya recogí"));
+      assert.ok((await getAssignment(trip.id)).pickedUpAt);
+      assert.equal((await conversationByPhone(w.courier.phone)).botPaused, false);
+    });
+  });
+
   describe("pausa general de la agencia", () => {
     it("el bot no le responde a nadie: queda el mensaje en el chat y nada más", async () => {
       const w = await world();

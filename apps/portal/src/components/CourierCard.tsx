@@ -308,9 +308,9 @@ export function CourierCard({
         <ConfirmDialog
           title={`¿Quitar a ${courier.name} de la flota?`}
           points={[
-            "Deja de recibir viajes desde ya.",
-            "Si le escribe al bot, ya no lo reconoce como domiciliario.",
-            "Sus viajes y su historial se conservan en los reportes.",
+            "Deja de recibir viajes desde ya, y le llega un aviso por WhatsApp.",
+            "Si escribe pidiendo volver, su chat te llega a Conversaciones.",
+            "Sus viajes y su historial se conservan: si lo agregas de nuevo con el mismo número, vuelve con ellos.",
           ]}
           confirmLabel="Sí, quitarlo"
           onConfirm={onRemove}

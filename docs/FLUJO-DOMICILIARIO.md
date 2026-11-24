@@ -31,6 +31,7 @@ El viaje está «en ruta» desde que se asigna hasta el final. Solo se guarda «
   - Si todavía tiene pedidos abiertos (asignados, en camino o encima), sigue conectado y recibe «Termina primero lo que llevas y vuelve a escribir desactivado.». Si tiene una urgencia, escribe la novedad como siempre y la central resuelve.
   - Si ya estaba desconectado, sigue desconectado y recibe «Ya estabas desconectado. Para volver escribe hola.».
   - La central conserva la opción de desconectar una moto desde Flota en cualquier momento.
+- **Quitado de la flota:** desconectar no es quitar. Si la central lo quita (Flota, «Quitar de la flota»), le llega «…la central te quitó de la flota: desde ya no te llegan servicios. Si quieres volver, escríbeme Hola y le aviso a la central». Si después escribe, el bot no lo toma por un restaurante nuevo: le responde que ya no está en la flota y su chat pasa a la central con el motivo «Quitado de la flota: … pide volver» y la alerta «🛵 Quiere volver a la flota». Volver no es automático: la central decide. Si lo agrega de nuevo en Flota con el mismo número, se reactiva su misma ficha (historial, vehículo, consentimiento y GPS) y su chat vuelve al bot; queda desconectado hasta que escriba «hola». Si ese número ahora es de un restaurante registrado, se atiende como restaurante.
 
 ### Mensaje 1: al asignar
 

@@ -62,6 +62,7 @@ en 10
 | --- | --- | --- |
 | Registrado | Coincide, no viene o solo es el perfil (suele ser personal) | Lo atiende como ese restaurante |
 | Registrado | Dice en el mensaje ser otro | Pregunta una vez «¿Hablo con Donde Lucho?». Solo un «no» pasa a la central. No crea ni renombra nada |
+| De un domiciliario que la central quitó de la flota | Cualquiera | No pide. Recibe «Ya no estás en la flota… Le avisé a la central que quieres volver» y el chat pasa a la central con el motivo «Quitado de la flota: … pide volver» (docs/FLUJO-DOMICILIARIO.md, «Quitado de la flota») |
 | No registrado (o restaurante inactivo) | Cualquiera | No pide. Recibe un solo aviso («Te transferiré con un asesor…») y el chat pasa a la central con el motivo «Número no registrado». El bot no le contesta nada más ni gasta OpenAI en él |
 
 **Números no registrados.** Cualquiera puede escribirle al número de la agencia, y un pedido confirmado despacha una moto de verdad: por eso solo piden los restaurantes registrados (issue #32). La central decide qué hacer con el chat: si es un restaurante que va a trabajar con la agencia, lo agrega en **Restaurantes** con ese número y devuelve el chat al bot; si no, lo deja como está y el bot sigue callado. Un restaurante registrado sin número tampoco se reconoce solo por el nombre: la central le agrega el número. Lo decide `bot/intake.ts` (`holdUnknownNumber`), antes de esperar o llamar a OpenAI.

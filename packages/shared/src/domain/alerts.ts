@@ -1,4 +1,5 @@
 import { ERRAND_REASON_PREFIX, isErrandReason } from "./errand";
+import { isRemovedCourierReason, REMOVED_COURIER_REASON_PREFIX } from "./fleet-removal";
 
 /**
  * Alertas al celular (docs/INTERVENCION-MANUAL.md, «Alertas al celular»): el
@@ -96,10 +97,12 @@ export function chatHelpMessage(chat: {
   const severity: AlertSeverity = chat.courier ? "critical" : "attention";
   // Un encargo (comprar o traer algo) lo coordina la central: se anuncia como tal, con lo que pidió.
   const errand = !chat.courier && isErrandReason(chat.reason);
+  // Un domiciliario que la central quitó de la flota escribió: pide volver.
+  const removed = !chat.courier && isRemovedCourierReason(chat.reason);
   return {
     severity,
-    title: errand ? `🛍️ Encargo · ${who}` : `${SEVERITY_PREFIX[severity]} ${who} pide ayuda`,
-    body: clip(errand ? why.slice(ERRAND_REASON_PREFIX.length).trim() : why),
+    title: errand ? `🛍️ Encargo · ${who}` : removed ? `🛵 Quiere volver a la flota · ${who}` : `${SEVERITY_PREFIX[severity]} ${who} pide ayuda`,
+    body: clip(errand ? why.slice(ERRAND_REASON_PREFIX.length).trim() : removed ? why.slice(REMOVED_COURIER_REASON_PREFIX.length).trim() : why),
     // El mismo enlace que usa el portal para abrir un chat por su número.
     url: `/conversaciones#tel=${digits(chat.phone)}`,
     tag: `chat-${chat.id}`,
