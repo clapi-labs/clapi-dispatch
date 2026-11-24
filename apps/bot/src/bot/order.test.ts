@@ -172,7 +172,7 @@ const delivery = (over: Partial<Fields> = {}): Fields => ({
 const complete = (over: Partial<Fields> = {}): Fields =>
   delivery({ direccionEntrega: "Calle 10 # 5-20", nombreCliente: "Marta Ríos", telefonoCliente: "3001234567", listoEnMinutos: 10, ...over });
 
-type Said = Partial<Pick<Outcome, "query" | "intent" | "confirms" | "confused" | "failed" | "errand">> & { nombreRestaurante?: string | null; quitar?: number[]; origen?: string | null };
+type Said = Partial<Pick<Outcome, "query" | "intent" | "confirms" | "confused" | "failed" | "errand" | "cancel">> & { nombreRestaurante?: string | null; quitar?: number[]; origen?: string | null };
 
 /** Lo que devuelve el modelo: la lista completa de entregas hasta ahora. */
 const understood = (entregas: Fields[], said: Said = {}): Outcome => ({
@@ -184,6 +184,7 @@ const understood = (entregas: Fields[], said: Said = {}): Outcome => ({
   failed: said.failed ?? false,
   claim: null,
   errand: said.errand ?? null,
+  cancel: said.cancel ?? null,
 });
 
 let clock = OPEN_AT;
@@ -1058,6 +1059,65 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await assertEscalated(c, `Pidió cambiar la dirección del pedido ${trip.code}, que ya estaba creado.`, "cleared");
         assert.equal(c.reply, ESCALATION_MESSAGE);
         assert.equal((await allTrips())[0].deliveryAddress, "Calle 10 # 5-20", "el viaje no se toca");
+      });
+    });
+
+    describe("cancelar un pedido ya creado", () => {
+      const cancel = { byModel: true, byText: true };
+
+      it("«me lo cancelas?» con un pedido abierto: no saluda como si fuera nuevo, pasa a la central con el pedido y le confirma", async () => {
+        await registered();
+        const c = chat();
+        const trip = await placeOrder(c);
+        await c.say("ahn no se demora mucho me lo cancelas ?", understood([], { cancel }));
+        await assertEscalated(c, `Pidió cancelar el pedido ${trip.code}.`, "cleared");
+        assert.match(c.reply, new RegExp(`Recibido 🙏 Le paso a la central que quieres cancelar el ${trip.code}`));
+        assert.equal((await allTrips())[0].status, trip.status, "el viaje no se toca: lo cancela la central");
+      });
+
+      it("nombrándolo por su código, aunque tenga otro abierto", async () => {
+        await registered();
+        const c = chat();
+        const first = await placeOrder(c);
+        await placeOrder(c, { direccionEntrega: "Carrera 8 # 9-10" });
+        await c.say(`cancelame el ${first.code}`, understood([], { cancel: { byModel: false, byText: true } }));
+        await assertEscalated(c, `Pidió cancelar el pedido ${first.code}.`, "cleared");
+      });
+
+      it("con varios abiertos y sin decir cuál: la central los ve todos en el motivo", async () => {
+        await registered();
+        const c = chat();
+        const a = await placeOrder(c);
+        const b = await placeOrder(c, { direccionEntrega: "Carrera 8 # 9-10" });
+        await c.say("cancela el pedido", understood([], { cancel }));
+        await assertEscalated(c, `Pidió cancelar un pedido sin decir cuál: tiene abiertos ${b.code} y ${a.code}.`, "cleared");
+        assert.match(c.reply, /quieres cancelar tu pedido/);
+      });
+
+      it("sin pedidos abiertos: se lo dice, no escala", async () => {
+        await registered();
+        const c = chat();
+        await c.say("cancela el pedido", understood([], { cancel }));
+        assert.equal(c.reply, "No tienes pedidos en curso para cancelar 🤔");
+        await assertNotEscalated(c);
+      });
+
+      it("citando un pedido ya entregado: se lo dice, no escala", async () => {
+        await registered();
+        const c = chat();
+        const trip = await placeOrder(c);
+        await db.update(schema.trips).set({ status: "delivered" }).where(eq(schema.trips.id, trip.id));
+        await c.say("cancélalo", understood([], { cancel }), { replyTo: trip.sourceWaMessageId });
+        assert.equal(c.reply, `El pedido ${trip.code} ya estaba entregado ✅`);
+        await assertNotEscalated(c);
+      });
+
+      it("con un pedido a medio armar y sin nombrar uno creado, sigue armando (no escala)", async () => {
+        await registered();
+        const c = chat();
+        await c.say("pedido", understood([complete(), complete({ direccionEntrega: "Carrera 8 # 9-10" })]));
+        await c.say("cancela la 2", understood([complete(), complete({ direccionEntrega: "Carrera 8 # 9-10" })], { quitar: [2], cancel }));
+        await assertNotEscalated(c);
       });
     });
 

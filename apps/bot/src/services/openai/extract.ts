@@ -3,6 +3,7 @@ import {
   buildExtractionPrompt,
   DOUBTFUL_FIELDS,
   fixPaymentMethod,
+  looksLikeCancelRequest,
   looksLikeErrand,
   mergeDebtClaim,
   parseDebtClaim,
@@ -25,11 +26,14 @@ import type { DownloadedImage } from "@/services/whatsapp/client";
 /** `errand`: pide que le compren o le traigan algo, no llevar su comida a un
  *  cliente (`byModel` lo vio el modelo, `byText` la red de seguridad en código);
  *  null si ninguno lo vio. Va a la central. */
+/** `cancel`: pide cancelar un pedido ya creado (igual que `errand`: el modelo o
+ *  la red en código). La cancela la central. */
 export type ExtractionOutcome = {
   fields: Interpretation;
   query: "estado" | "cobertura" | null;
   claim?: DebtClaim | null;
   errand?: { byModel: boolean; byText: boolean } | null;
+  cancel?: { byModel: boolean; byText: boolean } | null;
   intent: "cotizar" | "pedir" | null;
   confirms: boolean;
   confused: boolean;
@@ -215,6 +219,8 @@ export async function interpretMessage(
     // Basta con que uno de los dos lo vea: un encargo tomado como domicilio crea un viaje al revés.
     const errandByModel = raw.encargo === true;
     const errandByText = looksLikeErrand(messageText);
+    const cancelByModel = raw.cancelar === true;
+    const cancelByText = looksLikeCancelRequest(messageText);
 
     return {
       fields: {
@@ -226,6 +232,7 @@ export async function interpretMessage(
       query: raw.consulta === "estado" || raw.consulta === "cobertura" ? raw.consulta : null,
       claim,
       errand: errandByModel || errandByText ? { byModel: errandByModel, byText: errandByText } : null,
+      cancel: cancelByModel || cancelByText ? { byModel: cancelByModel, byText: cancelByText } : null,
       intent: raw.intencion === "cotizar" || raw.intencion === "pedir" ? raw.intencion : rescue.rescued ? "cotizar" : null,
       confirms: raw.confirma === true,
       confused: rescue.confused && !claim,
