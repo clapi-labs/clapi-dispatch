@@ -25,9 +25,18 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  * de verdad.
  */
 
-export type Sent = { phone: string; text: string; buttons: { id: string; title: string }[]; replyTo: string | null; wamid: string };
+export type Sent = {
+  phone: string;
+  text: string;
+  buttons: { id: string; title: string }[];
+  replyTo: string | null;
+  wamid: string;
+  video?: { id?: string; link?: string };
+};
 
 export const outbox: Sent[] = [];
+/** Archivos subidos vía `uploadMedia` durante la prueba. */
+export const uploadedMedia: { mimeType: string; filename: string; bytes: number; id: string }[] = [];
 /** Los mensajes que el bot marcó como leídos (y si además mostró «escribiendo…»). */
 export const marked: { wamid: string; typing: boolean }[] = [];
 
@@ -177,7 +186,9 @@ async function engineFetch(init?: { body?: unknown }): Promise<Response> {
 }
 
 let sentSeq = 0;
+let uploadSeq = 0;
 let failSends = false;
+let failUploads = false;
 let throwSends = false;
 const failingReads = new Set<string>();
 let failBody: unknown = null;
@@ -187,6 +198,9 @@ export const whatsapp = {
   failSends(on: boolean, body: unknown = null) {
     failSends = on;
     failBody = body;
+  },
+  failUploads(on: boolean) {
+    failUploads = on;
   },
   /** Que enviar lance una excepción (no solo que Meta rechace el envío). */
   throwSends(on: boolean) {
@@ -200,11 +214,17 @@ export const whatsapp = {
 
 export async function installMocks() {
   const client = await import("@/services/whatsapp/client");
-  const record = (phone: string, text: string, buttons: { id: string; title: string }[] = [], replyTo: string | null = null) => {
+  const record = (
+    phone: string,
+    text: string,
+    buttons: { id: string; title: string }[] = [],
+    replyTo: string | null = null,
+    video?: { id?: string; link?: string },
+  ) => {
     if (throwSends) throw new Error("WhatsApp no respondió");
     if (failSends) return { ok: false as const, reason: "http_error" as const, status: 500, body: failBody };
     const wamid = `wamid.out.${++sentSeq}`;
-    outbox.push({ phone, text, buttons, replyTo, wamid });
+    outbox.push({ phone, text, buttons, replyTo, wamid, ...(video ? { video } : {}) });
     return { ok: true as const, messageId: wamid };
   };
   mock.module("@/services/whatsapp/client", {
@@ -214,6 +234,14 @@ export async function installMocks() {
       sendButtons: async (phone: string, text: string, buttons: { id: string; title: string }[], o?: { replyTo?: string | null }) =>
         record(phone, text, buttons, o?.replyTo ?? null),
       sendList: async (phone: string, text: string, _list: unknown, o?: { replyTo?: string | null }) => record(phone, text, [], o?.replyTo ?? null),
+      sendVideo: async (phone: string, video: { id?: string; link?: string }, caption?: string, o?: { replyTo?: string | null }) =>
+        record(phone, caption ?? "", [], o?.replyTo ?? null, video),
+      uploadMedia: async (bytes: Buffer, mimeType: string, filename: string) => {
+        if (failUploads) return null;
+        const id = `media.up.${++uploadSeq}`;
+        uploadedMedia.push({ mimeType, filename, bytes: bytes.length, id });
+        return id;
+      },
       markRead: async (wamid: string) => {
         if (failingReads.has(wamid)) throw new Error("WhatsApp no respondió");
         marked.push({ wamid, typing: false });
@@ -240,10 +268,12 @@ export async function installMocks() {
 
 export function resetMocks() {
   outbox.length = 0;
+  uploadedMedia.length = 0;
   marked.length = 0;
   classifierQueue.length = 0;
   classified.length = 0;
   failSends = false;
+  failUploads = false;
   throwSends = false;
   failBody = null;
   failingReads.clear();

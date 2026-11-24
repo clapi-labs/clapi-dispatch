@@ -120,7 +120,8 @@ export async function handleIncoming(incoming: IncomingMessage) {
   // Pausa general: el bot no le responde a nadie. Solo sigue funcionando
   // lo que marca el motorizado con sus botones, para cerrar lo que ya está en la calle.
   if ((await getBusinessState()).paused) {
-    const delivering = message.kind === "button" && parseCourierButton(message.buttonId) !== null;
+    const parsedButton = message.kind === "button" ? parseCourierButton(message.buttonId) : null;
+    const delivering = parsedButton !== null && parsedButton.kind !== "onboarding";
     if (!(courier && delivering)) return;
   }
   if (courier) {

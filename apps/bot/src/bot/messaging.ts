@@ -4,7 +4,7 @@ import { simulatorEnabled } from "@dispatch/shared/db";
 
 import { withGreeting } from "@/bot/greeting";
 import { recordMessage } from "@/db/queries/conversation";
-import { sendButtons, sendList, sendText, type ListOption, type SendResult } from "@/services/whatsapp/client";
+import { sendButtons, sendList, sendText, sendVideo, type ListOption, type SendResult, type VideoSource } from "@/services/whatsapp/client";
 
 export type OutgoingOptions = {
   /** El wamid que se cita: el mensaje con que el restaurante abrió el pedido. */
@@ -80,6 +80,32 @@ export async function say(conversationId: number | null, phone: string, text: st
 
   if (conversationId) {
     await recordMessage(conversationId, "bot", result.ok ? text : `${text}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`, {
+      waMessageId: result.ok ? result.messageId : null,
+      tripId: options.tripId ?? null,
+      replyTo: options.replyTo ?? null,
+    });
+  }
+  return result;
+}
+
+/** Envía un video por WhatsApp y deja constancia en el hilo del portal. */
+export async function sayVideo(
+  conversationId: number | null,
+  phone: string,
+  video: VideoSource,
+  caption?: string,
+  options: Pick<OutgoingOptions, "replyTo" | "tripId"> = {},
+): Promise<SendResult> {
+  if (!simulatorEnabled() && caption && leaksTestText(caption)) {
+    console.error(`[produccion] no se envió un video con texto de pruebas: ${caption.slice(0, 80)}`);
+    if (conversationId) await recordMessage(conversationId, "bot", `[Video] ${caption}\n\n⚠️ No se envió: es un texto de pruebas y esto es producción.`);
+    return { ok: false, reason: "network_error", error: "texto de pruebas bloqueado en producción" };
+  }
+
+  const result = await sendVideo(phone, video, caption, { replyTo: options.replyTo });
+  const label = caption ? `[Video] ${caption}` : "[Video]";
+  if (conversationId) {
+    await recordMessage(conversationId, "bot", result.ok ? label : `${label}\n\n⚠️ No se pudo enviar por WhatsApp (${result.reason}).`, {
       waMessageId: result.ok ? result.messageId : null,
       tripId: options.tripId ?? null,
       replyTo: options.replyTo ?? null,

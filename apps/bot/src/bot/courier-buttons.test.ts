@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parseCourierText } from "./courier-text";
-import { deliveryButtons, parseCourierButton, pickupButtons } from "./courier-buttons";
+import {
+  deliveryButtons,
+  onboardingCheckButtons,
+  onboardingConsentButtons,
+  onboardingRetryButtons,
+  parseCourierButton,
+  pickupButtons,
+} from "./courier-buttons";
 
 /**
  * Los botones del domiciliario (docs/FLUJO-DOMICILIARIO.md): tres para recoger
@@ -49,6 +56,16 @@ describe("los botones caben en WhatsApp", () => {
 
   it("cerrar un pendiente", () => {
     assert.deepEqual(parseCourierButton("debtok:5"), { kind: "debt_done", debtId: 5 });
+  });
+
+  it("los botones de activación inicial (onboarding) caben en WhatsApp y se reconocen", () => {
+    for (const group of [onboardingConsentButtons(), onboardingCheckButtons(), onboardingRetryButtons()]) {
+      fitsWhatsApp(group);
+    }
+    assert.deepEqual(parseCourierButton("onboard:accept"), { kind: "onboarding", action: "accept" });
+    assert.deepEqual(parseCourierButton("onboard:check"), { kind: "onboarding", action: "check" });
+    assert.deepEqual(parseCourierButton("onboard:help"), { kind: "onboarding", action: "help" });
+    assert.equal(parseCourierButton("onboard:otro"), null);
   });
 
   it("los botones ya enviados siguen sirviendo: el «vuelvo» de la lista vieja solo marca la entrega", () => {
