@@ -679,6 +679,7 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
   "consulta": "estado" | "cobertura" | null,
   "reclamo": { "motivo": "datafono" | "plata" | null, "cierra": boolean } | null,
   "encargo": boolean,
+  "cancelar": boolean,
   "intencion": "cotizar" | "pedir" | null,
   "confirma": boolean,
   "confuso": boolean
@@ -726,6 +727,7 @@ Reglas:
 - "encargo": true si el restaurante NO pide llevar su comida a un cliente, sino que le COMPREN, CONSIGAN o TRAIGAN algo: "necesito que me compren un queso tajado en la salsamentaria", "de ir al Ara a comprar 3 paquetes de tortillas", "Necesito un domi" + foto de un envase + "me traes 30", "¿me pueden hacer una vuelta? comprar 2 aguacates en la frutería", "que vayan donde mi proveedor a recoger unas cajas y me las traigan". También si a un domicilio normal le agrega comprar algo en el camino ("y de camino le compras una gaseosa al cliente"). Mira también los datos ya capturados: si en un mensaje anterior pidió el domi y en este dice qué hay que comprar o traer, es encargo. En un encargo, la tienda o el lugar donde se compra o se recoge NO es una dirección de entrega: no lo pongas en "entregas".
   La clave es QUIÉN compra y DÓNDE: es encargo cuando el RESTAURANTE pide que el domiciliario compre o recoja algo en OTRO lugar (una tienda, el Ara, el D1, un supermercado, una droguería, la galería, un proveedor) para el restaurante. Si quien compra es el CLIENTE del restaurante (le compra al restaurante su comida, sus combos o sus platos), es un domicilio normal.
   "encargo" es false en un domicilio normal, aunque: nombre los productos del pedido ("2 hamburguesas cheese"), diga que el cliente compró algo ("el cliente compró 3 pizzas"), reenvíe o copie el mensaje de un cliente que quiere comprar ("Hola quiero comprar 2 combos para la Cra 85 # 15-40, soy Mario 3014445566", "mi cliente quiere comprar una pizza y que se la lleven a…"), la entrega sea en una tienda, droguería o galería ("domi para el D1 de la 100, el cliente trabaja ahí"), pregunte el precio hasta una tienda, pida llevar datáfono o cambio, o pida que le traigan la plata, el datáfono o la factura (eso es "reclamo" o "notas"). "Necesito un domi" solo, sin decir qué, es false.
+- "cancelar": true si el restaurante pide cancelar o anular un pedido que YA se creó o ya se confirmó ("me lo cancelas?", "cancélame el A-57", "cancela el pedido", "anula ese domi", "el cliente canceló, ya no va"). En Colombia "cancelar" también es PAGAR: "el cliente cancela en efectivo", "cancela con billete de 50", "ya canceló por Nequi", "le cancela al domi" son false (eso es el método de pago). Quitar una entrega del pedido que todavía se está armando ("quita la 2", "el de Pance ya no va") va en "quitar", no aquí: false.
 - "confuso": true SOLO si el restaurante pide hablar con una persona, está molesto (salvo que sea un "reclamo" de plata o datáfono), o se contradice sin aclarar cuál dato es el bueno. Saludos, reclamos de plata/datáfono, preguntas de precio o de cobertura, mensajes cortos, reenviados o incompletos NO son confusos.
 - No agregues texto fuera del JSON.`;
 }

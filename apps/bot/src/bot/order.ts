@@ -1,4 +1,6 @@
 import {
+  cancelReason,
+  cancelReceivedText,
   ERRAND_RECEIVED_MESSAGE,
   ESCALATION_MESSAGE,
   MAX_CLARIFICATION_ATTEMPTS,
@@ -55,7 +57,7 @@ import { pinAddress } from "@/bot/turns";
 import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
-import { createTrip, openTrips, tripFromCodeInText, tripFromQuote } from "@/db/queries/trips";
+import { createTrip, openTrips, tripFromCodeInText, tripFromQuote, type Trip } from "@/db/queries/trips";
 import { geocodeAddress, type GeocodeOutcome } from "@/services/google/geocode";
 import { interpretMessage } from "@/services/openai/extract";
 import { downloadImage, type DownloadedImage } from "@/services/whatsapp/client";
@@ -140,6 +142,31 @@ async function closedForOrders(ctx: Context, opensAt: string, now: Date) {
   const due = closedNoticeDue(now, opensAt, ctx.conversation.closedNoticeAt);
   await updateConversation(ctx.conversation.id, { draft: null, failedAttempts: 0, ...(due ? { closedNoticeAt: now } : {}) });
   if (due) await say(ctx.conversation.id, ctx.message.phone, closedMessage(now, opensAt));
+}
+
+/**
+ * Pide cancelar un pedido ya creado. El bot no cancela: el chat pasa a la
+ * central con el pedido en el motivo, y se le confirma al restaurante. El
+ * borrador que hubiera se conserva. Sin decir cuál y con varios abiertos, la
+ * central ve todos en el motivo.
+ */
+async function askCentralToCancel(ctx: Context, quoted: Trip | null) {
+  const { conversation, message } = ctx;
+  if (quoted && (quoted.status === "delivered" || quoted.status === "cancelled")) {
+    await say(conversation.id, message.phone, `El pedido ${quoted.code} ya estaba ${quoted.status === "delivered" ? "entregado" : "cancelado"} ✅`, {
+      replyTo: quoted.sourceWaMessageId,
+      tripId: quoted.id,
+    });
+    return;
+  }
+  const trips = quoted ? [quoted] : await openTrips(conversation.id);
+  if (!trips.length) {
+    await say(conversation.id, message.phone, "No tienes pedidos en curso para cancelar 🤔");
+    return;
+  }
+  const codes = trips.map((t) => t.code);
+  await updateConversation(conversation.id, { botPaused: true, escalationReason: cancelReason(codes), failedAttempts: 0 });
+  await say(conversation.id, message.phone, cancelReceivedText(codes), trips.length === 1 ? { replyTo: trips[0].sourceWaMessageId, tripId: trips[0].id } : undefined);
 }
 
 async function escalate(ctx: Context, reason: string) {
@@ -581,6 +608,13 @@ async function respond(ctx: Context) {
     // De qué pedido habla: el que citó o, si no citó, el que nombra por su
     // código («¿ya llegó el B-12?»).
     const quoted = (message.replyTo ? await tripFromQuote(conversation.id, message.replyTo) : null) ?? (await tripFromCodeInText(conversation.id, text));
+
+    // Cancelar un pedido ya creado: lo cancela la central. Si se está armando
+    // uno y no nombra un pedido creado, sigue abajo (quitar una entrega).
+    if (extraction.cancel && !claim && (quoted || before.entregas.length === 0)) {
+      await askCentralToCancel(ctx, quoted);
+      return;
+    }
 
     saidName = extraction.fields.nombreRestaurante ?? null;
     if (saidName && namedAsDestination(text, saidName)) saidName = null;
