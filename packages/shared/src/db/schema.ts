@@ -196,6 +196,11 @@ export const restaurants = pgTable(
 
 export type TripStatus = "pending" | "assigned" | "en_route" | "delivered" | "cancelled";
 
+/** `delivery`: llevar la comida del restaurante a su cliente. `errand`: un
+ *  encargo, comprarle o traerle algo al restaurante (domain/errand.ts). Lo crea
+ *  la central desde la conversación y solo ella lo asigna. */
+export type TripKind = "delivery" | "errand";
+
 /** El contador del código de cada pedido (`B-12`): de 0 (A-00) a 2599 (Z-99)
  *  y vuelve a empezar. Ver `trip-code.ts`. */
 export const tripCodeSeq = pgSequence("trip_code_seq", { startWith: 0, minValue: 0, maxValue: 2599, cycle: true });
@@ -211,6 +216,11 @@ export const trips = pgTable(
     conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
 
     status: text("status").notNull().$type<TripStatus>().default("pending"),
+    /** Un encargo no tiene recogida conocida (la tienda la acuerda la central):
+     *  `pickupAddress` va vacía, la entrega es el mismo restaurante y `notes`
+     *  guarda lo que pidió, tal cual. El engine no lo asigna ni lo cuenta en la
+     *  demanda; la moto que lo lleva queda fuera del engine hasta entregarlo. */
+    kind: text("kind").notNull().$type<TripKind>().default("delivery"),
 
     /** Lo que el restaurante escribió como su propio nombre — no una
      *  dirección. La dirección de recogida (`pickupAddress`) puede quedar

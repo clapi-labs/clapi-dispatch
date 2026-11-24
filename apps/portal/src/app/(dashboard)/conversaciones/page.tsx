@@ -14,12 +14,14 @@ import {
   SendHorizontal,
   TriangleAlert,
 } from "lucide-react";
+import { isErrandReason } from "@dispatch/shared/domain/errand";
 import { AnimatePresence, motion } from "motion/react";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { AdvisorQueryPanel } from "@/components/AdvisorQueryPanel";
 import { ChatContactActions } from "@/components/ChatContactActions";
+import { ErrandPanel } from "@/components/ErrandPanel";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { ImageViewer } from "@/components/ImageViewer";
 import { KINDS, KindChip } from "@/components/KindChip";
@@ -855,6 +857,20 @@ export default function ConversacionesPage() {
                   </p>
                 </div>
               )}
+
+              {selected.botPaused && !businessPaused && isErrandReason(selected.escalationReason) ? (
+                <ErrandPanel
+                  key={selected.id}
+                  conversationId={selected.id}
+                  onDone={(created) => {
+                    if (created) setNotice(created.code ? `Encargo ${created.code} creado` : "Encargo creado");
+                    // Optimista: el chat ya volvió al bot.
+                    setList((prev) => prev.map((c) => (c.id === selected.id ? { ...c, botPaused: false, escalationReason: null } : c)));
+                    loadList();
+                    loadThread(selected.id);
+                  }}
+                />
+              ) : null}
 
               {selected.botPaused && selected.advisorQuery?.length ? (
                 <AdvisorQueryPanel

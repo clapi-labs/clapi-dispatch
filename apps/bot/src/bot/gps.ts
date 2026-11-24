@@ -67,6 +67,8 @@ function update(tripId: number, values: Partial<typeof schema.assignments.$infer
 }
 
 async function checkTrip(trip: Trip, a: Assignment, position: Point, at: Date, config: BotConfig) {
+  // Un encargo no tiene recogida que marcar: termina con «Entregado».
+  if (trip.kind === "errand") return;
   const phase = tripPhase({ ...a, status: trip.status });
   const arrived = config.gpsArrivalMeters;
   const left = arrived * LEAVE_FACTOR;

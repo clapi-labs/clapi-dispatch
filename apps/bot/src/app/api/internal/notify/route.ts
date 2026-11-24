@@ -1,4 +1,4 @@
-import { notifyAssigned, notifyCourierGpsConfig, notifyDebtNudge, notifyDelivered, notifyUnassigned } from "@/bot/notify";
+import { notifyAssigned, notifyCourierGpsConfig, notifyDebtNudge, notifyDelivered, notifyErrandCreated, notifyUnassigned } from "@/bot/notify";
 
 import { isInternal } from "../auth";
 
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
  * del motorizado) y le pide al bot que avise por WhatsApp.
  * - `debtNudge`: «Mandar ya» de un pendiente de regreso.
  * - `courierGps`: «Enviar por WhatsApp» los datos de Traccar Client (#53).
+ * - `errandCreated`: la central creó encargos desde Conversaciones; se le
+ *   confirma a cada restaurante con su código.
  */
 export async function POST(request: Request) {
   if (!isInternal(request)) return new Response("Unauthorized", { status: 401 });
@@ -18,6 +20,7 @@ export async function POST(request: Request) {
     assigned = [],
     delivered = [],
     unassigned = [],
+    errandCreated = [],
     debtNudge,
     courierGps,
     gpsUrl,
@@ -25,6 +28,7 @@ export async function POST(request: Request) {
     assigned?: number[];
     delivered?: number[];
     unassigned?: { tripId: number; courierId: number }[];
+    errandCreated?: number[];
     debtNudge?: number;
     courierGps?: number;
     gpsUrl?: string;
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, reason: sent.reason }, { status });
   }
 
+  for (const id of errandCreated) await notifyErrandCreated(id);
   for (const { tripId, courierId } of unassigned) await notifyUnassigned(tripId, courierId);
   for (const id of delivered) await notifyDelivered(id);
   for (const id of assigned) await notifyAssigned(id);

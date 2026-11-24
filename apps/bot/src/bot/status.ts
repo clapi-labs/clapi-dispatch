@@ -174,6 +174,13 @@ function describe(row: Row, withAddress: boolean) {
   const { trip } = row;
   const where = withAddress ? ` (${trip.deliveryAddress})` : "";
   const courier = row.courierName ?? "un domiciliario";
+  // Un encargo lo coordina la central: no hay tiempo de recogida que prometer.
+  if (trip.kind === "errand") {
+    if (trip.status === "pending") return `🛍️ Encargo ${trip.code}: registrado, la central lo está coordinando.`;
+    if (trip.status === "assigned" || trip.status === "en_route") return `🛍️ Encargo ${trip.code}: va ${courier}.\n\n${COURIER_CONTACT_NOTE}`;
+    if (trip.status === "delivered") return `🛍️ Encargo ${trip.code}: entregado${row.deliveredAt ? ` a las ${time(row.deliveredAt)}` : ""}`;
+    return `❌ Encargo ${trip.code}: cancelado.`;
+  }
   switch (trip.status) {
     case "pending":
       return `✅ ${trip.code}${where}: confirmado, el domiciliario estará ahí en ${PICKUP_WINDOW}.`;

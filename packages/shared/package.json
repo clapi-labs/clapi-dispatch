@@ -16,6 +16,7 @@
     "./domain/return-debts": "./src/domain/return-debts.ts",
     "./domain/service-hours": "./src/domain/service-hours.ts",
     "./domain/demand": "./src/domain/demand.ts",
+    "./domain/errand": "./src/domain/errand.ts",
     "./auth/password": "./src/auth/password.ts",
     "./media": "./src/media/index.ts"
   },

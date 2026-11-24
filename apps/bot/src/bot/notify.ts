@@ -34,6 +34,9 @@ import {
   debtCloseText,
   debtClosingSoonText,
   decideDebtClaim,
+  errandAssignedText,
+  errandCreatedText,
+  errandDeliveredText,
   goingReminderAt,
   groupDebts,
   idlePayText,
@@ -51,7 +54,7 @@ import {
   type PhaseInput,
 } from "@dispatch/shared";
 
-import { debtButton, deliveryButtons, goingButton, pickedButton, pickupButtons, returnedButton } from "@/bot/courier-buttons";
+import { debtButton, deliveryButtons, errandButtons, goingButton, pickedButton, pickupButtons, returnedButton } from "@/bot/courier-buttons";
 import { say } from "@/bot/messaging";
 import { confirmedText, courierAssignedText, estimatePickup } from "@/bot/status";
 import { conversationForOutbound } from "@/db/queries/conversation";
@@ -193,6 +196,31 @@ export function deliveryTicket(trip: Trip, { byGps = false } = {}) {
   ]);
 }
 
+/** WhatsApp no acepta más de 1.024 caracteres en un mensaje con botones: lo
+ *  que pidió el restaurante se recorta antes que el resto de la ficha. */
+const ERRAND_REQUEST_IN_TICKET = 600;
+
+/**
+ * El encargo, en un solo mensaje con un solo botón (docs/FLUJO-DOMICILIARIO.md,
+ * «Encargos»): qué pidió el restaurante, tal cual, y a dónde llevarlo, que es el
+ * mismo restaurante. Los detalles («es en la de la 25, pide factura») se los
+ * da la central por este chat.
+ */
+export function errandTicket(trip: Trip, courierName?: string | null) {
+  const first = firstName(courierName);
+  const request = trip.notes?.trim() || "Pregúntale a la central por este chat.";
+  const said = request.length > ERRAND_REQUEST_IN_TICKET ? `${request.slice(0, ERRAND_REQUEST_IN_TICKET - 1)}…` : request;
+  const place = trip.deliveryAddress !== trip.originRestaurantName ? `${trip.originRestaurantName} · ${trip.deliveryAddress}` : trip.originRestaurantName;
+  return paragraphs([
+    `🛍️ *${first ? `${first}, tienes` : "Tienes"} un encargo ${trip.code}*`,
+    `*Para:* ${trip.originRestaurantName}`,
+    `*Lo que pidió:* ${said}`,
+    `*Llévalo a:* ${place}`,
+    `*Ruta en Waze:* ${wazeLink(trip.deliveryLocation ?? null, trip.deliveryAddress)}`,
+    "Cuando lo entregues en el restaurante, toca «Entregado».",
+  ]);
+}
+
 /** Pasó la espera y el cliente no contestó. */
 export function undeliveredText(trip: Trip) {
   return `⏰ El cliente del pedido ${trip.code} no contestó. Devuélvelo a ${trip.originRestaurantName} y toca «Devolví el pedido».`;
@@ -221,6 +249,7 @@ export async function sendCourierTicket(
   assignment: Omit<PhaseInput, "status"> & { courierId?: number | null },
 ): Promise<SendResult> {
   const courierId = assignment.courierId ?? null;
+  if (trip.kind === "errand") return courierSay(courierId, phone, errandTicket(trip, courierName), { tripId: trip.id, buttons: errandButtons(trip.id) });
   const phase = tripPhase({ ...assignment, status: trip.status });
   if (phase === "undelivered") return courierSay(courierId, phone, undeliveredText(trip), { tripId: trip.id, buttons: [returnedButton(trip.id)] });
   if (!isBeforePickup(phase)) return courierSay(courierId, phone, deliveryTicket(trip), { tripId: trip.id, buttons: deliveryButtons(trip.id, { waiting: phase === "waiting_customer" }) });
@@ -239,6 +268,10 @@ export async function sendCourierTicket(
 export async function notifyAssigned(tripId: number, opts: { atConfirmation?: boolean } = {}) {
   const row = await loadTrip(tripId);
   if (!row?.courier || !row.assignment) return;
+  if (row.trip.kind === "errand") {
+    await notifyErrandAssigned(row.trip, row.courier, row.assignment);
+    return;
+  }
   // Simulador: si la moto es simulada y no tiene número, la toma el número de
   // prueba libre que lleva más tiempo esperando.
   const control = row.courier.simulated ? await claimControl(row.courier.id) : null;
@@ -271,6 +304,27 @@ export async function notifyAssigned(tripId: number, opts: { atConfirmation?: bo
       : courierAssignedText(row.trip.code, row.courier.name);
     await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
+}
+
+/**
+ * Un encargo asignado (lo asigna solo la central): al domiciliario, un solo
+ * mensaje con el botón «Entregado»; al restaurante, siempre, quién va con su
+ * encargo. Nada de regresos ni de lo que la moto ya llevaba: el encargo no
+ * tiene paradas.
+ */
+async function notifyErrandAssigned(trip: Trip, courier: typeof schema.couriers.$inferSelect, assignment: typeof schema.assignments.$inferSelect) {
+  await sendCourierTicket(courier.phone, trip, courier.name, assignment);
+  const restaurant = await restaurantConversation(trip.conversationId);
+  if (restaurant) await say(restaurant.id, restaurant.phone, errandAssignedText(trip.code, courier.name), { replyTo: trip.sourceWaMessageId, tripId: trip.id });
+}
+
+/** La central creó el encargo desde el panel: el chat ya volvió al bot, y se le
+ *  confirma al restaurante con su código. */
+export async function notifyErrandCreated(tripId: number) {
+  const row = await loadTrip(tripId);
+  if (!row || row.trip.kind !== "errand") return;
+  const restaurant = await restaurantConversation(row.trip.conversationId);
+  if (restaurant) await say(restaurant.id, restaurant.phone, errandCreatedText(row.trip.code), { tripId });
 }
 
 /** Tocó «Recogí» (o el GPS lo vio salir con el pedido): mensaje 2, citando el
@@ -319,7 +373,8 @@ export async function remindCouriers(): Promise<number[]> {
     .from(schema.assignments)
     .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
     .innerJoin(schema.couriers, eq(schema.couriers.id, schema.assignments.courierId))
-    .where(and(eq(schema.trips.status, "en_route"), isNull(schema.assignments.pickedUpAt)));
+    // Un encargo no tiene «Voy en camino» ni recogida que recordar.
+    .where(and(eq(schema.trips.status, "en_route"), eq(schema.trips.kind, "delivery"), isNull(schema.assignments.pickedUpAt)));
 
   const reminded: number[] = [];
   for (const { trip, assignment, courier } of candidates) {
@@ -451,7 +506,7 @@ export async function notifyDelivered(tripId: number) {
   const restaurant = gate || config.notifyRestaurantOnDelivery ? await restaurantConversation(row.trip.conversationId) : null;
   if (restaurant) {
     const at = hour(row.assignment?.deliveredAt ?? new Date());
-    const text = gate ? gateText(row.trip, at) : `📦 Pedido ${row.trip.code} entregado a las ${at} ✅`;
+    const text = row.trip.kind === "errand" ? errandDeliveredText(row.trip.code, at) : gate ? gateText(row.trip, at) : `📦 Pedido ${row.trip.code} entregado a las ${at} ✅`;
     await say(restaurant.id, restaurant.phone, text, { replyTo: row.trip.sourceWaMessageId, tripId });
   }
 }

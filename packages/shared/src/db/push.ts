@@ -201,7 +201,8 @@ function tripBlockages(kind: TripBlockage["kind"], build: (row: TripAlertRow) =>
           })
           .from(trips)
           .innerJoin(assignments, eq(assignments.tripId, trips.id))
-          .where(inArray(trips.status, ["assigned", "en_route"])),
+          // Un encargo no tiene recogida ni plazos de domicilio: lo sigue la central por su chat.
+          .where(and(inArray(trips.status, ["assigned", "en_route"]), eq(trips.kind, "delivery"))),
       ]);
       const now = Date.now();
       return rows.flatMap((r) => {

@@ -1,6 +1,7 @@
 export { db, schema } from "./client";
 export * from "./schema";
 export * from "./trip-lifecycle";
+export * from "./errands";
 export * from "./fares";
 export * from "./fare-examples";
 export * from "./restaurants";

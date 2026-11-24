@@ -85,7 +85,8 @@ export function AssignDialog({ trip, onAssign, onClose }: { trip: Trip; onAssign
       {failed && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">No se pudo: quizá ya lo recogieron o esa moto ya no está disponible.</p>}
       {trip.status !== "pending" && (
         <button type="button" onClick={() => choose(null)} className="ease-ui h-10 rounded-xl bg-sunken text-sm font-semibold text-ink-2">
-          Que se asigne solo
+          {/* Un encargo no se asigna solo: vuelve a Pendiente y lo asigna la central. */}
+          {trip.kind === "errand" ? "Quitárselo (vuelve a Pendiente)" : "Que se asigne solo"}
         </button>
       )}
       <button type="button" onClick={onClose} className="ease-ui h-10 rounded-xl bg-sunken text-sm font-semibold text-ink-2">

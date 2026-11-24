@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "kind" text DEFAULT 'delivery' NOT NULL;
