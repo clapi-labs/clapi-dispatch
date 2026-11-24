@@ -19,6 +19,7 @@ import {
   testMessage,
   tripBlockage,
 } from "./alerts";
+import { errandReason } from "./errand";
 
 const AT = new Date("2026-11-10T19:30:00Z");
 
@@ -38,6 +39,21 @@ describe("chatHelpMessage", () => {
     assert.equal(m.url, "/conversaciones#tel=573001112233");
     assert.equal(m.tag, "chat-12");
     assert.equal(m.at, AT.getTime());
+  });
+
+  it("un encargo se anuncia como encargo, con lo que pidió el restaurante", () => {
+    const m = chatHelpMessage({
+      id: 21,
+      phone: "573001112233",
+      name: "Pizzería La Esquina",
+      reason: errandReason("necesito que me compren un queso tajado en la salsamentaria"),
+      lastText: "necesito que me compren un queso tajado en la salsamentaria",
+      at: AT,
+    });
+    assert.equal(m.title, "🛍️ Encargo · Pizzería La Esquina");
+    assert.equal(m.severity, "attention");
+    assert.equal(m.body, "«necesito que me compren un queso tajado en la salsamentaria»");
+    assert.equal(m.url, "/conversaciones#tel=573001112233");
   });
 
   it("sin nombre usa el teléfono, y sin razón el último mensaje", () => {

@@ -1,4 +1,5 @@
 import {
+  ERRAND_RECEIVED_MESSAGE,
   ESCALATION_MESSAGE,
   MAX_CLARIFICATION_ATTEMPTS,
   closedMessage,
@@ -6,6 +7,7 @@ import {
   countFields,
   emptyDelivery,
   emptyDraft,
+  errandReason,
   fullAddress,
   isOpen,
   isStaleDraft,
@@ -551,6 +553,18 @@ async function respond(ctx: Context) {
     // escala y el borrador queda como estaba. Si era un reclamo claro, igual se atiende.
     if (extraction.failed && !claim) {
       await say(conversation.id, message.phone, TECHNICAL_ERROR_MESSAGE);
+      return;
+    }
+    // Un encargo (comprarle o traerle algo al restaurante) no se cotiza ni se
+    // asigna solo: lo coordina la central. Va antes que todo lo demás, porque
+    // sus «direcciones» son la tienda, no un cliente.
+    if (extraction.errand && !claim) {
+      if (!open && !(await openTrips(conversation.id)).length) {
+        await closedForOrders(ctx, hours.opensAt, now);
+        return;
+      }
+      await updateConversation(conversation.id, { botPaused: true, escalationReason: errandReason(text), draft: null, failedAttempts: 0 });
+      await say(conversation.id, message.phone, ERRAND_RECEIVED_MESSAGE);
       return;
     }
     if (extraction.confused && !claim) {
