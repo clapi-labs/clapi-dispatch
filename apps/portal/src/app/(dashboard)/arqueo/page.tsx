@@ -159,21 +159,28 @@ export default function ArqueoPage() {
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-sm font-semibold">Por día</h2>
           </div>
-          <div className="grid grid-cols-[1fr_3.5rem_6.5rem_6.5rem] gap-3 border-b border-line bg-sunken/60 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3 md:grid-cols-[1fr_7rem_9rem_11rem] md:gap-4">
+          <div className="hidden grid-cols-[1fr_7rem_9rem_11rem] gap-4 border-b border-line bg-sunken/60 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3 md:grid">
             <span>Día</span>
             <span className="text-right">Viajes</span>
             <span className="text-right">Generado</span>
             <span className="text-right">Agencia</span>
           </div>
           {days.map((d, i) => (
-            <button key={d.date} type="button" onClick={() => setTab(d.date)} className={`grid w-full grid-cols-[1fr_3.5rem_6.5rem_6.5rem] gap-3 border-b border-line px-5 py-3 text-left text-sm last:border-0 hover:bg-sunken/60 md:grid-cols-[1fr_7rem_9rem_11rem] md:gap-4 ${d.date === today ? "font-semibold" : ""}`}>
-              <span>
+            <button key={d.date} type="button" onClick={() => setTab(d.date)} className={`flex w-full items-center justify-between gap-3 border-b border-line px-4 py-3 text-left text-sm last:border-0 hover:bg-sunken/60 md:grid md:grid-cols-[1fr_7rem_9rem_11rem] md:gap-4 md:px-5 ${d.date === today ? "font-semibold" : ""}`}>
+              <span className="min-w-0">
                 {DAY_NAMES[i]} <span className="text-ink-3">{shortDate(d.date)}</span>
                 {d.date === today && <span className="ml-2 rounded bg-gold px-1.5 py-0.5 text-[10px] font-bold text-clapi-deep">HOY</span>}
               </span>
-              <span className="text-right tabular-nums">{d.deliveredCount}</span>
-              <span className="text-right tabular-nums">{formatCOP(d.total)}</span>
-              <span className="text-right tabular-nums">{formatCOP(d.agencyShare)}</span>
+              {/* Celular: lo generado y, debajo, los viajes y la parte de la agencia. Escritorio: columnas. */}
+              <span className="shrink-0 text-right md:hidden">
+                <span className="block font-semibold tabular-nums">{formatCOP(d.total)}</span>
+                <span className="block text-xs font-normal text-ink-3 tabular-nums">
+                  {d.deliveredCount} {d.deliveredCount === 1 ? "viaje" : "viajes"} · agencia {formatCOP(d.agencyShare)}
+                </span>
+              </span>
+              <span className="hidden text-right tabular-nums md:block">{d.deliveredCount}</span>
+              <span className="hidden text-right tabular-nums md:block">{formatCOP(d.total)}</span>
+              <span className="hidden text-right tabular-nums md:block">{formatCOP(d.agencyShare)}</span>
             </button>
           ))}
         </section>
