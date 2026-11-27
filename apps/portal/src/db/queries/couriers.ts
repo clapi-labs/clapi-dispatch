@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { and, desc, eq, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, like, ne, sql } from "drizzle-orm";
 
 import {
   courierRoutesFor,
@@ -13,7 +13,7 @@ import {
   schema,
   simulatorEnabled,
 } from "@dispatch/shared/db";
-import { routeLineText } from "@dispatch/shared";
+import { REMOVED_COURIER_REASON_PREFIX, routeLineText } from "@dispatch/shared";
 
 /** "300 123 4567" → "573001234567": el formato en que WhatsApp identifica el
  *  número, para que el bot reconozca al motorizado cuando escriba. */
@@ -98,20 +98,47 @@ export async function listCouriers(): Promise<
 /** Una parada de la ruta, como la ve Flota. `B`: un regreso al restaurante. */
 export type RouteStopView = { kind: "R" | "C" | "W" | "V" | "B"; text: string };
 
+/** Las filas con el mismo número: los últimos 10 dígitos, como `findCourier` en el bot. */
+const samePhone = (column: typeof schema.couriers.phone | typeof schema.conversations.phone, phone: string) =>
+  sql`right(regexp_replace(${column}, '\\D', '', 'g'), 10) = ${phone.replace(/\D/g, "").slice(-10)}`;
+
+/**
+ * Dar de alta. Si ese número ya estuvo en la flota y la central lo quitó, se
+ * reactiva su ficha (historial, vehículo, consentimiento y GPS) en vez de
+ * crear otra, y su chat, si quedó en la central porque escribió pidiendo
+ * volver, vuelve al bot.
+ */
 export async function createCourier(input: { name: string; phone: string; lat?: number; lng?: number }) {
+  const phone = toWaId(input.phone);
+  const values = {
+    name: input.name,
+    phone,
+    lat: input.lat ?? null,
+    lng: input.lng ?? null,
+    // Gris hasta que escriba por primera vez: escribirle al bot es conectarse.
+    status: "offline" as const,
+    locationUpdatedAt: input.lat !== undefined ? new Date() : null,
+    shiftStartedAt: new Date(),
+  };
+  const [former] = await db
+    .select({ id: schema.couriers.id })
+    .from(schema.couriers)
+    .where(and(eq(schema.couriers.active, false), eq(schema.couriers.simulated, false), samePhone(schema.couriers.phone, phone)))
+    .orderBy(desc(schema.couriers.createdAt))
+    .limit(1);
+  if (!former) {
+    const [courier] = await db.insert(schema.couriers).values(values).returning();
+    return courier;
+  }
   const [courier] = await db
-    .insert(schema.couriers)
-    .values({
-      name: input.name,
-      phone: toWaId(input.phone),
-      lat: input.lat ?? null,
-      lng: input.lng ?? null,
-      // Gris hasta que escriba por primera vez: escribirle al bot es conectarse.
-      status: "offline",
-      locationUpdatedAt: input.lat !== undefined ? new Date() : null,
-      shiftStartedAt: new Date(),
-    })
+    .update(schema.couriers)
+    .set({ ...values, active: true, deliveriesThisShift: 0 })
+    .where(eq(schema.couriers.id, former.id))
     .returning();
+  await db
+    .update(schema.conversations)
+    .set({ botPaused: false, escalationReason: null })
+    .where(and(samePhone(schema.conversations.phone, phone), like(schema.conversations.escalationReason, `${REMOVED_COURIER_REASON_PREFIX}%`)));
   return courier;
 }
 
@@ -200,12 +227,14 @@ export async function saveCourierProfile(courierId: number, profile: CourierProf
 }
 
 /** Quitar de la flota sin borrar: su nombre sigue en el arqueo de los viajes
- *  que ya hizo. Un motorizado en un viaje no se puede quitar. */
+ *  que ya hizo. Un motorizado en un viaje no se puede quitar. Dice si lo quitó. */
 export async function removeCourier(id: number) {
-  await db
+  const removed = await db
     .update(schema.couriers)
     .set({ active: false, status: "offline" })
-    .where(and(eq(schema.couriers.id, id), ne(schema.couriers.status, "busy")));
+    .where(and(eq(schema.couriers.id, id), eq(schema.couriers.active, true), ne(schema.couriers.status, "busy")))
+    .returning({ id: schema.couriers.id });
+  return removed.length > 0;
 }
 
 export const EMERGENCY_REASON = "Emergencia marcada desde Flota.";

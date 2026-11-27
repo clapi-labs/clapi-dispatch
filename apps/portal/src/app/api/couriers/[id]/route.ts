@@ -1,7 +1,7 @@
 import type { CourierStatus } from "@dispatch/shared/db/schema";
 
 import { removeCourier, setCourierAdmin, setCourierEmergency, setCourierPhoto, updateCourierStatus } from "@/db/queries/couriers";
-import { notifyBot } from "@/lib/bot";
+import { callBot, notifyBot } from "@/lib/bot";
 import { readJsonObject } from "@/lib/json";
 import { isValidPhoto } from "@/lib/photo";
 
@@ -13,8 +13,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = (await readJsonObject(request)) ?? {};
 
+  // Quitar de la flota: el bot le avisa y le dice cómo pedir volver.
   if (body.active === false) {
-    await removeCourier(Number(id));
+    if (await removeCourier(Number(id))) await callBot("/api/internal/notify", { removedCourier: Number(id) });
     return Response.json({ ok: true });
   }
 

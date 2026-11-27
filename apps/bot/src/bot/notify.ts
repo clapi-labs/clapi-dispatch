@@ -28,6 +28,7 @@ import {
   type ReturnStopView,
 } from "@dispatch/shared/db";
 import {
+  courierRemovedText,
   customerWaitEndsAt,
   debtClaimCourierText,
   debtClaimRestaurantText,
@@ -798,6 +799,19 @@ export async function notifyTripUpdated(tripId: number, change: string) {
     replyTo: await lastBotMessageAbout(tripId, row.courier.phone),
     tripId,
   });
+}
+
+/**
+ * La central lo quitó de la flota: se le avisa y cómo pedir volver. Si después
+ * escribe, `intake.ts` le responde como domiciliario quitado y pasa el chat a
+ * la central. Una moto simulada no tiene a quién avisar. Fuera de la ventana de
+ * 24 horas WhatsApp no lo deja salir, y no se insiste.
+ */
+export async function notifyCourierRemoved(courierId: number) {
+  const [courier] = await db.select().from(schema.couriers).where(eq(schema.couriers.id, courierId)).limit(1);
+  if (!courier || courier.active || courier.simulated) return;
+  const conversation = await conversationOf(courier.phone);
+  await say(conversation.id, courier.phone, courierRemovedText(courier.name));
 }
 
 const WA_WINDOW_MS = 24 * 60 * 60_000;

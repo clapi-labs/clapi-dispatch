@@ -39,6 +39,26 @@ export async function findCourier(phone: string): Promise<Courier | null> {
   return courier ?? null;
 }
 
+/** Un domiciliario que la central quitó de la flota (el más reciente con ese
+ *  número): si escribe, no es un restaurante nuevo. Las motos simuladas no
+ *  escriben. */
+export async function findRemovedCourier(phone: string): Promise<Courier | null> {
+  const last10 = phone.replace(/\D/g, "").slice(-10);
+  const [courier] = await db
+    .select()
+    .from(schema.couriers)
+    .where(
+      and(
+        eq(schema.couriers.active, false),
+        eq(schema.couriers.simulated, false),
+        sql`right(regexp_replace(${schema.couriers.phone}, '\\D', '', 'g'), 10) = ${last10}`,
+      ),
+    )
+    .orderBy(desc(schema.couriers.createdAt))
+    .limit(1);
+  return courier ?? null;
+}
+
 /** Lo que el motorizado tiene encima, el más reciente primero, con su fase. */
 async function activeTrips(courierId: number) {
   const rows = await db

@@ -1,9 +1,9 @@
-import { ESCALATION_MESSAGE } from "@dispatch/shared";
+import { ESCALATION_MESSAGE, removedCourierHoldText, removedCourierReason } from "@dispatch/shared";
 import { and, asc, eq, gt, isNull, lte, max } from "drizzle-orm";
 
 import { db, findRestaurantByPhone, getBusinessState, schema } from "@dispatch/shared/db";
 
-import { findCourier, handleCourier } from "@/bot/courier";
+import { findCourier, findRemovedCourier, handleCourier } from "@/bot/courier";
 import { say } from "@/bot/messaging";
 import { parseCourierButton } from "@/bot/notify";
 import { handleRestaurant } from "@/bot/order";
@@ -24,7 +24,8 @@ import type { IncomingMessage } from "@/services/whatsapp/types";
  *   Se espera un momento antes de responder, como haría una persona.
  *
  * Cualquier otro número no pide: recibe un único aviso y el chat pasa a la
- * central (`holdUnknownNumber`).
+ * central (`holdUnknownNumber`). Si es de un domiciliario que la central quitó
+ * de la flota, el aviso y el motivo lo dicen (`holdRemovedCourier`).
  */
 
 /** Por qué el chat de un número no registrado está en la central. */
@@ -41,12 +42,25 @@ export const UNKNOWN_NUMBER_REASON = "Número no registrado: agrégalo en Restau
  * vez, solo uno envía el aviso.
  */
 async function holdUnknownNumber(conversationId: number, phone: string) {
+  await holdForCentral(conversationId, phone, UNKNOWN_NUMBER_REASON, ESCALATION_MESSAGE);
+}
+
+/**
+ * Un domiciliario que la central quitó de la flota y vuelve a escribir: no es
+ * un restaurante nuevo ni un número desconocido. Se le dice que ya no está en
+ * la flota y su chat pasa a la central, que decide si lo agrega de nuevo.
+ */
+async function holdRemovedCourier(conversationId: number, phone: string, name: string) {
+  await holdForCentral(conversationId, phone, removedCourierReason(name), removedCourierHoldText(name));
+}
+
+async function holdForCentral(conversationId: number, phone: string, reason: string, text: string) {
   const [claimed] = await db
     .update(schema.conversations)
-    .set({ botPaused: true, escalationReason: UNKNOWN_NUMBER_REASON, draft: null, failedAttempts: 0 })
+    .set({ botPaused: true, escalationReason: reason, draft: null, failedAttempts: 0 })
     .where(and(eq(schema.conversations.id, conversationId), eq(schema.conversations.botPaused, false)))
     .returning({ id: schema.conversations.id });
-  if (claimed) await say(conversationId, phone, ESCALATION_MESSAGE);
+  if (claimed) await say(conversationId, phone, text);
 }
 
 /**
@@ -134,7 +148,9 @@ export async function handleIncoming(incoming: IncomingMessage) {
   if (conversation.botPaused) return;
 
   if (!(await findRestaurantByPhone(message.phone))) {
-    await holdUnknownNumber(conversation.id, message.phone);
+    const removed = await findRemovedCourier(message.phone);
+    if (removed) await holdRemovedCourier(conversation.id, message.phone, removed.name);
+    else await holdUnknownNumber(conversation.id, message.phone);
     return;
   }
 

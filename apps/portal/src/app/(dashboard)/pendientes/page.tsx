@@ -68,15 +68,11 @@ export default function PendientesPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-5 lg:px-8 lg:py-7">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold">Pendientes de regreso</h1>
-          <p className="text-sm text-ink-3">Lo que cada domiciliario tiene que devolverle o pagarle a un restaurante. Sin montos: solo quién, a quién, por qué y desde cuándo.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => setAdding({})}
-          className="ease-ui flex h-11 items-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110"
+          className="ease-ui flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-clapi px-4 text-sm font-semibold text-white shadow-sm can-hover:hover:brightness-110 sm:w-auto"
         >
           <Plus size={16} /> Registrar pendiente
         </button>
@@ -106,7 +102,7 @@ export default function PendientesPage() {
                       {c.why} · reclamado a las {timeOfDay(c.updatedAt)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
+                  <div className="flex w-full gap-2 sm:w-auto sm:shrink-0 [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none">
                     {matching.length > 0 ? (
                       <button
                         type="button"
@@ -178,7 +174,7 @@ export default function PendientesPage() {
                       {claimed ? ` · Reclamado a las ${timeOfDay(claimed)}, avisado automáticamente` : reminded ? ` · avisado a las ${timeOfDay(reminded)}` : ""}
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex w-full gap-2 sm:w-auto sm:shrink-0 [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none">
                     <button
                       type="button"
                       onClick={() => act(g.debts[0].id, "nudge")}
@@ -206,34 +202,50 @@ export default function PendientesPage() {
         {history.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-ink-3">Todavía no se ha cerrado ninguno.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-[11px] uppercase tracking-wide text-ink-3">
-                <tr className="border-b border-line">
-                  <th className="px-5 py-2 font-medium">Domiciliario</th>
-                  <th className="px-3 py-2 font-medium">Restaurante</th>
-                  <th className="px-3 py-2 font-medium">Motivo</th>
-                  <th className="px-3 py-2 font-medium">Pedido</th>
-                  <th className="px-3 py-2 font-medium">Desde</th>
-                  <th className="px-5 py-2 font-medium">Cerrado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {history.map((d) => (
-                  <tr key={d.id}>
-                    <td className="px-5 py-2">{d.courierName}</td>
-                    <td className="px-3 py-2">{d.restaurantName}</td>
-                    <td className="px-3 py-2">{REASON[d.reason].label}</td>
-                    <td className="px-3 py-2 tabular-nums">{d.tripCode ?? "—"}</td>
-                    <td className="px-3 py-2 tabular-nums text-ink-2">{timeOfDay(d.createdAt)}</td>
-                    <td className="px-5 py-2 text-ink-2">
-                      {d.resolvedAt ? timeOfDay(d.resolvedAt) : ""} · {d.resolvedBy === "courier" ? "el domiciliario" : (d.resolvedByName ?? "la central")}
-                    </td>
+          <>
+            {/* Celular: una fila por pendiente cerrado, sin tabla. */}
+            <ul className="flex flex-col divide-y divide-line md:hidden">
+              {history.map((d) => (
+                <li key={d.id} className="px-4 py-3">
+                  <p className="text-sm font-semibold">
+                    {d.courierName} <span className="font-normal text-ink-3">→</span> {d.restaurantName}
+                  </p>
+                  <p className="text-xs text-ink-3">
+                    {REASON[d.reason].label} · {d.tripCode ?? "Sin pedido"} · desde {timeOfDay(d.createdAt)}
+                    {d.resolvedAt ? ` · cerrado ${timeOfDay(d.resolvedAt)}` : ""} por {d.resolvedBy === "courier" ? "el domiciliario" : (d.resolvedByName ?? "la central")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wide text-ink-3">
+                  <tr className="border-b border-line">
+                    <th className="px-5 py-2 font-medium">Domiciliario</th>
+                    <th className="px-3 py-2 font-medium">Restaurante</th>
+                    <th className="px-3 py-2 font-medium">Motivo</th>
+                    <th className="px-3 py-2 font-medium">Pedido</th>
+                    <th className="px-3 py-2 font-medium">Desde</th>
+                    <th className="px-5 py-2 font-medium">Cerrado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {history.map((d) => (
+                    <tr key={d.id}>
+                      <td className="px-5 py-2">{d.courierName}</td>
+                      <td className="px-3 py-2">{d.restaurantName}</td>
+                      <td className="px-3 py-2">{REASON[d.reason].label}</td>
+                      <td className="px-3 py-2 tabular-nums">{d.tripCode ?? "—"}</td>
+                      <td className="px-3 py-2 tabular-nums text-ink-2">{timeOfDay(d.createdAt)}</td>
+                      <td className="px-5 py-2 text-ink-2">
+                        {d.resolvedAt ? timeOfDay(d.resolvedAt) : ""} · {d.resolvedBy === "courier" ? "el domiciliario" : (d.resolvedByName ?? "la central")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
@@ -277,7 +289,7 @@ function AlertMinutes({ minutes, onSaved }: { minutes: number; onSaved: (m: numb
   }
 
   return (
-    <label className="ml-auto flex flex-wrap items-center gap-2 text-xs font-normal text-ink-3">
+    <label className="flex w-full flex-wrap items-center gap-2 text-xs font-normal text-ink-3 sm:ml-auto sm:w-auto">
       Avisar si un datáfono lleva
       <input
         inputMode="numeric"
