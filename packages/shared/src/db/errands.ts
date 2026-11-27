@@ -86,17 +86,3 @@ export async function createErrandTrip(conversationId: number, price: number): P
 export async function dismissErrand(conversationId: number): Promise<ErrandDecision<null>> {
   return (await claimErrandChat(conversationId)) ? { ok: true, value: null } : { ok: false, reason: "not_errand" };
 }
-
-/**
- * La central decide no hacer un encargo que sigue en Pendiente: se cancela, sin
- * avisarle a nadie (la central habla con el restaurante por su chat). Solo un
- * encargo y solo sin moto; cancelar viajes en general es otra cosa.
- */
-export async function cancelPendingErrand(tripId: number): Promise<boolean> {
-  const [trip] = await db
-    .update(trips)
-    .set({ status: "cancelled", updatedAt: new Date() })
-    .where(and(eq(trips.id, tripId), eq(trips.kind, "errand"), eq(trips.status, "pending")))
-    .returning({ id: trips.id });
-  return Boolean(trip);
-}

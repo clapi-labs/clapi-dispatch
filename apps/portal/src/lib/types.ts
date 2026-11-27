@@ -66,6 +66,10 @@ export type Trip = {
   dispatchNote?: string | null;
   dispatchAt?: string | null;
   pickupLocation?: { lat: number; lng: number } | null;
+  /** La cancelación: cuándo, por qué y lo que se cobró (nulo si no se cobró). */
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  cancelFee?: number | null;
 };
 
 export type Courier = {

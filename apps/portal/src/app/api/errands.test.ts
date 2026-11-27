@@ -26,7 +26,7 @@ import {
 /**
  * Encargos desde el portal (docs/INTERVENCION-MANUAL.md, «Encargos»): el panel
  * «Encargo» de Conversaciones (crear o no crear), el encargo en Viajes (con su
- * marca, sin alertas, asignado a mano, «No hacer») y en Finanzas. Las rutas se
+ * marca, sin alertas, asignado a mano, cancelado) y en Finanzas. Las rutas se
  * llaman tal cual, contra la base de pruebas; el bot es de mentiras y se revisa
  * qué se le pidió. Sin `TEST_DATABASE_URL` se salta.
  */
@@ -72,6 +72,7 @@ async function errandChat() {
 
 const act = (id: number, body: unknown) => thread.POST(request("POST", `/api/conversations/${id}`, { body }), params({ id }));
 const board = async () => (await (await trips.GET()).json()) as { id: number; kind: string; status: string; code: string; notes: string | null; deliveryFee: number; alertAt: string | null; blockageKind: string | null; dispatchNote: string | null }[];
+const cancelTrip = (id: number, body: unknown) => cancel.POST(request("POST", `/api/trips/${id}/cancel`, { body }), params({ id }));
 const notifications = () => bot.calls.filter((c) => c.path === "/api/internal/notify").map((c) => c.body);
 
 describe("encargos en el portal (Postgres)", { skip: integrationSkip }, () => {
@@ -157,27 +158,15 @@ describe("encargos en el portal (Postgres)", { skip: integrationSkip }, () => {
       assert.deepEqual(notifications(), [{ unassigned: [], assigned: [tripId] }]);
     });
 
-    it("«No hacer»: un encargo pendiente se cancela sin avisarle a nadie", async () => {
+    it("«Cancelar encargo»: uno pendiente se cancela sin cobro y el bot avisa (no hay moto)", async () => {
       const { chat } = await errandChat();
       const { tripId } = (await (await act(chat.id, { action: "errand", create: true, price: 8_000 })).json()) as { tripId: number };
       bot.calls.length = 0;
-      const res = await cancel.POST(request("POST", `/api/trips/${tripId}/cancel`), params({ id: tripId }));
+      const res = await cancelTrip(tripId, { reason: "No se consiguió", charge: true, notifyRestaurant: false });
       assert.equal(res.status, 200);
-      assert.equal((await getTrip(tripId)).status, "cancelled");
-      assert.equal(bot.calls.length, 0);
-    });
-
-    it("«No hacer» no cancela un domicilio ni un encargo que ya tiene moto", async () => {
-      const order = await createTrip({ status: "pending" });
-      assert.equal((await cancel.POST(request("POST", `/api/trips/${order.id}/cancel`), params({ id: order.id }))).status, 409);
-      assert.equal((await getTrip(order.id)).status, "pending");
-
-      const { chat } = await errandChat();
-      const { tripId } = (await (await act(chat.id, { action: "errand", create: true, price: 8_000 })).json()) as { tripId: number };
-      const courier = await createCourier({ status: "available" });
-      await assign.POST(request("POST", `/api/trips/${tripId}/assign`, { body: { courierId: courier.id } }), params({ id: tripId }));
-      assert.equal((await cancel.POST(request("POST", `/api/trips/${tripId}/cancel`), params({ id: tripId }))).status, 409);
-      assert.equal((await getTrip(tripId)).status, "en_route");
+      const trip = await getTrip(tripId);
+      assert.deepEqual([trip.status, trip.cancelReason, trip.cancelFee], ["cancelled", "No se consiguió", null], "sin moto no hay quién cobre");
+      assert.deepEqual(notifications(), [{ cancelled: [{ tripId, courierId: null, notifyRestaurant: false }] }]);
     });
   });
 
@@ -193,7 +182,7 @@ describe("encargos en el portal (Postgres)", { skip: integrationSkip }, () => {
       // Otro que la central decidió no hacer.
       await db.update(schema.conversations).set({ botPaused: true, escalationReason: errandReason("me traes 30 envases") }).where(eq(schema.conversations.id, chat.id));
       const second = (await (await act(chat.id, { action: "errand", create: true, price: 5_000 })).json()) as { tripId: number };
-      await cancel.POST(request("POST", `/api/trips/${second.tripId}/cancel`), params({ id: second.tripId }));
+      await cancelTrip(second.tripId, { reason: "Lo pidió el restaurante", charge: false });
 
       const money = (await (await settlement.GET()).json()) as { total: number; deliveredCount: number; couriers: { courierId: number; earned: number }[] };
       assert.deepEqual([money.total, money.deliveredCount], [8_000, 1]);

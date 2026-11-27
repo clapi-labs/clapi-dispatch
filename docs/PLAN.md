@@ -287,6 +287,8 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md) («Las acciones», «Fases»), `apps/portal/src/db/queries/settlement.ts`, `packages/shared/src/db/trip-lifecycle.ts`.
 
+**Hecho, cancelar:** «Cancelar» en el detalle de cada viaje abierto, con el motivo, el cobro y el aviso al restaurante; a la moto se le avisa siempre. **Decidido** con el cliente: un solo valor, el domicilio, que se cobra si la moto ya salió del restaurante y no si se cancela antes (la central lo puede cambiar); cuenta en Finanzas como un viaje de esa moto, igual que un pedido devuelto porque el cliente no contestó. **Falta:** el registro de quién hizo cada acción manual.
+
 ### C-3 · Ver las imágenes que llegan a los chats · Portal + Bot · M
 
 **Objetivo:** que la central vea las fotos y documentos que mandan restaurantes y motorizados. Hoy solo queda el texto `[Imagen]`.

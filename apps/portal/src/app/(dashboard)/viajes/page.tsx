@@ -28,8 +28,9 @@ function bucket(trips: Trip[], key: ColumnKey) {
       // Quien entregó y va de regreso sigue aquí hasta que vuelva.
       .filter((t) => isTripOpen(t))
       .sort((a, b) => (b.assignedAt ?? "").localeCompare(a.assignedAt ?? ""));
+  // Los cancelados de hoy también: la central ve qué se canceló y qué se cobró.
   return trips
-    .filter((t) => t.status === "delivered" && !isTripOpen(t))
+    .filter((t) => (t.status === "delivered" || t.status === "cancelled") && !isTripOpen(t))
     .sort((a, b) => (b.deliveredAt ?? b.updatedAt).localeCompare(a.deliveredAt ?? a.updatedAt));
 }
 

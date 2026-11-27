@@ -1,6 +1,7 @@
 "use client";
 
-import { isBeforePickup, PHASE_LABEL, phaseSince, tripPhase, type TripPhase } from "@dispatch/shared/domain/phase";
+import { isBeforePickup, isTripOpen, PHASE_LABEL, phaseSince, tripPhase, type TripPhase } from "@dispatch/shared/domain/phase";
+import { CANCEL_REASONS, chargesOnCancel } from "@dispatch/shared/domain/trip-cancel";
 import { ArrowRightLeft, Bike, Check, CheckCircle2, ChevronDown, ShoppingBag, X } from "lucide-react";
 import { motion } from "motion/react";
 import { memo, useState, type MouseEvent } from "react";
@@ -139,35 +140,95 @@ function DeliverDialog({ code, errand, onChoose, onClose }: { code: string; erra
   );
 }
 
-/** Un encargo que sigue sin moto y la central decide no hacerlo: se cancela, sin
- *  avisarle a nadie (lo que haya que decirle al restaurante va por su chat). */
-function CancelErrandDialog({ tripId, code, onClose }: { tripId: number; code: string; onClose: () => void }) {
+const FIELD = "ease-ui h-10 w-full min-w-0 rounded-xl bg-sunken px-3 text-sm outline-none focus:ring-2 focus:ring-clapi/40";
+
+/**
+ * Cancelar un viaje abierto (docs/INTERVENCION-MANUAL.md, «Cancelar»): el
+ * motivo, si se cobra el domicilio y si se le avisa al restaurante. El cobro
+ * viene marcado por la regla de la agencia (la moto ya salió del restaurante),
+ * y la central lo puede cambiar. A la moto se le avisa siempre.
+ */
+function CancelTripDialog({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const errand = trip.kind === "errand";
+  const withCourier = trip.courierId !== null;
+  const [choice, setChoice] = useState<string | null>(null);
+  const [other, setOther] = useState("");
+  const [charge, setCharge] = useState(() => withCourier && chargesOnCancel(trip));
+  const [notifyRestaurant, setNotifyRestaurant] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reason = choice === "Otro" ? other.trim() : choice;
+  const what = errand ? "el encargo" : "el pedido";
+  const ruleHint = errand
+    ? "Un encargo no marca recogida: decide tú si se cobra."
+    : trip.pickedUpAt
+      ? "La moto ya salió del restaurante: por regla se cobra."
+      : "La moto no había salido del restaurante: por regla no se cobra.";
+
+  async function submit() {
+    if (!reason) return setError("Elige o escribe el motivo.");
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/trips/${trip.id}/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason, charge, notifyRestaurant }),
+    }).catch(() => null);
+    setBusy(false);
+    if (res?.ok) return onClose();
+    const data = await res?.json().catch(() => ({}));
+    setError(typeof data?.error === "string" ? data.error : "No se pudo cancelar. Intenta de nuevo.");
+  }
+
   return (
-    <Modal label={`No hacer el encargo ${code}`} onClose={onClose}>
-      <p className="text-base font-semibold text-ink">¿No hacer el encargo {code}?</p>
-      <p className="text-sm leading-snug text-ink-2">Se cancela y sale de Pendiente. No se le avisa a nadie: si hace falta, díselo al restaurante por su chat.</p>
+    <Modal label={`Cancelar ${what} ${trip.code}`} onClose={onClose}>
+      <p className="text-base font-semibold text-ink">
+        ¿Cancelar {what} {trip.code}?
+      </p>
+
+      <div className="flex flex-col gap-1.5">
+        <p className="text-xs font-semibold text-ink-2">Motivo</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[...CANCEL_REASONS, "Otro"].map((r) => (
+            <button
+              key={r}
+              type="button"
+              aria-pressed={choice === r}
+              onClick={() => setChoice(r)}
+              className={`ease-ui rounded-full px-3 py-1.5 text-xs font-semibold ${choice === r ? "bg-clapi text-white" : "bg-sunken text-ink-2 can-hover:hover:bg-clapi-soft"}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        {choice === "Otro" && <input value={other} onChange={(e) => setOther(e.target.value)} maxLength={300} placeholder="¿Qué pasó?" aria-label="Motivo" className={FIELD} autoFocus />}
+      </div>
+
+      {withCourier ? (
+        <div className="flex flex-col gap-1 rounded-xl bg-sunken px-3 py-2.5">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={charge} onChange={(e) => setCharge(e.target.checked)} className="h-4 w-4 accent-clapi" />
+            Cobrar el domicilio{trip.deliveryFee > 0 ? ` (${formatCOP(trip.deliveryFee)})` : ""}
+          </label>
+          <p className="text-xs leading-snug text-ink-3">{ruleHint} Lo cobrado cuenta en Finanzas para {trip.courierName ?? "la moto"}.</p>
+        </div>
+      ) : (
+        <p className="text-xs leading-snug text-ink-3">Sigue sin moto: no se cobra nada.</p>
+      )}
+
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" checked={notifyRestaurant} onChange={(e) => setNotifyRestaurant(e.target.checked)} className="h-4 w-4 accent-clapi" />
+        Avisarle al restaurante
+      </label>
+      {withCourier && <p className="-mt-2 text-xs text-ink-3">A {trip.courierName ?? "la moto"} se le avisa siempre.</p>}
+
       {error && <p className="text-xs font-medium text-danger">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onClose} className="ease-ui h-10 flex-1 rounded-xl bg-sunken text-sm font-semibold text-ink-2">
           Volver
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(null);
-            const res = await fetch(`/api/trips/${tripId}/cancel`, { method: "POST" }).catch(() => null);
-            setBusy(false);
-            if (res?.ok) return onClose();
-            const data = await res?.json().catch(() => ({}));
-            setError(typeof data?.error === "string" ? data.error : "No se pudo cancelar. Intenta de nuevo.");
-          }}
-          className="ease-ui h-10 flex-1 rounded-xl bg-danger text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {busy ? "Cancelando…" : "No hacer"}
+        <button type="button" disabled={busy} onClick={() => void submit()} className="ease-ui h-10 flex-1 rounded-xl bg-danger text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? "Cancelando…" : "Cancelar"}
         </button>
       </div>
     </Modal>
@@ -326,6 +387,12 @@ export const TripCard = memo(function TripCard({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="flex flex-col items-start gap-2 pt-2.5">
+            {trip.status === "cancelled" && (
+              <p className="rounded-xl bg-sunken px-3 py-2 text-xs leading-snug text-ink-2">
+                <span className="font-semibold">Cancelado</span>
+                {trip.cancelReason ? `: ${trip.cancelReason}` : ""}. {trip.cancelFee ? `Se cobró el domicilio (${formatCOP(trip.cancelFee)}).` : "Sin cobro."}
+              </p>
+            )}
             {trip.deliveryFee > 0 && <FareDetail trip={trip} />}
             {/* Las indicaciones que el bot sacó del pedido: referencias del lugar, con cuánto paga, etc. */}
             {trip.notes && !errand && <p className="text-xs leading-snug text-ink">{trip.notes}</p>}
@@ -340,6 +407,15 @@ export const TripCard = memo(function TripCard({
                 className="ease-ui flex h-8 items-center gap-1.5 rounded-xl bg-sunken px-3 text-xs font-semibold text-ink-2 can-hover:hover:bg-clapi-soft can-hover:hover:text-clapi-ink"
               >
                 <ArrowRightLeft size={13} /> Pasar a otra moto
+              </button>
+            )}
+            {(trip.status === "pending" || isTripOpen(trip)) && (
+              <button
+                type="button"
+                onClick={() => setCancelling(true)}
+                className="ease-ui flex h-8 items-center gap-1.5 rounded-xl bg-sunken px-3 text-xs font-semibold text-ink-2 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+              >
+                <X size={13} /> Cancelar {errand ? "encargo" : "pedido"}
               </button>
             )}
           </div>
@@ -371,23 +447,11 @@ export const TripCard = memo(function TripCard({
           </div>
         )}
 
-        {trip.status === "pending" && errand && (
-          <button
-            type="button"
-            onClick={() => setCancelling(true)}
-            aria-label={`No hacer el encargo ${trip.code}`}
-            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1 rounded-xl bg-sunken px-2.5 text-xs font-semibold text-ink-2 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
-          >
-            <X size={14} />
-            No hacer
-          </button>
-        )}
-
         {trip.status === "pending" && (
           <button
             type="button"
             onClick={() => setAssigning(true)}
-            className={`ease-ui ${errand ? "" : "ml-auto "}flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white`}
+            className={`ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white`}
           >
             <Bike size={14} />
             Asignar
@@ -408,7 +472,7 @@ export const TripCard = memo(function TripCard({
 
       {confirmingDeliver && <DeliverDialog code={trip.code} errand={errand} onChoose={(outcome) => onDeliver(trip.id, outcome)} onClose={() => setConfirmingDeliver(false)} />}
 
-      {cancelling && <CancelErrandDialog tripId={trip.id} code={trip.code} onClose={() => setCancelling(false)} />}
+      {cancelling && <CancelTripDialog trip={trip} onClose={() => setCancelling(false)} />}
 
       {assigning && <AssignDialog trip={trip} onAssign={(courierId) => onAssign(trip.id, courierId)} onClose={() => setAssigning(false)} />}
     </motion.article>

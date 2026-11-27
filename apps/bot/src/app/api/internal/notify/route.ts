@@ -1,4 +1,4 @@
-import { notifyAssigned, notifyCourierGpsConfig, notifyCourierRemoved, notifyDebtNudge, notifyDelivered, notifyErrandCreated, notifyUnassigned } from "@/bot/notify";
+import { notifyAssigned, notifyCancelled, notifyCourierGpsConfig, notifyCourierRemoved, notifyDebtNudge, notifyDelivered, notifyErrandCreated, notifyUnassigned } from "@/bot/notify";
 
 import { isInternal } from "../auth";
 
@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
  * - `errandCreated`: la central creó encargos desde Conversaciones; se le
  *   confirma a cada restaurante con su código.
  * - `removedCourier`: la central lo quitó de la flota; se le avisa.
+ * - `cancelled`: la central canceló viajes; se le avisa a la moto que lo
+ *   llevaba y, si la central lo dejó marcado, al restaurante.
  */
 export async function POST(request: Request) {
   if (!isInternal(request)) return new Response("Unauthorized", { status: 401 });
@@ -22,6 +24,7 @@ export async function POST(request: Request) {
     delivered = [],
     unassigned = [],
     errandCreated = [],
+    cancelled = [],
     debtNudge,
     courierGps,
     gpsUrl,
@@ -31,6 +34,7 @@ export async function POST(request: Request) {
     delivered?: number[];
     unassigned?: { tripId: number; courierId: number }[];
     errandCreated?: number[];
+    cancelled?: { tripId: number; courierId: number | null; notifyRestaurant?: boolean }[];
     debtNudge?: number;
     courierGps?: number;
     gpsUrl?: string;
@@ -55,6 +59,7 @@ export async function POST(request: Request) {
   }
 
   for (const id of errandCreated) await notifyErrandCreated(id);
+  for (const { tripId, courierId, notifyRestaurant } of cancelled) await notifyCancelled(tripId, courierId, { toRestaurant: notifyRestaurant !== false });
   for (const { tripId, courierId } of unassigned) await notifyUnassigned(tripId, courierId);
   for (const id of delivered) await notifyDelivered(id);
   for (const id of assigned) await notifyAssigned(id);

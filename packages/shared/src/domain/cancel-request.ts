@@ -43,6 +43,10 @@ export function looksLikeCancelRequest(raw: string | null | undefined): boolean 
 
 const codesText = (codes: string[]) => (codes.length <= 1 ? codes.join("") : `${codes.slice(0, -1).join(", ")} y ${codes.at(-1)}`);
 
+/** Con qué empieza el motivo de un chat que pidió cancelar: al cancelarlo desde
+ *  el portal, el chat vuelve al bot (`cancelTrip`). */
+export const CANCEL_REQUEST_REASON_PREFIX = "Pidió cancelar";
+
 /** El motivo del chat que pasa a la central. */
 export function cancelReason(codes: string[]): string {
   if (codes.length === 1) return `Pidió cancelar el pedido ${codes[0]}.`;
