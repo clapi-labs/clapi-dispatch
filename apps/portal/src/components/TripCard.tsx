@@ -1,7 +1,7 @@
 "use client";
 
 import { isBeforePickup, PHASE_LABEL, phaseSince, tripPhase, type TripPhase } from "@dispatch/shared/domain/phase";
-import { ArrowRightLeft, Bike, Check, CheckCircle2, ChevronDown } from "lucide-react";
+import { ArrowRightLeft, Bike, Check, CheckCircle2, ChevronDown, ShoppingBag, X } from "lucide-react";
 import { motion } from "motion/react";
 import { memo, useState, type MouseEvent } from "react";
 
@@ -89,6 +89,20 @@ function PhaseBadge({ trip, alert }: { trip: Trip; alert: boolean }) {
   );
 }
 
+/** Un encargo no tiene fases de domicilio: está sin moto, con su moto desde
+ *  hace tanto, o terminado. Nunca en rojo: lo sigue la central por el chat. */
+function ErrandBadge({ trip }: { trip: Trip }) {
+  const going = trip.status === "en_route" && trip.assignedAt !== null;
+  const now = useNow(going ? 20_000 : null);
+  if (trip.status === "pending") return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PHASE_TONE.pending}`}>Por asignar</span>;
+  if (going) {
+    const min = Math.max(0, Math.floor((now - Date.parse(trip.assignedAt!)) / 60_000));
+    return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PHASE_TONE.going}`}>En el encargo · {min} min</span>;
+  }
+  const phase = tripPhase(trip);
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PHASE_TONE[phase]}`}>{PHASE_LABEL[phase]}</span>;
+}
+
 const OUTCOMES: { label: string; outcome: DeliveryOutcome }[] = [
   { label: "Entregado", outcome: { place: "customer" } },
   { label: "En portería", outcome: { place: "gate" } },
@@ -97,12 +111,14 @@ const OUTCOMES: { label: string; outcome: DeliveryOutcome }[] = [
 /** Las mismas opciones que tiene el motorizado en WhatsApp, para cuando no pudo
  *  marcarlo él. El servicio termina al entregar: si tiene que volver por el
  *  datáfono o la plata, eso es un pendiente aparte (Pendientes). */
-function DeliverDialog({ code, onChoose, onClose }: { code: string; onChoose: (outcome: DeliveryOutcome) => void; onClose: () => void }) {
+function DeliverDialog({ code, errand, onChoose, onClose }: { code: string; errand: boolean; onChoose: (outcome: DeliveryOutcome) => void; onClose: () => void }) {
+  // Un encargo se entrega en el mismo restaurante: no hay portería.
+  const outcomes = errand ? OUTCOMES.slice(0, 1) : OUTCOMES;
   return (
     <Modal label={`Marcar entrega de ${code}`} onClose={onClose}>
       <p className="text-base font-semibold text-ink">¿Cómo quedó {code}?</p>
       <div className="flex flex-col gap-2">
-        {OUTCOMES.map(({ label, outcome }) => (
+        {outcomes.map(({ label, outcome }) => (
           <button
             key={label}
             type="button"
@@ -119,6 +135,41 @@ function DeliverDialog({ code, onChoose, onClose }: { code: string; onChoose: (o
       <button type="button" onClick={onClose} className="ease-ui h-10 rounded-xl bg-sunken text-sm font-semibold text-ink-2">
         Cancelar
       </button>
+    </Modal>
+  );
+}
+
+/** Un encargo que sigue sin moto y la central decide no hacerlo: se cancela, sin
+ *  avisarle a nadie (lo que haya que decirle al restaurante va por su chat). */
+function CancelErrandDialog({ tripId, code, onClose }: { tripId: number; code: string; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Modal label={`No hacer el encargo ${code}`} onClose={onClose}>
+      <p className="text-base font-semibold text-ink">¿No hacer el encargo {code}?</p>
+      <p className="text-sm leading-snug text-ink-2">Se cancela y sale de Pendiente. No se le avisa a nadie: si hace falta, díselo al restaurante por su chat.</p>
+      {error && <p className="text-xs font-medium text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} className="ease-ui h-10 flex-1 rounded-xl bg-sunken text-sm font-semibold text-ink-2">
+          Volver
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            const res = await fetch(`/api/trips/${tripId}/cancel`, { method: "POST" }).catch(() => null);
+            setBusy(false);
+            if (res?.ok) return onClose();
+            const data = await res?.json().catch(() => ({}));
+            setError(typeof data?.error === "string" ? data.error : "No se pudo cancelar. Intenta de nuevo.");
+          }}
+          className="ease-ui h-10 flex-1 rounded-xl bg-danger text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Cancelando…" : "No hacer"}
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -181,13 +232,16 @@ export const TripCard = memo(function TripCard({
   onDeliver: (id: number, outcome: DeliveryOutcome) => void;
   onAssign: (id: number, courierId: number | null) => Promise<boolean>;
 }) {
+  const errand = trip.kind === "errand";
   // Si el engine lo está aguantando a propósito, cuenta desde la hora de despachar.
-  const urgent = useAfter(trip.status === "pending" ? Math.max(Date.parse(trip.createdAt), trip.dispatchAt ? Date.parse(trip.dispatchAt) : 0) + 120_000 : null);
+  // Un encargo lo asigna la central cuando lo tenga acordado: no titila.
+  const urgent = useAfter(trip.status === "pending" && !errand ? Math.max(Date.parse(trip.createdAt), trip.dispatchAt ? Date.parse(trip.dispatchAt) : 0) + 120_000 : null);
   const assignedFor8s = useAfter(trip.status === "en_route" && trip.assignedAt ? Date.parse(trip.assignedAt) + 8000 : null);
   const justAssigned = trip.status === "en_route" && trip.assignedAt !== null && !assignedFor8s;
   const [open, setOpen] = useState(false);
   const [confirmingDeliver, setConfirmingDeliver] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const phaseAlert = useAfter(trip.alertAt ? Date.parse(trip.alertAt) : null);
   const tag = [trip.distanceKm != null && `${Math.max(1, Math.round(trip.distanceKm))} km`, trip.deliveryFee > 0 && formatCOP(trip.deliveryFee)].filter(Boolean).join(" · ");
 
@@ -211,29 +265,48 @@ export const TripCard = memo(function TripCard({
       }`}
     >
       <header className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="text-sm font-semibold tracking-tight">{trip.code}</span>
+          {errand && (
+            <span className="flex items-center gap-1 rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-bold text-gold-ink">
+              <ShoppingBag size={11} /> Encargo
+            </span>
+          )}
+        </span>
         <Timer trip={trip} />
       </header>
 
-      {/* Recorrido A → B: el conector sale del punto de recogida y llega al de entrega. */}
+      {/* Recorrido A → B: el conector sale del punto de recogida y llega al de entrega.
+          En un encargo, A es lo que hay que comprar (la tienda la acuerda la central) y B, el mismo restaurante. */}
       <div className="flex flex-col">
         <div className="relative pb-3 pl-7">
           <span className="absolute left-0 top-0.5 h-4 w-4 rounded-full border-2 border-clapi bg-surface" />
           <span className="absolute bottom-0 left-[7px] top-5 w-0.5 rounded-full bg-linear-to-b from-clapi/30 to-clapi" />
-          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">Recoge</p>
-          <p className="text-sm font-semibold leading-snug">{trip.originRestaurantName}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{errand ? "Compra o trae" : "Recoge"}</p>
+          {errand ? (
+            <p className={`text-sm leading-snug text-ink ${open ? "" : "line-clamp-3"}`}>{trip.notes ?? "Ver el chat del restaurante"}</p>
+          ) : (
+            <p className="text-sm font-semibold leading-snug">{trip.originRestaurantName}</p>
+          )}
         </div>
         <div className="relative pl-7">
           <span className="absolute left-0 top-0.5 h-4 w-4 rounded-full bg-clapi" />
           <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">Entrega</p>
-          <p className="text-sm leading-snug text-ink">{trip.deliveryAddress}</p>
+          {errand ? (
+            <p className="text-sm leading-snug text-ink">
+              <span className="font-semibold">{trip.originRestaurantName}</span>
+              {trip.deliveryAddress !== trip.originRestaurantName ? ` · ${trip.deliveryAddress}` : ""}
+            </p>
+          ) : (
+            <p className="text-sm leading-snug text-ink">{trip.deliveryAddress}</p>
+          )}
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-ink-3">
           {tag && <span className="rounded-full bg-gold px-2.5 py-0.5 text-xs font-bold tabular-nums text-clapi-deep">{tag}</span>}
-          <PhaseBadge trip={trip} alert={phaseAlert} />
+          {errand ? <ErrandBadge trip={trip} /> : <PhaseBadge trip={trip} alert={phaseAlert} />}
         </div>
         <button
           type="button"
@@ -255,7 +328,7 @@ export const TripCard = memo(function TripCard({
           <div className="flex flex-col items-start gap-2 pt-2.5">
             {trip.deliveryFee > 0 && <FareDetail trip={trip} />}
             {/* Las indicaciones que el bot sacó del pedido: referencias del lugar, con cuánto paga, etc. */}
-            {trip.notes && <p className="text-xs leading-snug text-ink">{trip.notes}</p>}
+            {trip.notes && !errand && <p className="text-xs leading-snug text-ink">{trip.notes}</p>}
             {/* El cliente final no tiene chat con el bot: su número solo llama. */}
             {trip.customerPhone && <PhoneLink phone={trip.customerPhone} name="Cliente" pill call />}
             {!trip.notes && !trip.customerPhone && trip.deliveryFee <= 0 && <span className="rounded-full bg-sunken px-2.5 py-0.5 text-xs text-ink-3">Sin información adicional</span>}
@@ -294,15 +367,27 @@ export const TripCard = memo(function TripCard({
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed lg:h-8 lg:w-8 border-ink-3/40">
               <span className="h-1.5 w-1.5 rounded-full bg-warn" />
             </span>
-            {trip.dispatchNote ?? "Buscando moto libre…"}
+            {errand ? "Lo asignas tú" : (trip.dispatchNote ?? "Buscando moto libre…")}
           </div>
+        )}
+
+        {trip.status === "pending" && errand && (
+          <button
+            type="button"
+            onClick={() => setCancelling(true)}
+            aria-label={`No hacer el encargo ${trip.code}`}
+            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1 rounded-xl bg-sunken px-2.5 text-xs font-semibold text-ink-2 can-hover:hover:bg-danger-soft can-hover:hover:text-danger"
+          >
+            <X size={14} />
+            No hacer
+          </button>
         )}
 
         {trip.status === "pending" && (
           <button
             type="button"
             onClick={() => setAssigning(true)}
-            className="ease-ui ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white"
+            className={`ease-ui ${errand ? "" : "ml-auto "}flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-clapi-soft px-3 text-xs font-semibold text-clapi-ink can-hover:hover:bg-clapi can-hover:hover:text-white`}
           >
             <Bike size={14} />
             Asignar
@@ -321,7 +406,9 @@ export const TripCard = memo(function TripCard({
         )}
       </footer>
 
-      {confirmingDeliver && <DeliverDialog code={trip.code} onChoose={(outcome) => onDeliver(trip.id, outcome)} onClose={() => setConfirmingDeliver(false)} />}
+      {confirmingDeliver && <DeliverDialog code={trip.code} errand={errand} onChoose={(outcome) => onDeliver(trip.id, outcome)} onClose={() => setConfirmingDeliver(false)} />}
+
+      {cancelling && <CancelErrandDialog tripId={trip.id} code={trip.code} onClose={() => setCancelling(false)} />}
 
       {assigning && <AssignDialog trip={trip} onAssign={(courierId) => onAssign(trip.id, courierId)} onClose={() => setAssigning(false)} />}
     </motion.article>

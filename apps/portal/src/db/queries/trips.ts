@@ -101,7 +101,9 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
   const next = new Map<number, number | undefined>();
   for (const [courierId, stops] of routes) next.set(courierId, stops[0]?.tipo === "B" ? undefined : stops[0]?.pedido);
 
-  const blockageOf = (r: (typeof rows)[number]) => (r.assignedAt ? tripBlockage({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config) : null);
+  // Un encargo no tiene plazos de domicilio (recoger, entregar): no se pone en rojo ni avisa.
+  const watched = (r: (typeof rows)[number]) => r.assignedAt !== null && r.trip.kind === "delivery";
+  const blockageOf = (r: (typeof rows)[number]) => (watched(r) ? tripBlockage({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config) : null);
 
   return rows.map((r) => ({
     ...r.trip,
@@ -125,7 +127,7 @@ export async function listTrips(): Promise<TripWithAssignment[]> {
     deliveryPlace: r.deliveryPlace,
     returnStartedAt: r.returnStartedAt,
     finishedAt: r.finishedAt,
-    alertAt: r.assignedAt ? phaseAlertAt({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config, { notNext: next.get(r.courierId ?? 0) !== r.trip.id }) : null,
+    alertAt: watched(r) ? phaseAlertAt({ ...r, status: r.trip.status, readyAt: r.trip.readyAt }, config, { notNext: next.get(r.courierId ?? 0) !== r.trip.id }) : null,
     dispatchNote: mode === "auto" && r.trip.status === "pending" ? r.engineReason : null,
     dispatchAt: mode === "auto" && r.trip.status === "pending" ? r.engineDispatchAt : null,
     blockageKind: blockageOf(r)?.kind ?? null,

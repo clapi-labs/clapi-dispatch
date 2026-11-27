@@ -87,6 +87,10 @@ export const deliveryButtons = (tripId: number, { waiting = false } = {}) => [
   ...(waiting ? [] : [{ id: `${NO_ANSWER_PREFIX}${tripId}`, title: "Cliente no contesta" }]),
 ];
 
+/** Un encargo termina con un solo toque: no hay «Voy en camino», «Recogí» ni
+ *  portería. Es el mismo botón de «Entregado», así que se atiende igual. */
+export const errandButtons = (tripId: number) => [{ id: `${DONE_PREFIX}customer:finish:${tripId}`, title: "✅ Entregado" }];
+
 export const debtButton = (debtId: number, reason: ReturnDebtReason) => ({ id: `${DEBT_DONE_PREFIX}${debtId}`, title: debtCloseButtonTitle(reason) });
 
 /** Botones de activación inicial del domiciliario (títulos <= 20 caracteres, límite de Meta). */

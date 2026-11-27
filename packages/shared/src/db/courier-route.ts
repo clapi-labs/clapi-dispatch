@@ -6,7 +6,7 @@ import { debtGroupKey, groupDebts, joinCodes } from "../domain/return-debts";
 import { orderRoute, routeText, type RouteLine, type ReturnStop } from "../domain/route";
 import { db } from "./client";
 import { getDemandLevel } from "./demand";
-import { openTripCondition } from "./trip-lifecycle";
+import { deliveryTripCondition, openTripCondition } from "./trip-lifecycle";
 import { assignments, courierRoutes, restaurants, returnDebts, trips } from "./schema";
 
 /**
@@ -121,7 +121,8 @@ export async function courierRoutesFor(courierIds: number[], level?: DemandLevel
       .select({ trip: trips, assignment: assignments })
       .from(assignments)
       .innerJoin(trips, eq(trips.id, assignments.tripId))
-      .where(and(inArray(assignments.courierId, courierIds), openTripCondition()))
+      // Un encargo no tiene paradas: no se sabe dónde compra, y la central lo sigue por su chat.
+      .where(and(inArray(assignments.courierId, courierIds), openTripCondition(), deliveryTripCondition()))
       .orderBy(assignments.assignedAt),
     db.select().from(courierRoutes).where(inArray(courierRoutes.courierId, courierIds)),
     openReturnStops(courierIds),

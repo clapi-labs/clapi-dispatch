@@ -1,4 +1,6 @@
 export type TripStatus = "pending" | "assigned" | "en_route" | "delivered" | "cancelled";
+/** `errand`: un encargo (comprarle o traerle algo al restaurante). Lo asigna solo la central. */
+export type TripKind = "delivery" | "errand";
 export type PaymentMethod = "efectivo" | "transferencia" | "datafono";
 export type CourierStatus = "available" | "busy" | "paused" | "offline";
 
@@ -6,6 +8,8 @@ export type Trip = {
   id: number;
   code: string;
   status: TripStatus;
+  /** Sin el dato (datos de ejemplo viejos), un domicilio. */
+  kind?: TripKind;
   originRestaurantName: string;
   pickupAddress: string | null;
   deliveryAddress: string;

@@ -12,7 +12,7 @@ import {
 } from "../domain/demand";
 import { hasSignal } from "../domain/gps";
 import { db } from "./client";
-import { openTripCondition } from "./trip-lifecycle";
+import { deliveryTripCondition, openTripCondition } from "./trip-lifecycle";
 import { assignments, couriers, demandChanges, demandState, settings, trips } from "./schema";
 import { dispatchableCourier } from "./simulator-flag";
 
@@ -50,11 +50,12 @@ export async function measureDemand(config: DemandConfig, now = new Date()): Pro
       })
       .from(couriers)
       .where(and(eq(couriers.active, true), dispatchableCourier(), inArray(couriers.status, ["available", "busy"]))),
-    db.select({ readyAt: trips.readyAt }).from(trips).where(eq(trips.status, "pending")),
+    // Los encargos no cuentan como demanda: los coordina la central y el engine no los asigna.
+    db.select({ readyAt: trips.readyAt }).from(trips).where(and(eq(trips.status, "pending"), deliveryTripCondition())),
     db
       .select({ n: sql<number>`count(*)::int` })
       .from(trips)
-      .where(and(gt(trips.createdAt, since), ne(trips.status, "cancelled"))),
+      .where(and(gt(trips.createdAt, since), ne(trips.status, "cancelled"), deliveryTripCondition())),
   ]);
 
   // Con GPS cuentan las que lo tienen en vivo, como en el algoritmo. Si

@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, max } from "drizzle-orm";
 import {
   assignTripTo,
   db,
+  deliveryTripCondition,
   dispatchableCourier,
   getBotConfig,
   getDemand,
@@ -26,6 +27,9 @@ import { env } from "@/env";
  * llega la hora a cada pedido (`settings.engine_config.mode = "auto"`; con
  * `manual` no corre). Si no hay GPS o el engine falla, el pedido sigue
  * esperando con el motivo a la vista, y la central lo puede asignar a mano.
+ *
+ * Los encargos (`trips.kind = errand`) no pasan por aquí: los asigna solo la
+ * central, y la moto que tiene uno queda fuera hasta que lo entregue.
  *
  * Nada de esto envía mensajes: quien llama avisa con los viajes que devuelve.
  */
@@ -104,12 +108,22 @@ async function save(tripId: number, values: Partial<typeof schema.engineEvaluati
     .onConflictDoUpdate({ target: schema.engineEvaluations.tripId, set: { ...values, updatedAt: now } });
 }
 
-/** Las motos conectadas con lo que llevan encima. */
+/** Las motos conectadas con lo que llevan encima. La que tiene un encargo
+ *  abierto no entra: no se le asigna nada hasta que lo entregue. */
 async function loadCouriers(): Promise<SnapshotCourier[]> {
-  const couriers = await db
-    .select()
-    .from(schema.couriers)
-    .where(and(eq(schema.couriers.active, true), dispatchableCourier(), inArray(schema.couriers.status, ["available", "busy"])));
+  const [connected, onErrand] = await Promise.all([
+    db
+      .select()
+      .from(schema.couriers)
+      .where(and(eq(schema.couriers.active, true), dispatchableCourier(), inArray(schema.couriers.status, ["available", "busy"]))),
+    db
+      .selectDistinct({ courierId: schema.assignments.courierId })
+      .from(schema.assignments)
+      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+      .where(and(openTripCondition(), eq(schema.trips.kind, "errand"))),
+  ]);
+  const busyWithErrand = new Set(onErrand.map((r) => r.courierId));
+  const couriers = connected.filter((c) => !busyWithErrand.has(c.id));
   if (!couriers.length) return [];
   const ids = couriers.map((c) => c.id);
 
@@ -246,7 +260,8 @@ async function runAuto(config: EngineRunConfig): Promise<number[]> {
     .select({ trip: schema.trips, evaluation: schema.engineEvaluations })
     .from(schema.trips)
     .leftJoin(schema.engineEvaluations, eq(schema.engineEvaluations.tripId, schema.trips.id))
-    .where(eq(schema.trips.status, "pending"))
+    // Los encargos los asigna solo la central.
+    .where(and(eq(schema.trips.status, "pending"), deliveryTripCondition()))
     .orderBy(asc(schema.trips.createdAt));
   if (!rows.length) return [];
 
@@ -273,7 +288,11 @@ export async function runEngine(): Promise<number[]> {
  *  asigna la central. Devuelve si quedó asignado ya. */
 export async function dispatchTrip(tripId: number): Promise<boolean> {
   if (!env.engineUrl) return false;
-  const [trip] = await db.select().from(schema.trips).where(and(eq(schema.trips.id, tripId), eq(schema.trips.status, "pending"))).limit(1);
+  const [trip] = await db
+    .select()
+    .from(schema.trips)
+    .where(and(eq(schema.trips.id, tripId), eq(schema.trips.status, "pending"), deliveryTripCondition()))
+    .limit(1);
   if (!trip) return false;
   try {
     const config = await engineRunConfig();

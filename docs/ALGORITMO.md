@@ -282,6 +282,7 @@ El engine asigna de verdad, en cada tick, los pedidos pendientes, del más viejo
 - **Si ya es hora** (`faltan_min = 0`): asigna a la ganadora, libre u ocupada, y guarda su ruta. Al confirmar se intenta de una vez, para que el restaurante reciba un solo mensaje con quién va.
 - **Si falta** (`faltan_min > 0`): espera. El restaurante ya tiene su confirmación, sin disculpas, porque la espera es a propósito.
 - **Sin ganadora o con el engine caído:** sigue pendiente con el motivo a la vista en el tablero («Sin motos elegibles (sin GPS: 6)»), y la central lo asigna a mano.
+- **Encargos** (`trips.kind = errand`, ver [INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md), «Encargos»): nunca se evalúan ni se asignan solos; los asigna la central. La moto que tiene uno abierto no entra en la foto de la flota hasta que lo entregue, y la demanda no cuenta los encargos (ni esperando ni como llegadas).
 
 Hoy se asigna directo, sin oferta ni rechazo. Cómo activarlo, cuando llegue el momento:
 

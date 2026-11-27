@@ -80,7 +80,8 @@ export async function applyTripUpdate(ctx: Context, trip: Trip, update: TripUpda
  * `false` si no hay pedidos abiertos (el mensaje sigue como uno nuevo).
  */
 export async function routeTripUpdate(ctx: Context, update: TripUpdate, draft: OrderDraft): Promise<boolean> {
-  const trips = await openTrips(ctx.conversation.id);
+  // Un encargo no se cambia con «ya está listo» o «es la torre 2»: eso es de un domicilio.
+  const trips = (await openTrips(ctx.conversation.id)).filter((t) => t.kind === "delivery");
   if (trips.length === 0) return false;
   if (trips.length === 1) {
     await applyTripUpdate(ctx, trips[0], update);

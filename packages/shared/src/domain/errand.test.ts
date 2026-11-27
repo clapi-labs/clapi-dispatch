@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ERRAND_REASON_PREFIX, errandReason, isErrandReason, looksLikeErrand } from "./errand";
+import { ERRAND_REASON_PREFIX, errandAssignedText, errandCreatedText, errandReason, errandRequest, isErrandReason, looksLikeErrand } from "./errand";
 
 /**
  * La red de seguridad de los encargos (errand.ts). Los casos contra el modelo
@@ -83,8 +83,8 @@ describe("looksLikeErrand", () => {
 describe("errandReason", () => {
   it("el motivo lleva lo que pidió el restaurante, en una línea y recortado", () => {
     assert.equal(errandReason("me compran\n un queso   tajado"), "Encargo: «me compran un queso tajado»");
-    const long = errandReason("a".repeat(500));
-    assert.ok(long.length < 220);
+    const long = errandReason("a".repeat(1000));
+    assert.ok(long.length < 620);
     assert.ok(long.endsWith("…»"));
     assert.equal(errandReason("  "), `${ERRAND_REASON_PREFIX} pidió comprar o traer algo (ver el chat)`);
   });
@@ -93,5 +93,28 @@ describe("errandReason", () => {
     assert.equal(isErrandReason(errandReason("me traes 30 envases")), true);
     assert.equal(isErrandReason("El restaurante dio datos confusos o pidió hablar con una persona."), false);
     assert.equal(isErrandReason(null), false);
+  });
+});
+
+describe("errandRequest", () => {
+  it("saca lo que pidió el restaurante del motivo, tal cual", () => {
+    assert.equal(errandRequest(errandReason("necesito que me compren un queso tajado en la salsamentaria")), "necesito que me compren un queso tajado en la salsamentaria");
+    // Un mensaje largo de verdad cabe entero.
+    const said = `de ir al Ara a comprar ${"3 paquetes de tortillas, ".repeat(15)}`.trim();
+    assert.equal(errandRequest(errandReason(said)), said);
+  });
+
+  it("sin texto o con otro motivo, nada", () => {
+    assert.equal(errandRequest(errandReason("")), null);
+    assert.equal(errandRequest("Un operador tomó la conversación."), null);
+    assert.equal(errandRequest(null), null);
+  });
+});
+
+describe("textos del encargo", () => {
+  it("al restaurante: el código, y quién va solo con su nombre", () => {
+    assert.match(errandCreatedText("A-15"), /Tu encargo A-15 quedó registrado/);
+    assert.equal(errandAssignedText("A-15", "Carlos Pérez"), "🛵 Va Carlos con tu encargo A-15.");
+    assert.equal(errandAssignedText("A-15", null), "🛵 Va un domiciliario con tu encargo A-15.");
   });
 });

@@ -140,6 +140,35 @@ Nunca vuelve con la comida de otro cliente encima, salvo que el regreso sea al m
   - A la central: alerta al celular y tarjeta en «Reclamos por atender» arriba de `/pendientes`, con «Mandar ya» (o «Registrar pendiente» si no existía) y «Lo resuelvo yo».
 - **Antes del cierre del restaurante:** `closingDebtMinutes` (30 min por defecto) antes de la hora límite del restaurante, el tick le recuerda al domiciliario «⏰ Donde Lucho cierra pronto: pasa a devolver el datáfono / a pagar», con las mismas reglas del caso claro. Si llega la hora límite y todavía hay un **datáfono** afuera, le llega una alerta a la central («Datáfono afuera al cierre»); la **plata** puede quedar para el día siguiente sin alerta.
 
+## Encargos
+
+Un encargo es comprarle o traerle algo al restaurante («me compran un queso tajado en la salsamentaria», «me traes 30 envases»). El bot lo reconoce y lo pasa a la central ([BOT.md](BOT.md), «Encargos»), que lo acuerda con el restaurante y lo crea como viaje con su precio ([INTERVENCION-MANUAL.md](INTERVENCION-MANUAL.md), «Encargos»). Es un viaje con código de la misma serie y de tipo distinto (`trips.kind = errand`), y su flujo es otro: **un solo mensaje con un solo botón**.
+
+- **Lo asigna solo la central**, con el «Asignar» de siempre en Viajes. El engine nunca asigna un encargo ni lo cuenta en la demanda.
+- **El mensaje** (`errandTicket` en `apps/bot/src/bot/notify.ts`) trae el código, el restaurante, lo que pidió tal cual (hasta 600 caracteres, para que quepa con el botón) y a dónde llevarlo, que es el mismo restaurante, con su enlace de Waze:
+
+  ```
+  🛍️ Carlos, tienes un encargo A-15
+
+  Para: Burgers 77
+
+  Lo que pidió: necesito que me compren un queso tajado en la salsamentaria
+
+  Llévalo a: Burgers 77 · Cra 66 # 9-50
+
+  Ruta en Waze: https://waze.com/ul?ll=…
+
+  Cuando lo entregues en el restaurante, toca «Entregado».
+  ```
+
+  Su único botón es **«✅ Entregado»** (el mismo id que el de un domicilio, `done:customer:finish:<id>`). No hay «Voy en camino», «Recogí», portería, «Cliente no contesta» ni segundo mensaje. Al restaurante le llega «🛵 Va Carlos con tu encargo A-15.».
+- **Los detalles** («es en la de la 25, pide factura») se los da la central por su chat en Conversaciones, y ahí mismo revisa que todo llegó bien. La foto que haya mandado el restaurante (el envase, por ejemplo) también se la reenvía la central por ahí: el bot todavía no la adjunta.
+- **Ocupado mientras lo tiene.** Queda `busy` como con cualquier pedido, y el engine lo deja fuera de la foto de la flota hasta que toque «Entregado»: no le asigna nada más. La central sí puede asignarle algo a mano.
+- **No le aplican** los recordatorios de «¿ya vas en camino?» o «ya está listo», la recogida o la llegada que marca el GPS, los botones o textos de datáfono y plata (un encargo no deja pendientes de regreso), la ruta numerada (el encargo no tiene paradas) ni las alertas de pedido bloqueado. «Ok» no cuenta como «Voy en camino» y «ya recogí» no aplica; escribir «entregado» sí lo cierra.
+- **Al tocar «Entregado»** el viaje queda entregado y la moto libre, igual que con un pedido normal, y cuenta en Finanzas con el precio de la central. Al restaurante le llega «🛍️ Encargo A-15 entregado a las …» si la agencia tiene encendido `notifyRestaurantOnDelivery`.
+
+En Viajes, la tarjeta lleva la marca **🛍️ Encargo**, muestra qué compra o trae en vez de la recogida, y su etiqueta es «Por asignar», «En el encargo · N min» o «Entregado». Nunca se pone en rojo.
+
 ## La ruta en los mensajes
 
 Con dos o más paradas pendientes, regresos incluidos, **cada mensaje que ya se le manda empieza con su ruta numerada**, con lo que sigue marcado:
@@ -216,6 +245,8 @@ Meta cobra solo lo que enviamos: lo que escribe o toca el usuario no se cobra. H
 | Domiciliario | Mensajes 1 y 2 | 2 |
 | Domiciliario | Terminado, salvo que ya le haya llegado otro pedido | 1 |
 | **Total** | | **6** |
+
+Un encargo gasta menos: al restaurante, «Le paso tu encargo…», la confirmación, quién va y el entregado; al domiciliario, un solo mensaje y el «terminado». Más lo que la central escriba en los dos chats.
 
 Suman uno más cada uno de estos casos:
 
@@ -343,6 +374,7 @@ La lista de entrega también trae «Cliente no contesta». El domiciliario esper
 - Un pedido pendiente se puede asignar a mano, con la lista de motos ordenada por cuántos pedidos llevan y a qué distancia están.
 - Un pedido sin recoger se puede pasar a otra moto o dejar que se asigne solo. La moto anterior recibe un aviso.
 - Si se desconecta una moto desde Flota, lo que no ha recogido se asigna de nuevo y termina lo que ya lleva.
+- Un encargo lo asigna siempre la central, y se puede pasar a otra moto mientras no se haya entregado (ver «Encargos»).
 
 ## Preguntas para Williams
 

@@ -59,11 +59,18 @@ export function looksLikeErrand(raw: string | null | undefined): boolean {
  *  así lo reconocen el portal y la alerta al celular. */
 export const ERRAND_REASON_PREFIX = "Encargo:";
 
+/** Hasta dónde se guarda lo que pidió: cabe en el mensaje del domiciliario
+ *  (1.024 caracteres con botón) junto con el resto de su ficha. */
+const ERRAND_REQUEST_MAX = 600;
+
+/** Cuando no hay texto (solo una foto, por ejemplo). */
+const ERRAND_NO_TEXT = "pidió comprar o traer algo (ver el chat)";
+
 /** El motivo del escalado, con lo que pidió el restaurante tal cual. */
 export function errandReason(text: string): string {
   const said = text.replace(/\s+/g, " ").trim();
-  const clipped = said.length > 200 ? `${said.slice(0, 199)}…` : said;
-  return clipped ? `${ERRAND_REASON_PREFIX} «${clipped}»` : `${ERRAND_REASON_PREFIX} pidió comprar o traer algo (ver el chat)`;
+  const clipped = said.length > ERRAND_REQUEST_MAX ? `${said.slice(0, ERRAND_REQUEST_MAX - 1)}…` : said;
+  return clipped ? `${ERRAND_REASON_PREFIX} «${clipped}»` : `${ERRAND_REASON_PREFIX} ${ERRAND_NO_TEXT}`;
 }
 
 export function isErrandReason(reason: string | null | undefined): boolean {
@@ -72,3 +79,30 @@ export function isErrandReason(reason: string | null | undefined): boolean {
 
 /** Lo que se le responde al restaurante: la central coordina el encargo. */
 export const ERRAND_RECEIVED_MESSAGE = "Recibido 🛍️ Le paso tu encargo a la central para coordinarlo. Ya te confirmamos 🙏";
+
+/** Lo que pidió el restaurante, sacado del motivo del escalado: es lo que
+ *  guarda el encargo y lo que lee el domiciliario. `null` si el motivo no es de
+ *  un encargo o no trae texto. */
+export function errandRequest(reason: string | null | undefined): string | null {
+  if (!isErrandReason(reason)) return null;
+  const rest = reason!.slice(ERRAND_REASON_PREFIX.length).trim();
+  const quoted = rest.match(/^«([\s\S]*)»$/);
+  if (quoted) return quoted[1].trim() || null;
+  return rest && rest !== ERRAND_NO_TEXT ? rest : null;
+}
+
+/** Al crear el encargo desde el panel: el chat vuelve al bot y se le confirma. */
+export function errandCreatedText(code: string): string {
+  return `Listo ✅ Tu encargo ${code} quedó registrado. Te aviso cuando salga el domiciliario 🛍️`;
+}
+
+/** Al asignarlo: quién va. Sin su número, como en los domicilios. */
+export function errandAssignedText(code: string, courierName: string | null | undefined): string {
+  const first = courierName?.trim().split(/\s+/)[0];
+  return first ? `🛵 Va ${first} con tu encargo ${code}.` : `🛵 Va un domiciliario con tu encargo ${code}.`;
+}
+
+/** Al entregarlo en el restaurante. */
+export function errandDeliveredText(code: string, at: string): string {
+  return `🛍️ Encargo ${code} entregado a las ${at} ✅`;
+}

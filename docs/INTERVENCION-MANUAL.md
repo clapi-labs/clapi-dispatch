@@ -1,6 +1,6 @@
 # Intervención manual
 
-Estado: **en parte construido.** Ya existen la novedad del motorizado (lo pausa y pasa su chat a la central, ver [BOT.md](BOT.md), «Motorizados»), tomar o soltar un chat desde el portal, marcar la entrega y asignar o pasar un pedido sin recoger a otra moto.
+Estado: **en parte construido.** Ya existen la novedad del motorizado (lo pausa y pasa su chat a la central, ver [BOT.md](BOT.md), «Motorizados»), tomar o soltar un chat desde el portal, marcar la entrega, asignar o pasar un pedido sin recoger a otra moto, y los encargos (ver «Encargos»).
 
 ## La idea
 
@@ -64,6 +64,27 @@ Camilo se accidenta llevando un pedido que ya recogió y tiene otro asignado.
 5. Cuando Camilo esté bien, lo reactiva.
 
 Ningún paso lo impone el sistema.
+
+## Encargos
+
+A veces el restaurante no pide llevar su comida a un cliente, sino que le compren o le traigan algo: «necesito que me compren un queso tajado en la salsamentaria», «de ir al Ara a comprar 3 paquetes de tortillas», «Necesito un domi» + foto de un envase + «me traes 30». Son pocos y cada uno es distinto, así que no se automatizan: los coordina la central. El sistema no verifica nada del encargo (ni zona, ni precio, ni la tienda): solo avisa, y la central decide.
+
+1. **Llega como un chat que pide ayuda.** El bot lo reconoce ([BOT.md](BOT.md), «Encargos»), le responde al restaurante «Le paso tu encargo a la central», pausa su chat con el motivo «Encargo: «…»» y suena la alerta «🛍️ Encargo · restaurante».
+2. **La central lo acuerda en la conversación**, como cualquier chat escalado: qué hay que comprar, dónde y cuánto cuesta. Arriba del chat aparece el panel **«Encargo»**, con el campo del precio y dos botones:
+   - **«Crear encargo»**: crea el viaje con el precio acordado (no se calcula ni se valida) y devuelve el chat al bot, que le confirma al restaurante «Listo ✅ Tu encargo A-15 quedó registrado. Te aviso cuando salga el domiciliario 🛍️».
+   - **«No crear»**: no crea nada y devuelve el chat al bot, que no le escribe: la central ya le dijo lo que fuera.
+
+   Los dos devuelven el chat al bot, así que si el restaurante pide luego un domicilio normal el bot lo atiende. Si otra persona ya lo decidió, el panel desaparece sin hacer nada (no se crean dos encargos).
+3. **El encargo es un viaje** de tipo encargo (`trips.kind = errand`), con código de la misma serie que los demás. Guarda lo que pidió el restaurante tal cual (en `notes`, hasta 600 caracteres), el precio de la central (`deliveryFee`) y se entrega en el mismo restaurante (su dirección y ubicación registradas); no tiene recogida, porque la tienda la acuerda la central. Aparece en **Viajes, en Pendiente**, marcado **🛍️ Encargo** y con «Lo asignas tú».
+4. **Solo la central lo asigna**, con el «Asignar» de siempre. El algoritmo nunca asigna un encargo, no lo cuenta para medir la demanda, y no le asigna otros pedidos a la moto mientras lo tenga.
+5. **Al domiciliario le llega un solo mensaje con un solo botón, «✅ Entregado»**, y al restaurante «🛵 Va Carlos con tu encargo A-15.» (detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Encargos»). Los detalles («es en la de la 25, pide factura») y la foto que haya mandado el restaurante se los manda la central por el chat del domiciliario, y ahí revisa que todo llegó bien.
+6. **Al tocar «Entregado»** el viaje queda entregado, la moto libre, y el encargo cuenta en Finanzas con su precio, como cualquier viaje. Si el domiciliario no pudo marcarlo, la central lo marca desde la tarjeta.
+
+**Si se queda en Pendiente y la central decide no hacerlo**, la tarjeta tiene **«No hacer»**: se cancela, sale de Pendiente y no cuenta en Finanzas. No se le avisa a nadie: si hace falta, la central se lo dice al restaurante por su chat. Solo sirve para un encargo sin moto; uno ya asignado se le quita primero a la moto («Pasar a otra moto» → «Quitárselo», y vuelve a Pendiente) o se entrega. Cancelar viajes en general es otra tarea.
+
+Un encargo no tiene recordatorios, GPS, botones de datáfono o plata, ruta, ni alertas de pedido bloqueado: lo sigue la central por el chat.
+
+Código: el panel en `apps/portal/src/components/ErrandPanel.tsx` (acción `errand` de `POST /api/conversations/:id`), crear, no crear y «No hacer» en `packages/shared/src/db/errands.ts` (`POST /api/trips/:id/cancel`), y los mensajes en `apps/bot/src/bot/notify.ts`. Pruebas: `apps/portal/src/app/api/errands.test.ts` y `apps/bot/src/bot/errand.test.ts`.
 
 ## Alertas al celular
 

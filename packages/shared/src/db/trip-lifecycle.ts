@@ -20,6 +20,14 @@ import { assignableByHand, dispatchableCourier } from "./simulator-flag";
  *  es un pendiente aparte (`return_debts`), que no lo deja ocupado. */
 export const openTripCondition = () => inArray(trips.status, ["assigned", "en_route"]);
 
+/** Para una consulta con `trips`: solo los domicilios. Los encargos los
+ *  coordina la central (db/errands.ts): el engine no los asigna ni los cuenta en
+ *  la demanda, y no tienen recordatorios, GPS ni ruta. */
+export const deliveryTripCondition = () => eq(trips.kind, "delivery");
+
+/** Para una consulta con `trips`: un encargo. */
+export const errandTripCondition = () => eq(trips.kind, "errand");
+
 /** Reclama la moto, si sigue en uno de esos estados y entre las que `allowed`
  *  admite, y deja la asignación. */
 async function bindCourier(tripId: number, courierId: number, from: ("available" | "busy")[], now: Date, allowed = dispatchableCourier()) {

@@ -143,6 +143,8 @@ async function recentTrips(courierId: number) {
         eq(schema.assignments.courierId, courierId),
         ne(schema.trips.status, "cancelled"),
         ne(schema.trips.status, "pending"),
+        // Un encargo no deja pendientes de regreso: no se recoge en el restaurante.
+        eq(schema.trips.kind, "delivery"),
         gt(schema.assignments.assignedAt, new Date(Date.now() - 12 * 60 * 60_000)),
       ),
     )
@@ -289,7 +291,8 @@ export async function handleCourier(courier: Courier, conversation: Conversation
 
   // Un «ok» o «voy» con un pedido sin confirmar es «Voy en camino»: así lo
   // hacen hoy muchos. Con varios sin confirmar, el más viejo primero.
-  const unseen = trips.filter((t) => t.phase === "unread" || t.phase === "read");
+  // Un encargo no tiene «Voy en camino»: solo «Entregado».
+  const unseen = trips.filter((t) => t.trip.kind === "delivery" && (t.phase === "unread" || t.phase === "read"));
   if (message.kind === "text" && unseen.length && isAck(message.text)) {
     const oldest = unseen[unseen.length - 1].trip.id;
     if (await mark(courier.id, oldest, "going")) await notifyGoing(oldest);
@@ -340,6 +343,8 @@ export async function handleCourier(courier: Courier, conversation: Conversation
   const written = message.kind === "text" ? parseCourierText(message.text) : null;
   if (written) {
     const applies = trips.filter((t) => {
+      // Un encargo solo se entrega.
+      if (t.trip.kind === "errand") return written.kind === "delivered";
       if (written.kind === "returned") return t.phase === "undelivered";
       if (written.kind === "picked") return isBeforePickup(t.phase);
       if (written.kind === "no_answer") return t.phase === "carrying" || t.phase === "at_delivery";
@@ -351,7 +356,7 @@ export async function handleCourier(courier: Courier, conversation: Conversation
       if (written.kind === "picked") await markPicked(courier.id, tripId);
       else if (written.kind === "returned") await markReturned(tripId);
       else if (written.kind === "no_answer") await markNoAnswer(courier.id, tripId);
-      else await markDelivered(tripId, written.place);
+      else await markDelivered(tripId, applies[0].trip.kind === "errand" ? "customer" : written.place);
       return;
     }
   }
