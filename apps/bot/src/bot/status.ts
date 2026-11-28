@@ -1,10 +1,10 @@
 import { and, desc, eq, gt, inArray, or } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
-import { estimateEtaMinutes, haversineKm } from "@dispatch/shared";
+import { estimateEtaMinutes, haversineKm, isBeforePickup, tripPhase, type TripPhase } from "@dispatch/shared";
 
 import { say } from "@/bot/messaging";
-import type { Conversation } from "@/db/queries/conversation";
+import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import type { Trip } from "@/db/queries/trips";
 
 /**
@@ -27,6 +27,8 @@ type Row = {
   courierName: string | null;
   deliveredAt: Date | null;
   deliveryPlace: "customer" | "gate" | null;
+  assignment: typeof schema.assignments.$inferSelect | null;
+  courier: { lat: number | null; lng: number | null; locationUpdatedAt: Date | null } | null;
 };
 
 async function load(conversationId: number, tripId: number | null): Promise<Row[]> {
@@ -37,9 +39,12 @@ async function load(conversationId: number, tripId: number | null): Promise<Row[
       courierName: schema.assignments.courierName,
       deliveredAt: schema.assignments.deliveredAt,
       deliveryPlace: schema.assignments.deliveryPlace,
+      assignment: schema.assignments,
+      courier: { lat: schema.couriers.lat, lng: schema.couriers.lng, locationUpdatedAt: schema.couriers.locationUpdatedAt },
     })
     .from(schema.trips)
     .leftJoin(schema.assignments, eq(schema.assignments.tripId, schema.trips.id))
+    .leftJoin(schema.couriers, eq(schema.couriers.id, schema.assignments.courierId))
     .where(
       and(
         eq(schema.trips.conversationId, conversationId),
@@ -169,6 +174,76 @@ export function courierAssignedText(code: string, courierName: string): string {
   return `🛵 Pedido ${code}: va ${courierName}.`;
 }
 
+/** La fase del viaje vista desde el restaurante (domain/phase.ts). */
+function phaseOf(row: Row): TripPhase {
+  const a = row.assignment;
+  return tripPhase({ status: row.trip.status, ...(a ?? {}), deliveryPlace: a?.deliveryPlace ?? null });
+}
+
+/** La posición de la moto, si es reciente: sin ella no se estima nada. */
+function courierAt(row: Row, now: Date): Point | null {
+  const c = row.courier;
+  if (!c || c.lat == null || c.lng == null || !c.locationUpdatedAt || now.getTime() - c.locationUpdatedAt.getTime() >= FRESH_LOCATION_MS) return null;
+  return { lat: c.lat, lng: c.lng };
+}
+
+/** «unos 10 minutos» hasta un punto, desde la moto; null sin posición o sin destino. */
+function minutesTo(row: Row, target: Point | null | undefined, now: Date): number | null {
+  const from = courierAt(row, now);
+  if (!from || !target) return null;
+  return Math.max(5, Math.ceil((estimateEtaMinutes(haversineKm(from, target) * ROAD_FACTOR) + trafficMargin(now)) / 5) * 5);
+}
+
+/**
+ * En qué va un pedido con moto, dicho al restaurante: si ya va para allá (y
+ * en cuánto llega), si ya está ahí, si ya lo recogió y va donde el cliente, o
+ * si el cliente no contesta. Solo el nombre del domiciliario.
+ */
+function onTheWayText(row: Row, where: string, courier: string, now = new Date()): string {
+  const { trip } = row;
+  const phase = phaseOf(row);
+  if (phase === "unread" || phase === "read" || phase === "going") {
+    const eta = estimatePickup({ readyAt: trip.readyAt, pickup: trip.pickupLocation ?? null, courier: row.courier ?? null, now });
+    const lead = phase === "going" ? `${courier} va en camino a recogerlo` : `${courier} ya tiene el pedido y va para allá`;
+    return `🛵 ${trip.code}${where}: ${lead}. Estará ahí en unos ${eta.minutes} minutos.`;
+  }
+  if (phase === "at_pickup") return `📍 ${trip.code}${where}: ${courier} ya está en el restaurante.`;
+  if (phase === "carrying") {
+    const eta = minutesTo(row, trip.deliveryLocation, now);
+    return `📦 ${trip.code}${where}: ${courier} ya lo recogió y va camino al cliente${eta ? `. Llega en unos ${eta} minutos` : ""}.`;
+  }
+  if (phase === "at_delivery") return `📍 ${trip.code}${where}: ${courier} ya llegó donde el cliente.`;
+  if (phase === "waiting_customer") return `⏰ ${trip.code}${where}: ${courier} está donde el cliente, pero el cliente no contesta. La central ya está al tanto.`;
+  if (phase === "undelivered") return `↩️ ${trip.code}${where}: el cliente no contestó y ${courier} lo está devolviendo al restaurante.`;
+  return `🛵 ${trip.code}${where}: va ${courier}.`;
+}
+
+/**
+ * «El domiciliario aún no llega», «ya se demoró mucho», «hace rato pedí»: un
+ * reclamo por la demora, no solo una pregunta. Se responde con el estado y,
+ * si la moto todavía no ha recogido, pasa a la central para que la llame.
+ */
+const DELAY_COMPLAINT =
+  /\b(?:no (?:ha )?llega(?:do)?|aun no llega|todavia no llega|no (?:ha )?venido|no viene|no vienen|no ha recogido|no lo han recogido|no han venido|no ha ido|no (?:ha )?pasado|no aparece|ya se demoro|se demoro mucho|se ha demorado|se esta demorando mucho|esta muy demorad[oa]|demorad[oa]sim[oa]|tarda(?:ndo)? mucho|se demora mucho|lleva(?:mos)? mucho|hace rato|mucho tiempo|que paso con (?:el )?(?:domi|domiciliario|moto|motorizado|pedido))\b/;
+
+export function looksLikeDelayComplaint(raw: string | null | undefined): boolean {
+  if (!raw?.trim()) return false;
+  const text = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+  return DELAY_COMPLAINT.test(text);
+}
+
+/** El motivo del chat que pasa a la central por un reclamo de demora. */
+export function delayComplaintReason(codes: string[]): string {
+  return `Reclama demora: el domiciliario ${codes.length === 1 ? `del ${codes[0]}` : `de ${codes.join(", ")}`} no ha llegado. Llámalo y confírmale al restaurante.`;
+}
+
+export const DELAY_COMPLAINT_ACK = "Ya le aviso a la central para que lo llame y te confirmamos 🙏";
+
 /** Una línea por pedido: dónde va y quién lo lleva (solo el nombre). */
 function describe(row: Row, withAddress: boolean) {
   const { trip } = row;
@@ -186,7 +261,7 @@ function describe(row: Row, withAddress: boolean) {
       return `✅ ${trip.code}${where}: confirmado, el domiciliario estará ahí en ${PICKUP_WINDOW}.`;
     case "assigned":
     case "en_route":
-      return `✅ Servicio motorizado confirmado para el pedido ${trip.code}${where}: va ${courier}.\n\n${COURIER_CONTACT_NOTE}`;
+      return onTheWayText(row, where, courier);
     case "delivered":
       // Sin punto final: la hora ya termina en "p. m.".
       return `✅ ${trip.code}${where}: ${row.deliveryPlace === "gate" ? "quedó en portería" : "entregado"}${row.deliveredAt ? ` a las ${time(row.deliveredAt)}` : ""}`;
@@ -195,7 +270,7 @@ function describe(row: Row, withAddress: boolean) {
   }
 }
 
-export async function answerStatus(conversation: Conversation, phone: string, quoted: Trip | null) {
+export async function answerStatus(conversation: Conversation, phone: string, quoted: Trip | null, opts: { complaint?: boolean } = {}) {
   const rows = await load(conversation.id, quoted?.id ?? null);
 
   if (!rows.length) {
@@ -203,8 +278,16 @@ export async function answerStatus(conversation: Conversation, phone: string, qu
     return;
   }
 
+  // Un reclamo por demora de un pedido que la moto todavía no ha recogido (o
+  // que sigue sin moto): además del estado, la central lo revisa.
+  const late = opts.complaint ? rows.filter((r) => r.trip.status === "pending" || ((r.trip.status === "assigned" || r.trip.status === "en_route") && (isBeforePickup(phaseOf(r)) || phaseOf(r) === "at_pickup"))) : [];
+  const ack = late.length ? DELAY_COMPLAINT_ACK : null;
+  if (late.length) {
+    await updateConversation(conversation.id, { botPaused: true, escalationReason: delayComplaintReason(late.map((r) => r.trip.code)), failedAttempts: 0 });
+  }
+
   if (rows.length === 1) {
-    await say(conversation.id, phone, describe(rows[0], false), { replyTo: rows[0].trip.sourceWaMessageId, tripId: rows[0].trip.id });
+    await say(conversation.id, phone, [describe(rows[0], false), ack].filter(Boolean).join("\n\n"), { replyTo: rows[0].trip.sourceWaMessageId, tripId: rows[0].trip.id });
     return;
   }
 
@@ -216,4 +299,5 @@ export async function answerStatus(conversation: Conversation, phone: string, qu
     const quote = row.trip.sourceWaMessageId;
     await say(conversation.id, phone, describe(row, !quote || sharedSource(row)), { replyTo: quote, tripId: row.trip.id });
   }
+  if (ack) await say(conversation.id, phone, ack);
 }
