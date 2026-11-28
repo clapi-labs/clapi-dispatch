@@ -9,6 +9,7 @@ export * from "./domain/return-debts";
 export * from "./domain/errand";
 export * from "./domain/places";
 export * from "./domain/cancel-request";
+export * from "./domain/trip-cancel";
 export * from "./domain/fleet-removal";
 export * from "./domain/road-distance";
 export * from "./domain/phase";

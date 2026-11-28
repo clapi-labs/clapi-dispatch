@@ -274,6 +274,14 @@ export const trips = pgTable(
      *  falta cada vez que evalúa. Nulo en los viajes anteriores a este dato. */
     readyAt: timestamp("ready_at", { withTimezone: true }),
 
+    /** La cancelación (`trip-lifecycle.ts`, `cancelTrip`): cuándo y por qué.
+     *  `cancelFee` es lo que se cobra del domicilio cancelado (lo cuenta
+     *  Finanzas como un viaje de esa moto); nulo si no se cobra. Por regla,
+     *  se cobra si la moto ya había salido del restaurante. */
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    cancelFee: integer("cancel_fee"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
