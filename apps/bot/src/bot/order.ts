@@ -7,6 +7,7 @@ import {
   closedMessage,
   closedNoticeDue,
   countFields,
+  DRAFT_DROPPED_TEXT,
   deliveryLabel,
   foldTicket,
   emptyDelivery,
@@ -15,6 +16,7 @@ import {
   fullAddress,
   isOpen,
   isStaleDraft,
+  looksLikeDropDraft,
   mergeTripFields,
   missingFields,
   namedAsDestination,
@@ -613,6 +615,14 @@ async function respond(ctx: Context) {
   const before = structuredClone(draft);
 
   if (reads) {
+    // «ya no gracias», «olvídalo»: desiste de lo que se estaba armando o
+    // cotizando. No hay viaje que cancelar: se borra y se le confirma, sin
+    // pasar por el modelo. Si cita un pedido ya creado, es cancelar ese (abajo).
+    if (!imageIds.length && !message.replyTo && before.entregas.length > 0 && looksLikeDropDraft(text)) {
+      await save(ctx, null);
+      await say(conversation.id, message.phone, DRAFT_DROPPED_TEXT);
+      return;
+    }
     const images = (await Promise.all(imageIds.map(downloadImage))).filter((i): i is DownloadedImage => !!i);
     if (imageIds.length && !images.length && !text.trim() && !pins.length) {
       await say(conversation.id, message.phone, "No pude abrir la imagen 🙏 ¿Me escribes la dirección de entrega?");

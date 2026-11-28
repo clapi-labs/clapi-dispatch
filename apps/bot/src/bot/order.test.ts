@@ -1373,6 +1373,29 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
       assert.equal((await c.draft())?.entregas.length, 1);
     });
 
+    it("«ya no gracias» después de una cotización: borra lo que se armaba y se lo confirma (antes se quedaba callado)", async () => {
+      await registered();
+      const c = chat();
+      await c.say("cuanto a la calle 10 # 5-20?", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })], { intent: "cotizar" }));
+      assert.match(c.reply, /el domicilio vale/);
+      const r = await c.raw((head) => ({ ...head, kind: "text", text: "ya no gracias" }));
+      assert.equal(c.reply, "Listo, no pido nada 👍 Cuando necesites un domi, aquí estoy.");
+      assert.equal(modelCalls.at(-1)?.text, "cuanto a la calle 10 # 5-20?", "no hizo falta el modelo");
+      assert.equal(r.sent.length, 1);
+      assert.equal(await c.draft(), null);
+      await assertNotEscalated(c);
+    });
+
+    it("«olvídalo» con un pedido a medio armar también lo borra, y no se crea nada", async () => {
+      await registered();
+      const c = chat();
+      await c.say("a la calle 10 # 5-20, Marta 3001234567", understood([complete({ listoEnMinutos: null })]));
+      await c.raw((head) => ({ ...head, kind: "text", text: "olvídalo" }));
+      assert.equal(c.reply, "Listo, no pido nada 👍 Cuando necesites un domi, aquí estoy.");
+      assert.equal(await c.draft(), null);
+      assert.equal((await allTrips()).length, 0);
+    });
+
     it("a otro municipio no llegamos: lo dice y no le pregunta a la central", async () => {
       await registered();
       const c = chat();

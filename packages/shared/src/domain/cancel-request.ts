@@ -58,3 +58,30 @@ export function cancelReceivedText(codes: string[]): string {
   const which = codes.length === 1 ? `el ${codes[0]}` : "tu pedido";
   return `Recibido 🙏 Le paso a la central que quieres cancelar ${which}. Ya te confirmamos.`;
 }
+
+/**
+ * «ya no gracias», «olvídalo», «mejor no», «cancélalo»: el restaurante
+ * desiste de lo que se estaba armando o cotizando (todavía no hay viaje). Solo
+ * en un mensaje corto y sin números: «ya no es para la 10, es para la 12» es
+ * una corrección, no desistir.
+ */
+const LEAD = String.raw`^(?:(?:no+|nono|ah|ok|bueno|listo|vale|uy)\s+)*`;
+const DROP = new RegExp(
+  `${LEAD}(?:ya no|mejor no|no gracias|ya no gracias|olvidalo|olvidelo|olvida(?:lo)? eso|dejalo|dejelo|dejalo asi|dejemoslo asi|dejemos asi|no importa|no lo necesito|ya no lo necesito|ya no se necesita|ya no va|no va)\\b`,
+);
+/** «cancélalo», «cancela eso porfa»: solo o con palabras de relleno, nunca
+ *  «cancela en efectivo» (pagar). */
+const DROP_CANCEL = new RegExp(`${LEAD}(?:cancela(?:lo|la)?|cancelemos|anula(?:lo|la)?)(?:\\s+(?:eso|todo|porfa|por favor|gracias|mejor|la cotizacion|el pedido|ese pedido))*$`);
+
+export function looksLikeDropDraft(raw: string | null | undefined): boolean {
+  if (!raw?.trim()) return false;
+  const text = norm(raw)
+    .replace(/[^a-z\s]/g, (c) => (/\d/.test(c) ? c : " "))
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/\d/.test(text) || text.split(" ").length > 7 || PAYING.test(text)) return false;
+  return DROP.test(text) || DROP_CANCEL.test(text);
+}
+
+/** Lo que se le responde: no se pidió ninguna moto. */
+export const DRAFT_DROPPED_TEXT = "Listo, no pido nada 👍 Cuando necesites un domi, aquí estoy.";
