@@ -139,6 +139,8 @@ Orden sugerido (cada ola puede repartirse entre varias personas):
 
 **Dónde mirar:** `apps/bot/src/bot/order.ts` (`handleRestaurant`), `conversations.draft`, el prompt de `packages/shared/src/domain/extraction.ts`.
 
+**Hecho:** desistir con «ya no», «olvídalo», «cancélalo» borra el borrador y lo confirma (`looksLikeDropDraft`), y un borrador de más de una hora sin mensajes ya no se mezcla con el siguiente pedido (`isStaleDraft`).
+
 ### B-2 · Quitar o cancelar un pedido ya creado · Bot · S
 
 **Objetivo:** que «quita el de la 42» o «cancela el B-12» después de confirmar no se confunda con un pedido nuevo. Hoy responde «Envíame la dirección de entrega».

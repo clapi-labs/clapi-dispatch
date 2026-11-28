@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { cancelReason, cancelReceivedText, looksLikeCancelRequest } from "./cancel-request";
+import { cancelReason, cancelReceivedText, looksLikeCancelRequest, looksLikeDropDraft } from "./cancel-request";
 
 describe("looksLikeCancelRequest", () => {
   it("reconoce que pide cancelar un pedido ya creado", () => {
@@ -51,5 +51,29 @@ describe("textos de la cancelación", () => {
     assert.equal(cancelReason(["A-56", "A-57", "A-58"]), "Pidió cancelar un pedido sin decir cuál: tiene abiertos A-56, A-57 y A-58.");
     assert.match(cancelReceivedText(["A-57"]), /quieres cancelar el A-57/);
     assert.match(cancelReceivedText(["A-56", "A-57"]), /quieres cancelar tu pedido/);
+  });
+});
+
+describe("looksLikeDropDraft", () => {
+  it("desiste de lo que se estaba armando o cotizando", () => {
+    for (const text of ["ya no gracias", "Ya no", "no gracias", "mejor no", "olvídalo", "nono, déjalo así", "cancélalo", "cancela", "ya no lo necesito", "ok ya no va", "bueno no importa"]) {
+      assert.equal(looksLikeDropDraft(text), true, text);
+    }
+  });
+
+  it("una corrección, un dato, un «no» suelto o un agradecimiento no son desistir", () => {
+    for (const text of [
+      "ya no es para la calle 10, es para la 12",
+      "no",
+      "gracias",
+      "listo gracias",
+      "no, el teléfono es otro",
+      "ya no está en la torre 2 sino en la 3",
+      "cancela en efectivo",
+      "",
+      null,
+    ]) {
+      assert.equal(looksLikeDropDraft(text), false, String(text));
+    }
   });
 });
