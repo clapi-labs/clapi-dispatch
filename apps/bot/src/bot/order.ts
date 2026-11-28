@@ -7,6 +7,8 @@ import {
   closedMessage,
   closedNoticeDue,
   countFields,
+  deliveryLabel,
+  foldTicket,
   emptyDelivery,
   emptyDraft,
   errandReason,
@@ -18,8 +20,14 @@ import {
   namedAsDestination,
   normalizeDraft,
   normalizeName,
+  notServedPlaceText,
+  onlyOneOf,
   parseDebtClaim,
+  pickAlternative,
+  placeOnly,
   removeDeliveries,
+  separateDoor,
+  servedPlaceText,
   shouldStaySilentAfterQuote,
   type DeliveryDraft,
   type DoubtfulField,
@@ -80,21 +88,39 @@ import type { IncomingMessage, TurnPin } from "@/services/whatsapp/types";
 export const CONFIRM_BUTTON_ID = "confirmar";
 export const IDENTITY_YES_BUTTON_ID = "identidad_si";
 export const IDENTITY_NO_BUTTON_ID = "identidad_no";
+/** «La 1» o «La 2» del ticket con dos direcciones: `direccion:<entrega>:<1|2>`. */
+export const ALT_ADDRESS_PREFIX = "direccion:";
 
-/** Cómo se pide cada dato en el formato que llena el restaurante, en el
- *  orden en que se pide. */
-const TEMPLATE_LABEL: Record<OrderFieldKey, string> = {
-  origenRestaurante: "Dirección de recogida",
-  direccionEntrega: "Dirección de entrega",
-  nombreCliente: "Nombre del cliente",
-  telefonoCliente: "Teléfono del cliente",
-  detalleDireccion: "Detalle (torre, apto, local o casa, si aplica)",
-  valorACobrar: "Valor a cobrar",
-  metodoPago: "Pago (efectivo, transferencia o datáfono)",
-  listoEnMinutos: "Tiempo en que está listo el pedido",
-  notas: "Indicaciones",
+/** Cómo se nombra cada dato que falta, en el orden en que se pide: la
+ *  pregunta se arma con estos en una frase natural (`missingQuestion`). */
+const FIELD_PHRASE: Record<OrderFieldKey, string> = {
+  origenRestaurante: "la dirección de recogida",
+  direccionEntrega: "la dirección de entrega",
+  nombreCliente: "el nombre del cliente",
+  telefonoCliente: "el teléfono del cliente",
+  detalleDireccion: "la torre y el apartamento",
+  valorACobrar: "cuánto se le cobra al cliente",
+  metodoPago: "cómo paga el cliente",
+  listoEnMinutos: "en cuánto tiempo está listo",
+  notas: "las indicaciones",
 };
-const TEMPLATE_ORDER = Object.keys(TEMPLATE_LABEL) as OrderFieldKey[];
+const FIELD_ORDER = Object.keys(FIELD_PHRASE) as OrderFieldKey[];
+
+/** «a, b y c». */
+function listEs(items: string[]) {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} y ${items.at(-1)}`;
+}
+
+/** Lo que falta de una entrega, dicho como se habla: «el nombre y el teléfono
+ *  del cliente y en cuánto tiempo está listo». */
+function missingPhrase(keys: OrderFieldKey[]) {
+  const sorted = [...new Set(keys)].sort((a, b) => FIELD_ORDER.indexOf(a) - FIELD_ORDER.indexOf(b));
+  const both = sorted.includes("nombreCliente") && sorted.includes("telefonoCliente");
+  const parts = sorted
+    .filter((k) => !(both && k === "telefonoCliente"))
+    .map((k) => (both && k === "nombreCliente" ? "el nombre y el teléfono del cliente" : FIELD_PHRASE[k]));
+  return listEs(parts);
+}
 
 const TECHNICAL_ERROR_MESSAGE =
   "Tuve un problema técnico leyendo tu mensaje 🙏 No se perdió nada de lo que ya me diste. ¿Me lo reenvías en un momento?";
@@ -186,11 +212,6 @@ async function countAttempt(ctx: Context, draft: OrderDraft, progressed: boolean
   return true;
 }
 
-/** Cómo se nombra una entrega en los mensajes: su barrio, o la dirección. */
-function deliveryLabel(delivery: DeliveryDraft) {
-  return delivery.barrio ?? delivery.direccionEntrega?.split(",")[0] ?? "la entrega";
-}
-
 function formatPhone(phone: string) {
   const d = phone.replace(/\D/g, "").slice(-10);
   return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : phone;
@@ -263,32 +284,30 @@ function changedDelivery(fields: Interpretation, known: OrderDraft) {
 }
 
 /**
- * Lo que falta para pedir la moto, como un formato para llenar y mandar en un
- * solo mensaje. Con varias entregas, un bloque por cada una que le falte algo.
- * El detalle (torre y apto) va siempre que no lo haya dado, «si aplica»: que
- * sea obligatorio lo decide `missingFields`, pero no siempre se sabe que es un
- * conjunto. `null` si no falta nada.
+ * Lo que falta para pedir la moto, como una pregunta normal: «¿En cuánto
+ * tiempo está listo el pedido?», «¿Me pasas el nombre y el teléfono del
+ * cliente y en cuánto tiempo está listo?». Con varias entregas, una línea por
+ * cada una que le falte algo. La torre y el apto se piden si es un conjunto
+ * (`missingFields`). `again`: ya se le había pedido y su mensaje no lo trajo
+ * («ahí están los datos»), así que se le dice qué no se encontró. `null` si no
+ * falta nada.
  */
-function dataRequest(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft) {
+function dataRequest(quoted: DeliveryDraft[], config: BotConfig, restaurant: Restaurant | null, draft: OrderDraft, again = false) {
   const missingOrigin = !restaurant && !draft.origenRestaurante;
-  const missing = quoted
-    .map((d) => {
-      const keys: OrderFieldKey[] = missingFields(d, config.requiredFields);
-      if (keys.length && !d.detalleDireccion && !keys.includes("detalleDireccion")) keys.push("detalleDireccion");
-      return { d, keys };
-    })
-    .filter((m) => m.keys.length);
+  const missing = quoted.map((d) => ({ d, keys: missingFields(d, config.requiredFields) as OrderFieldKey[] })).filter((m) => m.keys.length);
   if (!missingOrigin && !missing.length) return null;
-  const lines = (keys: OrderFieldKey[]) =>
-    [...keys]
-      .sort((a, b) => TEMPLATE_ORDER.indexOf(a) - TEMPLATE_ORDER.indexOf(b))
-      .map((k) => `${TEMPLATE_LABEL[k]}:`)
-      .join("\n");
-  const blocks = [
-    missingOrigin ? lines(["origenRestaurante"]) : null,
-    ...missing.map((m) => (quoted.length === 1 ? lines(m.keys) : `*${deliveryLabel(m.d)}*\n${lines(m.keys)}`)),
-  ];
-  return `Para pedir ${quoted.length === 1 ? "la moto" : "las motos"}, envíame en un solo mensaje:\n\n${blocks.filter(Boolean).join("\n\n")}`;
+  const origin = missingOrigin ? FIELD_PHRASE.origenRestaurante : null;
+
+  if (missing.length <= 1) {
+    const keys = missing[0]?.keys ?? [];
+    const what = listEs([origin, keys.length ? missingPhrase(keys) : null].filter((x): x is string => !!x));
+    if (again) return `No encuentro ${what} en lo que me enviaste 🙏 ¿Me ${keys.length + (origin ? 1 : 0) > 1 ? "los" : "lo"} dices?`;
+    if (!origin && keys.length === 1 && keys[0] === "listoEnMinutos") return "¿En cuánto tiempo está listo el pedido?";
+    return `Para pedir la moto, ¿me pasas ${what}?`;
+  }
+  const lines = missing.map((m) => `• ${deliveryLabel(m.d)}: ${missingPhrase(m.keys)}`);
+  const head = again ? "Todavía me falta 🙏" : `Para pedir ${quoted.length === 1 ? "la moto" : "las motos"} me falta:`;
+  return [head, origin ? `• ${origin}` : null, ...lines].filter(Boolean).join("\n");
 }
 
 /** El pedido completo tal como se le mostró para confirmar: si cambia algo,
@@ -320,7 +339,7 @@ async function quoteDelivery(pickup: { lat: number; lng: number }, delivery: { l
  */
 export function quoteMessage(
   draft: OrderDraft,
-  opts: { config: BotConfig; restaurant: Restaurant | null; fromImage?: boolean; coverageNote?: string; intro?: string; withPrice?: boolean },
+  opts: { config: BotConfig; restaurant: Restaurant | null; fromImage?: boolean; coverageNote?: string; intro?: string; withPrice?: boolean; again?: boolean },
 ): { text: string; buttons?: { id: string; title: string }[]; summary?: string } {
   const quoted = draft.entregas.filter((d) => d.cotizacion);
   const total = quoted.reduce((sum, d) => sum + d.cotizacion!.precio, 0);
@@ -328,14 +347,16 @@ export function quoteMessage(
   const join = (parts: (string | null | undefined)[]) => parts.filter(Boolean).join("\n\n");
   const several = quoted.length > 1;
 
-  const request = dataRequest(quoted, opts.config, opts.restaurant, draft);
+  const request = dataRequest(quoted, opts.config, opts.restaurant, draft, opts.again);
   if (request) {
+    // De una foto, primero lo que se leyó: que el restaurante vea que se entendió.
+    const read = opts.fromImage && opts.withPrice !== false ? readBackAll(quoted, true) : null;
     const price = several
       ? `${draft.soloPrecio ? "Los domicilios quedan así" : `Serían ${quoted.length} domicilios`} 🛵\n${list}\nTotal: ${cop(total)}`
       : draft.soloPrecio
         ? `Hasta ${deliveryLabel(quoted[0])} el domicilio vale ${cop(total)} 🛵`
         : `Serían ${cop(total)} hasta ${deliveryLabel(quoted[0])} 🛵`;
-    return { text: join([opts.intro, opts.withPrice === false ? null : price, request, opts.coverageNote]) };
+    return { text: join([opts.intro, read, opts.withPrice === false ? null : price, request, opts.coverageNote]) };
   }
 
   const price = several ? `Serían ${quoted.length} domicilios 🛵\n${list}\nTotal: ${cop(total)}` : `Serían ${cop(total)} 🛵`;
@@ -441,6 +462,24 @@ function placePin(draft: OrderDraft, pin: Pick<TurnPin, "lat" | "lng" | "label">
   Object.assign(target, { direccionUbicada: target.direccionEntrega, ubicacionEntrega: { lat: pin.lat, lng: pin.lng }, cotizacion: null });
 }
 
+/** El restaurante dice quién es a propósito («soy de…», «habla…», «pedido de…»). */
+const IDENTIFIES = /\b(soy|somos|habla|hablas con|te escribo|le escribo|les escribo|te escribe|de parte de|pedido de|del restaurante)\b/i;
+
+/** «La 1» / «La 2» del ticket con dos direcciones: la entrega queda con la
+ *  elegida (y su torre y apto aparte) y sin la otra. */
+function chooseAddress(draft: OrderDraft, buttonId: string) {
+  const [index, choice] = buttonId.slice(ALT_ADDRESS_PREFIX.length).split(":").map(Number);
+  const d = draft.entregas[index];
+  if (!d?.direccionAlterna) return;
+  if (choice === 2) {
+    const door = separateDoor({ direccionEntrega: d.direccionAlterna, detalleDireccion: null, esConjunto: d.esConjunto });
+    Object.assign(d, { direccionEntrega: door.direccionEntrega, detalleDireccion: door.detalleDireccion, esConjunto: door.esConjunto });
+  }
+  Object.assign(d, { direccionAlterna: null, direccionUbicada: null, ubicacionEntrega: null, cotizacion: null, validadaPorAsesor: false });
+  d.dudas = d.dudas?.filter((k) => k !== "direccionEntrega" && k !== "detalleDireccion") ?? null;
+  if (!d.dudas?.length) d.dudas = null;
+}
+
 /** Lo último que nuestro lado (el bot o la central) le escribió a este chat. */
 async function lastOutgoingAt(conversationId: number): Promise<Date | null> {
   const [row] = await db
@@ -541,6 +580,13 @@ async function respond(ctx: Context) {
     await say(conversation.id, message.phone, only ? `${IDENTITY_TEXT} ${IDENTITY_QUESTION}` : IDENTITY_TEXT);
     if (only) return;
   }
+  // Eligió una de las dos direcciones del ticket: se sigue con esa. Con el
+  // botón, o escrito («la segunda», «la de Las Palmas»).
+  const waiting = draft.entregas.findIndex((d) => d.direccionAlterna);
+  const written = waiting !== -1 && !imageIds.length ? pickAlternative(text, draft.entregas[waiting]) : null;
+  const altPick = buttons.find((id) => id.startsWith(ALT_ADDRESS_PREFIX)) ?? (written ? `${ALT_ADDRESS_PREFIX}${waiting}:${written}` : undefined);
+  if (altPick) chooseAddress(draft, altPick);
+
   if (!reads && !pins.length) {
     // Confirmar pasada la hora límite: el pedido ya no se recibe (y el tick
     // pudo haberlo descartado), así que va el aviso de fuera de horario.
@@ -554,7 +600,7 @@ async function respond(ctx: Context) {
       return;
     }
     if (pressedConfirm && draft.entregas.some((d) => d.cotizacion)) confirms = true;
-    else if (!(answersIdentity && buttons.includes(IDENTITY_YES_BUTTON_ID))) {
+    else if (!(answersIdentity && buttons.includes(IDENTITY_YES_BUTTON_ID)) && !altPick) {
       if (pressedConfirm) await say(conversation.id, message.phone, "No tengo un pedido por confirmar 🤔 Envíame la dirección de entrega para cotizarte.");
       return;
     }
@@ -573,6 +619,9 @@ async function respond(ctx: Context) {
       return;
     }
     const extraction = await interpretMessage(text, draft, images);
+    // Una foto de un ticket es un pedido de un cliente: los trozos de dirección
+    // que el modelo haya partido vuelven a esa entrega (`foldTicket`).
+    if (images.length && !before.entregas.length) extraction.fields.entregas = foldTicket(extraction.fields.entregas);
     query = extraction.query;
     intent = extraction.intent;
     const claim = extraction.claim ?? parseDebtClaim(text);
@@ -618,6 +667,9 @@ async function respond(ctx: Context) {
 
     saidName = extraction.fields.nombreRestaurante ?? null;
     if (saidName && namedAsDestination(text, saidName)) saidName = null;
+    // Lo que escribe junto a una foto («Las Palmas») dice a dónde va, no quién
+    // escribe: a un restaurante que ya conocemos no se le pregunta quién es.
+    if (saidName && restaurant && images.length && !IDENTIFIES.test(text)) saidName = null;
 
     // Reclamo de su plata o de su datáfono (#61): se atiende sin frenar los
     // pedidos. Si el mensaje solo traía el reclamo, termina aquí; si además
@@ -711,7 +763,8 @@ async function respond(ctx: Context) {
     });
     // Las que pidió quitar («solo es 1», «el de Pance ya no va»). Como el
     // pedido cambia, se le vuelve a mostrar antes de pedir la moto.
-    draft = removeDeliveries(draft, fields.quitar ?? []).draft;
+    // «nono, solo necesito el de la comuna 16»: además de lo que vio el modelo.
+    draft = removeDeliveries(draft, [...new Set([...(fields.quitar ?? []), ...onlyOneOf(text, draft.entregas)])]).draft;
     // Vale solo si lo que acepta es el pedido completo que ya se le mostró
     // (paso 5): dar los datos o el tiempo no es confirmar.
     confirms = pressedConfirm || extraction.confirms;
@@ -762,6 +815,30 @@ async function respond(ctx: Context) {
     await say(conversation.id, message.phone, `📌 Te reconocí como ${linked.name}. Recogemos en ${linked.knownPickupAddress}. Si no es así, avísale a la central.`);
   }
 
+  // «¿Llegan a Jamundí?»: un municipio solo no se ubica ni se cotiza. Se le
+  // dice si llegamos y se le pide la dirección (domain/places.ts).
+  const places = draft.entregas.map((d) => placeOnly(d.direccionEntrega));
+  let placeNote: string | null = null;
+  if (places.some(Boolean)) {
+    const named = places.filter((p): p is NonNullable<typeof p> => !!p);
+    const served = named.filter((p) => p.served);
+    const notServed = named.filter((p) => !p.served);
+    placeNote = [
+      notServed.length ? notServedPlaceText(listEs([...new Set(notServed.map((p) => p.name))])) : null,
+      served.length ? servedPlaceText(listEs([...new Set(served.map((p) => p.name))])) : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    draft.entregas = draft.entregas.filter((_, i) => !places[i]);
+    if (!draft.entregas.some((d) => d.direccionEntrega)) {
+      draft.etapa = "recibiendo";
+      draft.mensajeOrigen = null;
+      await save(ctx, draft);
+      await say(conversation.id, message.phone, placeNote);
+      return;
+    }
+  }
+
   const located = (d: OrderDraft) => d.entregas.filter((e) => e.ubicacionEntrega).length;
   const progressed = countFields(draft) > countFields(known) || located(draft) > located(known);
 
@@ -786,6 +863,29 @@ async function respond(ctx: Context) {
   // El mensaje que trajo la primera dirección es el que se cita en los avisos.
   if (!draft.mensajeOrigen) draft.mensajeOrigen = message.waMessageId;
   const replyTo = draft.mensajeOrigen;
+
+  // Un ticket con dos direcciones para el mismo cliente: antes de ubicar
+  // nada, a cuál va. Nunca se mezclan.
+  const twoAddresses = draft.entregas.findIndex((d) => d.direccionEntrega && d.direccionAlterna);
+  if (twoAddresses !== -1) {
+    const d = draft.entregas[twoAddresses];
+    await save(ctx, draft);
+    await say(
+      conversation.id,
+      message.phone,
+      [placeNote, `En ${fromImage ? "el ticket" : "el pedido"} veo dos direcciones${d.nombreCliente ? ` para ${d.nombreCliente}` : ""} 🤔\n\n*1.* ${fullAddress(d)}\n*2.* ${fullAddress(separateDoor({ direccionEntrega: d.direccionAlterna!, detalleDireccion: null, esConjunto: d.esConjunto }))}\n\n¿A cuál va?`]
+        .filter(Boolean)
+        .join("\n\n"),
+      {
+        replyTo,
+        buttons: [
+          { id: `${ALT_ADDRESS_PREFIX}${twoAddresses}:1`, title: "La 1" },
+          { id: `${ALT_ADDRESS_PREFIX}${twoAddresses}:2`, title: "La 2" },
+        ],
+      },
+    );
+    return;
+  }
 
   // 3. Ubicar la recogida (si el restaurante no está registrado) y cada
   // dirección de entrega, una sola vez por dirección. Sin ubicación no hay precio.
@@ -900,14 +1000,14 @@ async function respond(ctx: Context) {
       await save(ctx, draft);
       return;
     }
-    const reply = quoteMessage(draft, { config, restaurant, fromImage, coverageNote, withPrice: priceChanged });
+    const reply = quoteMessage(draft, { config, restaurant, fromImage, coverageNote, withPrice: priceChanged, again: !priceChanged && !progressed, intro: placeNote ?? undefined });
     draft.etapa = "cotizado";
     draft.resumenMostrado = reply.summary ?? null;
     // Un precio nuevo siempre se muestra, sin contar intentos.
     const reason = reply.summary ? "sin confirmar el servicio" : "sin los datos que faltan";
     if (priceChanged) await save(ctx, draft);
     else if (!(await countAttempt(ctx, draft, progressed, `${MAX_CLARIFICATION_ATTEMPTS} mensajes seguidos ${reason}.`))) return;
-    const replyText = !priceChanged && !reply.summary && progressed ? `Anotado ✅ ${reply.text}` : reply.text;
+    const replyText = !priceChanged && !reply.summary && progressed ? `Anotado ✅\n\n${reply.text}` : reply.text;
     await say(conversation.id, message.phone, replyText, { replyTo, buttons: reply.buttons });
     return;
   }

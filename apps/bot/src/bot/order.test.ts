@@ -51,6 +51,8 @@ const geocodes = new Map<string, Geocode>();
 const dispatched: number[] = [];
 let nameScores: ((name: string, candidates: { id: number; name: string }[]) => Map<number, number> | null) | null = null;
 let quoteOverride: ((...args: unknown[]) => unknown) | null = null;
+/** Si la foto del mensaje se puede descargar (por defecto no). */
+let photoAvailable = false;
 let sentSeq = 0;
 
 /** Donde cae lo que no se configura: dentro de Cali, a 1,4 km de la recogida (precio de la primera banda). */
@@ -91,7 +93,7 @@ before(async () => {
       sendButtons: async (phone: string, text: string, buttons: { id: string; title: string }[], o?: { replyTo?: string | null }) =>
         record(phone, text, buttons, o?.replyTo ?? null),
       sendList: async (phone: string, text: string, _list: unknown, o?: { replyTo?: string | null }) => record(phone, text, [], o?.replyTo ?? null),
-      downloadImage: async () => null,
+      downloadImage: async () => (photoAvailable ? { mimeType: "image/jpeg", base64: "AAAA" } : null),
       markRead: async () => {},
       markReadAndTyping: async () => {},
     },
@@ -217,6 +219,12 @@ function chat(phone = PHONE) {
     async raw(build: Parameters<typeof deliver>[0], extra: Extra = {}) {
       return deliver(build, extra);
     },
+    /** Una foto (con o sin texto) y lo que el modelo leyó de ella. */
+    async photo(caption: string, outcome: Outcome, extra: Extra = {}) {
+      photoAvailable = true;
+      modelQueue.push(outcome);
+      return deliver((head) => ({ ...head, kind: "text", text: caption, images: ["media-1"] }), extra);
+    },
     async press(buttonId: string, extra: Extra = {}) {
       return deliver((head) => ({ ...head, kind: "button", buttonId, title: buttonId }), extra);
     },
@@ -294,6 +302,7 @@ beforeEach(async () => {
   dispatched.length = 0;
   nameScores = null;
   quoteOverride = null;
+  photoAvailable = false;
   clock = OPEN_AT;
   await saveFareRanges([
     { upToKm: 3, price: PRICE_NEAR },
@@ -362,14 +371,12 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
       assert.equal((await allTrips()).length, 1);
     });
 
-    it("con datos que faltan: precio y formato para llenar, sin botón", async () => {
+    it("con datos que faltan: el precio y una pregunta normal con todo lo que falta, sin botón", async () => {
       await registered();
       const c = chat();
       await c.say("a la calle 10 # 5-20", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
       assert.match(c.reply, /Serían \$ ?5\.000/);
-      assert.match(c.reply, /Nombre del cliente:/);
-      assert.match(c.reply, /Teléfono del cliente:/);
-      assert.match(c.reply, /Tiempo en que está listo/);
+      assert.match(c.reply, /¿me pasas el nombre y el teléfono del cliente y en cuánto tiempo está listo\?$/);
       assert.equal(c.replyButtons.length, 0);
       // Los da en el mensaje siguiente: ya sale completo, con botón.
       await c.say("Marta, 3001234567, en 10", understood([complete()]));
@@ -380,7 +387,7 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
       await registered();
       const c = chat();
       await c.say("pedido", understood([complete({ direccionEntrega: "Conjunto Bosques del Lili, Calle 10 # 5-20", esConjunto: true })]));
-      assert.match(c.reply, /Detalle \(torre, apto/);
+      assert.match(c.reply, /¿me pasas la torre y el apartamento\?/);
       assert.equal(c.replyButtons.length, 0);
     });
 
@@ -847,7 +854,7 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
         await registered();
         const c = chat();
         await c.say("calle", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
-        assert.match(c.reply, /Nombre del cliente:/);
+        assert.match(c.reply, /el nombre y el teléfono del cliente/);
         // Escribe sin dar nada: un intento. Con el precio ya mostrado, un «ok» sería silencio; esto no.
         await c.say("y?", understood([delivery({ direccionEntrega: "Calle 10 # 5-20" })]));
         assert.equal((await c.conversation()).failedAttempts, 1);
@@ -1350,6 +1357,120 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
   // -------------------------------------------------------------------------
   // docs/CONVERSACIONES-REALES.md: cada conversación, un caso
   // -------------------------------------------------------------------------
+  describe("casos del simulacro: cobertura, correcciones, datos que faltan y tickets", () => {
+    it("«¿llegan a Jamundí?»: sí llegamos y pide la dirección, sin preguntarle a la central ni ubicar nada", async () => {
+      await registered();
+      const c = chat();
+      await c.say("necesito un domi para jamundi llegan ?", understood([delivery({ direccionEntrega: "Jamundí" })], { query: "cobertura", intent: "pedir" }));
+      assert.match(c.reply, /^¡Sí! Llegamos a Jamundí 🙌 El precio depende de la dirección: ¿me la envías\?/);
+      assert.deepEqual(geocodeCalls, []);
+      await assertNotEscalated(c);
+      assert.equal((await c.draft())?.entregas.length, 0, "Jamundí no queda como una entrega");
+
+      // Con la dirección, cotiza esa sola: no «2 domicilios».
+      await c.say("Calle 10 # 5-20 Lista en 10", understood([delivery({ direccionEntrega: "Calle 10 # 5-20", listoEnMinutos: 10 })], { intent: "pedir" }));
+      assert.match(c.reply, /^Serían \$ ?5\.000 hasta Ciudad Jardín/);
+      assert.equal((await c.draft())?.entregas.length, 1);
+    });
+
+    it("a otro municipio no llegamos: lo dice y no le pregunta a la central", async () => {
+      await registered();
+      const c = chat();
+      await c.say("cuanto a palmira?", understood([delivery({ direccionEntrega: "Palmira" })], { intent: "cotizar" }));
+      assert.equal(c.reply, "Qué pena 🙏 A Palmira no llegamos: manejamos Cali y Jamundí.");
+      assert.deepEqual(geocodeCalls, []);
+      await assertNotEscalated(c);
+    });
+
+    it("«nono solo necesito el de la comuna 16, nombre Ramiro»: aunque el modelo lo lea como otra entrega, queda una sola con el nombre", async () => {
+      await registered();
+      geocodes.set("Calle 40 # 80-10, Los Cerezos", { kind: "found", location: NEAR, neighborhood: "Comuna 16" });
+      const c = chat();
+      const first = delivery({ direccionEntrega: "Calle 10 # 5-20" });
+      const second = delivery({ direccionEntrega: "Calle 40 # 80-10, Los Cerezos", telefonoCliente: "3001234567", listoEnMinutos: 10 });
+      await c.say("a la calle 10 # 5-20", understood([first]));
+      await c.say("y otro a la Calle 40 # 80-10, Los Cerezos, 3001234567 en 10", understood([first, second]));
+      assert.match(c.reply, /Serían 2 domicilios/);
+      assert.match(c.reply, /• Calle 40 # 80-10:/, "una comuna no sirve para nombrar la entrega");
+      // El modelo se equivoca: arma una tercera entrega con «Comuna 16».
+      await c.say("nono solo necesito el de la comuna 16, vale.. nombre del cliente Ramiro", understood([first, second, delivery({ direccionEntrega: "Comuna 16", nombreCliente: "Ramiro" })]));
+      const draft = await c.draft();
+      assert.equal(draft?.entregas.length, 1);
+      assert.equal(draft?.entregas[0].direccionEntrega, "Calle 40 # 80-10, Los Cerezos");
+      assert.equal(draft?.entregas[0].nombreCliente, "Ramiro");
+      assert.ok(!geocodeCalls.includes("Comuna 16"), "no busca «Comuna 16» en el mapa");
+      await assertNotEscalated(c);
+      assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID], "con eso ya está completo");
+    });
+
+    it("«ahí están los datos» sin traer lo que falta: le dice qué no encontró, en vez de repetir lo mismo", async () => {
+      await registered();
+      const c = chat();
+      await c.say("a la calle 10 # 5-20, Marta 3001234567", understood([complete({ listoEnMinutos: null })]));
+      assert.match(c.reply, /¿En cuánto tiempo está listo el pedido\?$/);
+      await c.say("Ahi estan los datos", understood([complete({ listoEnMinutos: null })]));
+      assert.equal(c.reply, "No encuentro en cuánto tiempo está listo en lo que me enviaste 🙏 ¿Me lo dices?");
+    });
+
+    it("de una foto: primero lo que leyó y después lo que falta", async () => {
+      await registered();
+      const c = chat();
+      await c.photo("", understood([complete({ listoEnMinutos: null })]));
+      assert.match(c.reply, /^Esto leí en la imagen 👇 📍 Calle 10 # 5-20 👤 Marta Ríos · 📞 300 123 4567 Serían \$ ?5\.000 hasta Ciudad Jardín 🛵 ¿En cuánto tiempo está listo el pedido\?$/);
+    });
+
+    it("el texto junto a la foto («Las Palmas») no le hace preguntar a un restaurante conocido quién es", async () => {
+      await registered();
+      nameScores = (_n, cands) => new Map(cands.map((x) => [x.id, 0.1]));
+      const c = chat();
+      await c.photo("Las Palmas", understood([complete()], { nombreRestaurante: "Las Palmas" }));
+      assert.ok(!/¿Hablo con/.test(c.reply), c.reply);
+      assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
+    });
+
+    it("un ticket con dos direcciones: pregunta a cuál va, con botones, y sigue con la elegida completa", async () => {
+      await registered();
+      const c = chat();
+      await c.photo(
+        "",
+        understood([
+          complete({ direccionEntrega: "Cra 10 # 5-20, Los Robles", detalleDireccion: "Torre 4 apt 106", esConjunto: true, direccionAlterna: "Cra 12 # 8-30, Unidad Las Palmas, Torre 2 Apt 707" }),
+        ]),
+      );
+      assert.match(c.reply, /^En el ticket veo dos direcciones para Marta Ríos 🤔 \*1\.\* Cra 10 # 5-20, Los Robles · Torre 4 apt 106 \*2\.\* Cra 12 # 8-30, Unidad Las Palmas · Torre 2 Apt 707 ¿A cuál va\?$/);
+      assert.deepEqual(c.replyButtons.map((b) => b.title), ["La 1", "La 2"]);
+      assert.deepEqual(geocodeCalls, [], "no ubica nada antes de saber cuál");
+
+      await c.press(c.replyButtons[1].id);
+      const d = (await c.draft())?.entregas[0];
+      assert.equal(d?.direccionEntrega, "Cra 12 # 8-30, Unidad Las Palmas");
+      assert.equal(d?.detalleDireccion, "Torre 2 Apt 707");
+      assert.equal(d?.direccionAlterna, null);
+      assert.deepEqual(geocodeCalls, ["Cra 12 # 8-30, Unidad Las Palmas"]);
+      assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
+    });
+
+    it("a «¿A cuál va?» responde escrito («la de Las Palmas»): sigue con esa sin volver a preguntar", async () => {
+      await registered();
+      const c = chat();
+      const two = complete({ direccionEntrega: "Cra 10 # 5-20, Los Robles", detalleDireccion: "Torre 4 apt 106", esConjunto: true, direccionAlterna: "Cra 12 # 8-30, Unidad Las Palmas, Torre 2 Apt 707" });
+      await c.photo("", understood([two]));
+      assert.match(c.reply, /¿A cuál va\?$/);
+      // El modelo ya recibe el borrador con la elegida: la devuelve igual.
+      await c.say("la de las palmas", understood([complete({ direccionEntrega: "Cra 12 # 8-30, Unidad Las Palmas", detalleDireccion: "Torre 2 Apt 707", esConjunto: true })]));
+      assert.equal(modelCalls.at(-1)?.draft.entregas[0].direccionEntrega, "Cra 12 # 8-30, Unidad Las Palmas");
+      assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
+    });
+
+    it("si el restaurante dice cuál con texto, el modelo la elige y no se pregunta", async () => {
+      await registered();
+      const c = chat();
+      await c.photo("Las Palmas", understood([complete({ direccionEntrega: "Cra 12 # 8-30, Unidad Las Palmas", detalleDireccion: "Torre 2 Apt 707", esConjunto: true })]));
+      assert.ok(!/dos direcciones/.test(c.reply));
+      assert.deepEqual(c.replyButtons.map((b) => b.id), [order.CONFIRM_BUTTON_ID]);
+    });
+  });
+
   describe("banco de conversaciones reales (16 patrones)", () => {
     it("caso 1: solicitud directa con datos del cliente, tiempo de preparación y luego «ya está listo»", async () => {
       await registered();
@@ -1382,7 +1503,7 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
       );
       await assertEscalated(c, /^Consulta de dirección:/, "kept");
       await advisor.answerAdvisorQuery((await c.conversation()).id, [{ indice: 0, valida: true, precio: 8_000, direccion: "Carrera 83C #14A-121, El Ingenio" }]);
-      assert.match(c.reply, /Nombre del cliente|Tiempo en que está listo/, "falta el tiempo y se pide");
+      assert.match(c.reply, /¿En cuánto tiempo está listo el pedido\?/, "falta el tiempo y se pide");
       const draft = await c.draft();
       assert.equal(draft?.entregas[0].detalleDireccion, "Edificio blanco apto 402");
       assert.equal(draft?.entregas[0].nombreCliente, "Marta Ríos");

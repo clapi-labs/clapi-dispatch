@@ -45,6 +45,10 @@ type DeliveryFields = {
    *  número incompleto, dos lecturas posibles). Se le muestran al restaurante
    *  marcados para que los confirme o los corrija. */
   dudas?: DoubtfulField[] | null;
+  /** Un ticket que trae dos direcciones para el mismo cliente (el error de
+   *  la caja que imprime dos): la otra, completa. El bot pregunta a cuál va
+   *  antes de ubicar nada. */
+  direccionAlterna?: string | null;
 };
 
 /** Lo que el modelo puede marcar como dudoso. */
@@ -208,7 +212,7 @@ export type Interpretation = {
 };
 
 /** Lo que se puede exigir por agencia antes de crear el viaje. */
-export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "barrio" | "esConjunto" | "dudas">;
+export type OrderFieldKey = "origenRestaurante" | Exclude<keyof DeliveryFields, "barrio" | "esConjunto" | "dudas" | "direccionAlterna">;
 
 /** Los obligatorios del primer cliente. Cada agencia puede cambiarlos en
  *  `settings.bot_config` sin tocar el flujo. */
@@ -536,6 +540,15 @@ function mergeDelivery(known: DeliveryDraft, incoming: DeliveryFields): Delivery
     if (value != null) (merged as Record<string, unknown>)[key] = value;
   }
   if (incoming.barrio) merged.barrio = incoming.barrio;
+  // La segunda dirección del ticket: llega con la lectura, y se va cuando el
+  // restaurante dice cuál es (la dirección cambia sin otra alterna).
+  if (incoming.direccionAlterna) merged.direccionAlterna = incoming.direccionAlterna;
+  else if (incoming.direccionEntrega != null && incoming.direccionEntrega !== known.direccionEntrega) merged.direccionAlterna = null;
+  // Eligió la otra: el modelo a veces las intercambia en vez de soltar la que no va.
+  if (known.direccionAlterna && incoming.direccionEntrega && !sameAddress(incoming.direccionEntrega, known.direccionEntrega) && sameAddress(merged.direccionAlterna ?? null, known.direccionEntrega)) {
+    merged.direccionAlterna = null;
+  }
+  if (merged.direccionAlterna && sameAddress(merged.direccionAlterna, merged.direccionEntrega)) merged.direccionAlterna = null;
   // Un dato que llega de nuevo (una corrección) deja de ser dudoso, salvo que
   // el modelo vuelva a dudar de él.
   const corrected = (k: DoubtfulField) => incoming[k] != null && incoming[k] !== known[k];
@@ -560,6 +573,13 @@ export function mergeTripFields(known: OrderDraft, incoming: Interpretation): Or
   const fields = incoming.entregas.map(doorAsDetail);
   const entregas = known.entregas.map((base, i) => (fields[i] ? mergeDelivery(base, fields[i]) : base));
   for (const extra of fields.slice(known.entregas.length)) {
+    // «el de la comuna 16, nombre Ramiro»: nombra una entrega que ya estaba por
+    // como el bot la mostró. Sus datos van a esa; la dirección no cambia.
+    const named = entregas.findIndex((d) => namedByLabel(d, extra));
+    if (named !== -1) {
+      entregas[named] = mergeDelivery(entregas[named], { ...extra, direccionEntrega: null, barrio: null });
+      continue;
+    }
     let twin = -1;
     for (let i = entregas.length - 1; i >= 0 && twin === -1; i--) if (sameDelivery(entregas[i], extra)) twin = i;
     if (twin === -1) entregas.push(mergeDelivery(emptyDelivery(), extra));
@@ -623,6 +643,115 @@ function sameDelivery(known: DeliveryDraft, extra: DeliveryFields) {
   return CUSTOMER_KEYS.every((k) => known[k] == null || extra[k] == null || normalizeName(String(known[k])) === normalizeName(String(extra[k])));
 }
 
+/** Cómo se nombra una entrega en los mensajes del bot: su barrio o la
+ *  primera parte de la dirección. Una comuna («Comuna 16», lo que a veces
+ *  devuelve el mapa) no le dice nada al restaurante: va la dirección. */
+export function deliveryLabel(delivery: Pick<DeliveryDraft, "barrio" | "direccionEntrega">): string {
+  const barrio = delivery.barrio && !/^comuna\s*\d+$/i.test(delivery.barrio.trim()) ? delivery.barrio : null;
+  return barrio ?? delivery.direccionEntrega?.split(",")[0] ?? "la entrega";
+}
+
+/** Los nombres con que el restaurante puede referirse a una entrega: el que
+ *  le mostró el bot, su barrio (aunque sea una comuna) y el comienzo de la dirección. */
+function labelsOf(d: Pick<DeliveryDraft, "barrio" | "direccionEntrega">): string[] {
+  return [deliveryLabel(d), d.barrio, d.direccionEntrega?.split(",")[0], d.direccionEntrega]
+    .filter((l): l is string => !!l?.trim())
+    .map(normalizeName)
+    .filter((l) => l.length >= 3);
+}
+
+/**
+ * ¿La entrega de más solo nombra una que ya estaba? Su «dirección» es una
+ * palabra sin número que coincide con cómo se llama esa entrega («Comuna 16»,
+ * «Pance»), y no trae un cliente distinto. Una dirección de verdad (con
+ * número) es otra entrega.
+ */
+function namedByLabel(known: DeliveryDraft, extra: DeliveryFields) {
+  const said = extra.direccionEntrega ? normalizeName(extra.direccionEntrega) : null;
+  if (!said || /\d/.test(said.replace(/^comuna\s*\d+$/, "comuna")) || !known.direccionEntrega) return false;
+  if (!labelsOf(known).some((l) => l === said)) return false;
+  return CUSTOMER_KEYS.every((k) => known[k] == null || extra[k] == null || normalizeName(String(known[k])) === normalizeName(String(extra[k])));
+}
+
+/**
+ * Lo que el modelo leyó de UN ticket, como una sola entrega. A veces parte el
+ * bloque de la dirección en varias entregas («Kra 10…» con el teléfono, y
+ * aparte «Unidad Las Palmas, Torre 4 apt 106» sin cliente). Si solo una trae al
+ * cliente (nombre o teléfono), los trozos sin cliente son parte de ella: una
+ * dirección con número que no estaba va como `direccionAlterna` (se pregunta a
+ * cuál va); un nombre de conjunto o una puerta se suman a la suya.
+ */
+export function foldTicket<F extends DeliveryFields>(entregas: F[]): F[] {
+  const withCustomer = entregas.filter((e) => e.nombreCliente || e.telefonoCliente);
+  if (entregas.length < 2 || withCustomer.length !== 1) return entregas;
+  const owner: F = { ...withCustomer[0] };
+  for (const piece of entregas) {
+    if (piece === withCustomer[0]) continue;
+    const address = piece.direccionEntrega?.trim() || null;
+    const door = piece.detalleDireccion?.trim() || null;
+    if (address && /\d/.test(address) && !(owner.direccionEntrega && sameWords(owner.direccionEntrega, address))) {
+      const full = [address, door].filter(Boolean).join(", ");
+      if (!owner.direccionAlterna) owner.direccionAlterna = full;
+      else if (!sameWords(owner.direccionAlterna, address)) owner.direccionAlterna = `${owner.direccionAlterna}, ${full}`;
+      continue;
+    }
+    if (address && !(owner.direccionEntrega && normalizeName(owner.direccionEntrega).includes(normalizeName(address)))) {
+      owner.direccionEntrega = owner.direccionEntrega ? `${owner.direccionEntrega}, ${address}` : address;
+    }
+    if (door && !owner.detalleDireccion) owner.detalleDireccion = door;
+    if (piece.esConjunto) owner.esConjunto = true;
+    if (piece.notas) owner.notas = [owner.notas, piece.notas].filter(Boolean).join(" · ");
+  }
+  return [owner];
+}
+
+/**
+ * La respuesta a «¿a cuál va?» escrita en vez de con el botón: «la segunda»,
+ * «la 1», «la de Las Palmas», «la de la avenida». 1, 2 o `null` si no queda claro.
+ * Por palabras o números que solo tiene una de las dos.
+ */
+export function pickAlternative(text: string | null | undefined, d: Pick<DeliveryDraft, "direccionEntrega" | "detalleDireccion" | "direccionAlterna">): 1 | 2 | null {
+  if (!text || !d.direccionAlterna || !d.direccionEntrega) return null;
+  const t = normalizeName(text);
+  if (/\b(la|el)\s+(segunda|segundo|2|dos|otra|ultima|de abajo)\b|^(2|dos|segunda|la 2)$/.test(t)) return 2;
+  if (/\b(la|el)\s+(primera|primero|1|uno|de arriba)\b|^(1|uno|primera|la 1)$/.test(t)) return 1;
+  // Por palabras solo en una respuesta corta: en un mensaje largo con más datos
+  // («lista en 10») un número suelto no dice cuál.
+  if (t.split(" ").length > 8) return null;
+  const words = (s: string) => new Set(normalizeName(s).split(" ").filter((w) => (/^\p{L}+$/u.test(w) && w.length >= 4) || /^\d{3,}/.test(w)));
+  const first = words([d.direccionEntrega, d.detalleDireccion].filter(Boolean).join(" "));
+  const second = words(d.direccionAlterna);
+  const said = t.split(" ");
+  const inFirst = said.some((w) => first.has(w) && !second.has(w));
+  const inSecond = said.some((w) => second.has(w) && !first.has(w));
+  return inFirst === inSecond ? null : inSecond ? 2 : 1;
+}
+
+const ORDINAL: Record<string, number> = { primer: 1, primero: 1, primera: 1, segundo: 2, segunda: 2, tercer: 3, tercero: 3, tercera: 3, "1": 1, "2": 2, "3": 3 };
+
+/**
+ * «nono solo necesito el de la comuna 16», «solo el segundo», «solo va el de
+ * Pance»: de todas las entregas se queda una. Devuelve las posiciones (desde 1)
+ * de las demás, o [] si no lo dice o no queda claro cuál. Es la red en código
+ * de `quitar`: el modelo a veces lo lee como una entrega nueva.
+ */
+export function onlyOneOf(text: string | null | undefined, entregas: Pick<DeliveryDraft, "barrio" | "direccionEntrega">[]): number[] {
+  if (!text || entregas.length < 2) return [];
+  const t = normalizeName(text);
+  const m = t.match(/\bsolo\s+(?:(?:necesito|quiero|es|era|va|vale|seria|pido|mando|me sirve|dejame|deja)\s+)?(?:el|la)\s+(.+)$/);
+  if (!m) return [];
+  const rest = m[1].replace(/^(?:de\s+la|del|de)\s+/, "");
+  let keep = -1;
+  const ordinal = rest.match(/^(?:numero\s+)?(primer|primero|primera|segundo|segunda|tercer|tercero|tercera|[123])\b/);
+  if (ordinal) keep = ORDINAL[ordinal[1]] - 1;
+  else {
+    const hits = entregas.map((d, i) => (labelsOf(d).some((l) => rest.startsWith(l) || (rest.length >= 4 && l.startsWith(rest.split(" ").slice(0, 3).join(" ")))) ? i : -1)).filter((i) => i !== -1);
+    if (hits.length === 1) keep = hits[0];
+  }
+  if (keep < 0 || keep >= entregas.length) return [];
+  return entregas.map((_, i) => i + 1).filter((p) => p !== keep + 1);
+}
+
 /**
  * Quita las entregas que el restaurante pidió quitar («solo es 1», «el de
  * Pance ya no va»), por posición desde 1. Nunca todas: cancelar el pedido
@@ -672,7 +801,8 @@ Recibes los "Datos ya capturados" del pedido en curso (con su "etapa": "recibien
       "detalleDireccion": string | null,  // torre, bloque, apartamento, casa, piso, oficina o local: "Torre 3 apto 502"
       "esConjunto": boolean | null,       // true si la dirección es un conjunto, unidad, edificio, condominio o torres
       "barrio": string | null,            // el barrio del CLIENTE ("Bochalema", "Cañasgordas"), aunque venga dentro de la dirección; no la comuna ni el barrio del restaurante; null si no se sabe
-      "dudas": string[]                   // nombres de los campos de ESTA entrega que leíste pero no estás seguro; [] si ninguno
+      "dudas": string[],                  // nombres de los campos de ESTA entrega que leíste pero no estás seguro; [] si ninguno
+      "direccionAlterna": string | null   // SOLO si un ticket trae DOS direcciones distintas para este mismo cliente y nada dice cuál es: la segunda, completa (ver reglas)
     }
   ],
   "quitar": number[],                   // posiciones (1 = la primera) de las entregas YA CAPTURADAS que el restaurante pide sacar del pedido; [] si ninguna
@@ -694,6 +824,15 @@ Reglas:
 - La MISMA dirección repetida (aunque esté escrita un poco distinto o venga con datos nuevos como torre, apto o tiempo) es la misma entrega: complétala, no agregues otra.
   Ejemplo: capturada [Conjunto Los Pinos, Cl 15 Nte # 8, sin datos del cliente]; mensaje "listo en 10, Ana Ruiz 3001234567 para torre 4 apto 902" → una sola entrega: Conjunto Los Pinos con Ana Ruiz, su teléfono, "Torre 4 apto 902" y 10 minutos. "Para torre 4 apto 902" dice a qué puerta va, no es otro pedido.
 - Un dato suelto (solo un teléfono, solo un nombre) va a la entrega que le falte; si todas lo tienen o no se sabe, a la última.
+- Cada entrega capturada trae "comoLaNombro": el nombre con que el bot se la mostró al restaurante (su barrio, su comuna o el comienzo de la dirección). Si el restaurante la nombra así ("el de la comuna 16", "el de Pance", "la de Bellaterra"), habla de ESA entrega: NO es una dirección nueva ni otra entrega. Los datos que traiga (nombre, teléfono, tiempo) van a esa entrega, en su posición.
+- "Solo necesito el de X", "nono, solo el de X", "solo va el de X", "solo el segundo", "era solo el de X": se queda la entrega X y las demás van en "quitar".
+  Ejemplo: capturadas [1: Jamundí, 2: Calle 40 # 80-10, Los Cerezos (comoLaNombro "Comuna 16")]; mensaje "nono solo necesito el de la comuna 16, nombre del cliente Ramiro" → "entregas": [Jamundí sin cambios, Calle 40 # 80-10 con nombreCliente "Ramiro"], "quitar": [1].
+- Un ticket o factura que trae DOS direcciones distintas para el MISMO cliente (un solo nombre y teléfono; la caja imprimió dos, o el cliente tiene dos guardadas) es UNA entrega, no dos, y NUNCA mezcles partes de una con la otra: cada dirección va completa, con su número, su conjunto o barrio y su torre y apto.
+  Si el texto del restaurante señala cuál es (nombra el conjunto, el barrio o la calle de una: "Las Palmas", "la de la avenida"), usa esa en "direccionEntrega" y "direccionAlterna" null.
+  Si nada dice cuál, la primera en "direccionEntrega" (con su torre y apto en "detalleDireccion") y la otra completa, con su torre y apto, en "direccionAlterna".
+  Ejemplo: ticket con "Calle 5#66-20 Los Robles Torre 4 apt 106 Unidad Las Palmas Av 4 Norte#23-10 Torre 2 Apt 707" y el texto "Las Palmas" → direccionEntrega "Av 4 Norte # 23-10, Unidad Las Palmas", detalleDireccion "Torre 2 Apt 707", direccionAlterna null.
+- Si una entrega capturada tiene "direccionAlterna" y el restaurante dice cuál es ("la segunda", "la de Las Palmas", "la de la avenida"), devuelve en "direccionEntrega" la elegida, completa (con su torre y apto en "detalleDireccion"), y "direccionAlterna" null.
+- Un municipio solo, sin dirección ("¿llegan a Jamundí?", "domi para Palmira"), va tal cual en "direccionEntrega" ("Jamundí", "Palmira"): el código responde si se llega. No lo cambies por una dirección ni lo juntes con otra.
 - "quitar": cuando el restaurante dice que sobra una entrega o que ya no va: "quita la 2", "el de Pance ya no va", "cancela el segundo", "solo es 1", "es uno solo", "no son dos". Pon la posición de las que sobran; si dice "solo es 1" sin decir cuál, las que repiten la dirección de otra o no tienen datos del cliente. Aun así devuelve en "entregas" todas las capturadas: el código las quita. [] si no pide quitar ninguna.
 - El tiempo de preparación dicho sin señalar una entrega ("en 10", "ya están los 2") aplica a todas las entregas que no lo tengan.
 - Preguntar el precio ("¿qué vale a…?", "¿cuánto a…?", "¿domis acá?") es una cotización normal: la dirección o el lugar SIEMPRE va en "entregas", aunque no traiga nada más, y no es confuso. Sin ella no hay con qué cotizar.
@@ -705,6 +844,9 @@ Reglas:
 - "Datáfono", "lleve datáfono", "llevar datáfono", "paga con tarjeta", "tarjeta", "crédito o débito" (sin decir que ya está pagado) = "datafono": el cliente paga con tarjeta al recibir y el domiciliario lleva el datáfono del restaurante. Si dice el valor, va en "valorACobrar".
 - El método de pago solo se llena si el restaurante lo dice: nunca lo supongas ni lo preguntes.
 - Fotos de facturas o comandas: lee los datos del domicilio (nombre, teléfono, dirección, barrio, pago). Los productos y precios del pedido no van en ningún campo. Los datos del restaurante que imprime la factura (su nombre, dirección, teléfono, NIT) NO son del cliente.
+  UN ticket es UN pedido de UN cliente: devuelve UNA sola entrega, aunque la dirección ocupe varias líneas o el ticket la imprima dos veces. Las líneas con torre, apto, interior, unidad o conjunto son parte de la dirección de arriba, nunca otra entrega. "No. 0", "Int. 0" y similares son relleno de la caja: no van. Solo son dos entregas si el ticket trae dos clientes distintos (dos nombres o dos teléfonos de clientes).
+  Si en el bloque de la dirección de ese único cliente hay DOS direcciones distintas (dos calles con su número), es la regla de "direccionAlterna": una en "direccionEntrega" y la otra completa en "direccionAlterna", sin repartirlas en entregas.
+  Ejemplo de ticket: "Teléfono: 3001234567 / Calle 5#66-20 Los Robles / Torre 4 apt 106 Unidad Las Palmas / Av 4 Norte#23-10 / Torre 2 Apt 707 No. 0 Int. 0" (y el mismo bloque repetido abajo), sin texto del restaurante → UNA entrega: direccionEntrega "Calle 5 # 66-20, Los Robles, Unidad Las Palmas", detalleDireccion "Torre 4 apt 106", direccionAlterna "Av 4 Norte # 23-10, Torre 2 Apt 707", telefonoCliente "3001234567".
 - "listoEnMinutos": "en 10", "listo en 15", "sale en 15 min" = ese número. "Ya está", "ya está listo", "pueden venir", "ya sale" = 0. Si da un rango ("10 a 15 min"), usa el menor. Si da una hora ("lista a las 7:40"), calcula los minutos desde la "Hora actual" que te paso. Si no dice nada del tiempo, null: nunca lo supongas.
 - "detalleDireccion": SOLO lo que identifica la puerta (torre, bloque, interior, apartamento, casa, piso, oficina, local, o un código como "C202"); el barrio y las indicaciones ("dejar en portería") nunca van ahí. Copia completos la torre Y el apartamento: "Torre 1 apto 604" → "Torre 1 apto 604", nunca solo "Apto 604".  Si llega después en un mensaje suelto ("torre 2 apto 301", "casa 14"), va a la entrega que no lo tenga. No lo repitas en "direccionEntrega" ni en "notas" (si ya va en "valorACobrar" o "metodoPago", tampoco en notas), pero no quites de "direccionEntrega" nada más: el nombre del conjunto o edificio y el barrio se quedan ahí.
   Ejemplo: "Calle 5 # 66-20, Edificio Torre Alta apto 1203, El Refugio" → direccionEntrega "Calle 5 # 66-20, Edificio Torre Alta, El Refugio", detalleDireccion "Apto 1203", esConjunto true.

@@ -7,6 +7,7 @@ export * from "./domain/fare";
 export * from "./domain/fare-examples";
 export * from "./domain/return-debts";
 export * from "./domain/errand";
+export * from "./domain/places";
 export * from "./domain/cancel-request";
 export * from "./domain/fleet-removal";
 export * from "./domain/road-distance";
