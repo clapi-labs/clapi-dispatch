@@ -1,6 +1,7 @@
 import {
   ambiguousAddress,
   buildExtractionPrompt,
+  deliveryLabel,
   DOUBTFUL_FIELDS,
   fixPaymentMethod,
   looksLikeCancelRequest,
@@ -60,8 +61,11 @@ function knownForModel(known: OrderDraft) {
     etapa: known.etapa,
     soloPrecio: known.soloPrecio ?? false,
     origenRestaurante: known.origenRestaurante,
-    entregas: known.entregas.map(({ direccionEntrega, detalleDireccion, esConjunto, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas, dudas }) => ({
+    entregas: known.entregas.map(({ direccionEntrega, direccionAlterna, barrio, detalleDireccion, esConjunto, telefonoCliente, nombreCliente, valorACobrar, metodoPago, listoEnMinutos, notas, dudas }) => ({
       direccionEntrega,
+      ...(direccionAlterna ? { direccionAlterna } : {}),
+      // Como el bot la nombró en sus mensajes: «el de la comuna 16» habla de esta.
+      comoLaNombro: deliveryLabel({ barrio: barrio ?? null, direccionEntrega }),
       detalleDireccion,
       esConjunto,
       telefonoCliente,
@@ -118,6 +122,7 @@ export function parseDelivery(raw: Record<string, unknown>): Interpretation["ent
     detalleDireccion: door.detalleDireccion,
     esConjunto: door.esConjunto,
     barrio: text(raw.barrio),
+    direccionAlterna: text(raw.direccionAlterna),
     // Solo los nombres conocidos y que tengan un valor: dudar de un null no aporta.
     dudas: doubts.length ? [...new Set(doubts)] : null,
   };
