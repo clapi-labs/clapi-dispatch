@@ -44,12 +44,14 @@ En el portal, cada motorizado y cada pedido tienen un menú.
 
 **¿A quién reasignar?** Al tocar «Reasignar» sale la lista de motorizados ordenada: primero los libres con la distancia al punto de recogida, después los que van en ruta con cuántos pedidos llevan. Él escoge.
 
-**Cancelar y la contaduría.** Al cancelar se responden dos preguntas:
+**Cancelar y la contaduría.** En Viajes, cualquier pedido o encargo abierto (sin moto, asignado o en la calle) tiene **«Cancelar»** en su detalle. Se elige el motivo y se responden dos cosas:
 
-- ¿Se le cobra el domicilio al restaurante? Sí / No / Otro valor
-- ¿Se le paga al motorizado? Sí / No / Otro valor
+- **¿Se cobra el domicilio?** Viene marcado por la regla de la agencia: si la moto ya salió del restaurante con el pedido (tocó «Recogí» o el GPS la vio salir), el restaurante paga el domicilio; si lo cancelan antes, no. La central lo cambia en un caso especial, como un accidente. Sin moto no hay nada que cobrar. Un encargo no marca recogida: lo decide la central.
+- **¿Se le avisa al restaurante?** Marcado por defecto: «❌ Tu pedido A-57 quedó cancelado.», y si se cobra, cuánto y por qué. A la moto que lo llevaba se le avisa siempre, citando su ficha: que no vaya a recogerlo o, si ya lo tiene, que la central le dice qué hacer con él.
 
-Así un pedido dañado en un accidente queda en cero (o en lo que se acuerde por fuera) y la liquidación sale bien sola. Hoy la liquidación cuenta los viajes `delivered`; un cancelado con cobro tendría que sumar con el valor elegido.
+Lo cobrado cuenta en Finanzas como un viaje más de esa moto, el día en que se canceló, y la agencia saca su parte igual que de una entrega. Lo mismo un pedido devuelto porque el cliente no contestó: la moto ya había salido, así que se cobra el domicilio. La moto queda libre (si no lleva otro) y, si no lo había recogido, ese viaje no le cuenta en el turno. Si el restaurante había pedido cancelarlo por el chat («Pidió cancelar el pedido A-57»), el chat vuelve al bot. El cancelado queda en «Finalizado» con su motivo y lo cobrado.
+
+Código: `cancelTrip` en `packages/shared/src/db/trip-lifecycle.ts`, la regla y los textos en `packages/shared/src/domain/trip-cancel.ts`, `POST /api/trips/:id/cancel`, el aviso en `notifyCancelled` (`apps/bot/src/bot/notify.ts`) y Finanzas en `apps/portal/src/db/queries/settlement.ts`. Pruebas: `apps/portal/src/app/api/trips/cancel.test.ts`.
 
 **Registro.** Cada acción manual guarda quién, cuándo y por qué (una tabla `trip_events` o similar), para revisar reclamos después.
 
@@ -80,11 +82,11 @@ A veces el restaurante no pide llevar su comida a un cliente, sino que le compre
 5. **Al domiciliario le llega un solo mensaje con un solo botón, «✅ Entregado»**, y al restaurante «🛵 Va Carlos con tu encargo A-15.» (detalle en [FLUJO-DOMICILIARIO.md](FLUJO-DOMICILIARIO.md), «Encargos»). Los detalles («es en la de la 25, pide factura») y la foto que haya mandado el restaurante se los manda la central por el chat del domiciliario, y ahí revisa que todo llegó bien.
 6. **Al tocar «Entregado»** el viaje queda entregado, la moto libre, y el encargo cuenta en Finanzas con su precio, como cualquier viaje. Si el domiciliario no pudo marcarlo, la central lo marca desde la tarjeta.
 
-**Si se queda en Pendiente y la central decide no hacerlo**, la tarjeta tiene **«No hacer»**: se cancela, sale de Pendiente y no cuenta en Finanzas. No se le avisa a nadie: si hace falta, la central se lo dice al restaurante por su chat. Solo sirve para un encargo sin moto; uno ya asignado se le quita primero a la moto («Pasar a otra moto» → «Quitárselo», y vuelve a Pendiente) o se entrega. Cancelar viajes en general es otra tarea.
+**Si la central decide no hacerlo**, se cancela como cualquier viaje: «Cancelar encargo» en el detalle de la tarjeta (ver «Cancelar y la contaduría»).
 
 Un encargo no tiene recordatorios, GPS, botones de datáfono o plata, ruta, ni alertas de pedido bloqueado: lo sigue la central por el chat.
 
-Código: el panel en `apps/portal/src/components/ErrandPanel.tsx` (acción `errand` de `POST /api/conversations/:id`), crear, no crear y «No hacer» en `packages/shared/src/db/errands.ts` (`POST /api/trips/:id/cancel`), y los mensajes en `apps/bot/src/bot/notify.ts`. Pruebas: `apps/portal/src/app/api/errands.test.ts` y `apps/bot/src/bot/errand.test.ts`.
+Código: el panel en `apps/portal/src/components/ErrandPanel.tsx` (acción `errand` de `POST /api/conversations/:id`), crear y no crear en `packages/shared/src/db/errands.ts`, y los mensajes en `apps/bot/src/bot/notify.ts`. Pruebas: `apps/portal/src/app/api/errands.test.ts` y `apps/bot/src/bot/errand.test.ts`.
 
 ## Alertas al celular
 
@@ -147,7 +149,7 @@ Probado en local de punta a punta: los avisos salen cifrados del bot, se abren e
 
 1. ~~Novedad del motorizado: pausa y chat a la central.~~ Hecho.
 2. ~~Alertas en el portal: notificación push (PWA) y sonido con el portal abierto~~ Hecho; falta probarlo en staging con celulares reales ([PLAN](PLAN.md) C-1).
-3. Acciones del portal: ~~asignar a mano con la lista sugerida, pasar un pedido sin recoger a otra moto, emergencia y reactivar~~ (hecho); falta cancelar con cobro y el registro de acciones ([PLAN](PLAN.md) C-2).
-4. Liquidación: que cuente los cancelados según lo elegido ([PLAN](PLAN.md) C-2).
+3. Acciones del portal: ~~asignar a mano con la lista sugerida, pasar un pedido sin recoger a otra moto, emergencia y reactivar~~ (hecho); ~~cancelar con cobro~~ (hecho); falta el registro de acciones ([PLAN](PLAN.md) C-2).
+4. ~~Liquidación: que cuente los cancelados con cobro.~~ Hecho.
 
 La 3 y la 4 tocan el portal y la liquidación: coordinar con quien lleve el algoritmo (la reasignación debe pasar por el mismo despacho, ver [CONTRATO-BOT-DESPACHO.md](CONTRATO-BOT-DESPACHO.md)).

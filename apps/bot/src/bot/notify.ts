@@ -28,6 +28,7 @@ import {
   type ReturnStopView,
 } from "@dispatch/shared/db";
 import {
+  courierCancelledText,
   courierRemovedText,
   customerWaitEndsAt,
   debtClaimCourierText,
@@ -46,6 +47,7 @@ import {
   matchRestaurant,
   minutesLeft,
   pickupLateAt,
+  restaurantCancelledText,
   sameRestaurant,
   sameTripReturnText,
   traccarConfigMessage,
@@ -485,6 +487,31 @@ export async function notifyUnassigned(tripId: number, courierId: number) {
 
 /** Lo que el restaurante necesita para avisarle a su cliente: para quién y a
  *  qué apartamento. La agencia nunca le escribe al cliente. */
+/**
+ * La central canceló el viaje (portal, «Cancelar»). A la moto que lo llevaba
+ * siempre se le avisa, citando su ficha; al restaurante, si la central dejó la
+ * casilla marcada, con lo que se cobra si se cobra.
+ */
+export async function notifyCancelled(tripId: number, courierId: number | null, { toRestaurant = true } = {}) {
+  const row = await loadTrip(tripId);
+  if (!row || row.trip.status !== "cancelled") return;
+  const errand = row.trip.kind === "errand";
+  const courier = courierId ? (row.courier?.id === courierId ? row.courier : null) : null;
+  if (courier) {
+    await courierSay(courier.id, courier.phone, courierCancelledText({ code: row.trip.code, errand, pickedUp: !!row.assignment?.pickedUpAt }), {
+      replyTo: await lastBotMessageAbout(tripId, courier.phone),
+      tripId,
+    });
+  }
+  const restaurant = toRestaurant ? await restaurantConversation(row.trip.conversationId) : null;
+  if (restaurant) {
+    await say(restaurant.id, restaurant.phone, restaurantCancelledText({ code: row.trip.code, errand, charged: row.trip.cancelFee }), {
+      replyTo: row.trip.sourceWaMessageId,
+      tripId,
+    });
+  }
+}
+
 function gateText(trip: Trip, at: string) {
   const [street, unit] = addressParts(trip.deliveryAddress);
   const who = [trip.customerName, unit ?? street].filter(Boolean).join(", ");

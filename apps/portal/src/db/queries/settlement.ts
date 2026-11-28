@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 
 import { db, schema } from "@dispatch/shared/db";
 
@@ -7,7 +7,8 @@ import type { Settlement } from "@/lib/types";
 import { bogotaDate, weekRange } from "@/lib/week";
 
 /**
- * El cierre, desde los viajes entregados (hora de Colombia, lunes a domingo).
+ * El cierre, desde los viajes entregados y los cancelados con cobro (hora de
+ * Colombia, lunes a domingo).
  * Solo importan los domicilios: lo que el cliente le paga al restaurante y lo
  * que se le devuelve no es de la agencia.
  *
@@ -29,44 +30,54 @@ export type SettlementFilter = {
   dia?: string;
 };
 
-async function deliveredBetween(from: Date, to: Date): Promise<DeliveredRow[]> {
-  const rows = await db
-    .select({
-      courierId: schema.assignments.courierId,
-      courierName: schema.assignments.courierName,
-      deliveryFee: schema.trips.deliveryFee,
-      deliveredAt: schema.assignments.deliveredAt,
-    })
-    .from(schema.assignments)
-    .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
-    .where(and(eq(schema.trips.status, "delivered"), gte(schema.assignments.deliveredAt, from), lt(schema.assignments.deliveredAt, to)));
-  return rows.flatMap((r) => (r.deliveredAt ? [{ ...r, deliveredAt: r.deliveredAt }] : []));
+/**
+ * Lo que cuenta en el cierre entre `from` y `to` (sin `to`, hasta ahora): los
+ * entregados, a su hora de entrega, y los cancelados con cobro
+ * (`trips.cancel_fee`), a su hora de cancelación y con lo cobrado.
+ */
+async function chargedBetween(from: Date | SQL, to?: Date): Promise<DeliveredRow[]> {
+  const select = {
+    courierId: schema.assignments.courierId,
+    courierName: schema.assignments.courierName,
+    deliveryFee: schema.trips.deliveryFee,
+    cancelFee: schema.trips.cancelFee,
+    deliveredAt: schema.assignments.deliveredAt,
+    cancelledAt: schema.trips.cancelledAt,
+  };
+  const [delivered, cancelled] = await Promise.all([
+    db
+      .select(select)
+      .from(schema.assignments)
+      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+      .where(and(eq(schema.trips.status, "delivered"), gte(schema.assignments.deliveredAt, from), to ? lt(schema.assignments.deliveredAt, to) : undefined)),
+    db
+      .select(select)
+      .from(schema.assignments)
+      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
+      .where(
+        and(
+          eq(schema.trips.status, "cancelled"),
+          isNotNull(schema.trips.cancelFee),
+          gte(schema.trips.cancelledAt, from),
+          to ? lt(schema.trips.cancelledAt, to) : undefined,
+        ),
+      ),
+  ]);
+  return [
+    ...delivered.flatMap((r) => (r.deliveredAt ? [{ courierId: r.courierId, courierName: r.courierName, deliveryFee: r.deliveryFee, deliveredAt: r.deliveredAt }] : [])),
+    ...cancelled.flatMap((r) => (r.cancelledAt && r.cancelFee ? [{ courierId: r.courierId, courierName: r.courierName, deliveryFee: r.cancelFee, deliveredAt: r.cancelledAt }] : [])),
+  ];
 }
 
 export async function getSettlement(filter: SettlementFilter = {}): Promise<Settlement> {
   if (!filter.semana && !filter.dia) {
     // Sin filtros: solo hoy. Sin tope superior, como siempre (algo «de hoy» más tarde sigue siendo de hoy).
-    const rows = await db
-      .select({
-        courierId: schema.assignments.courierId,
-        courierName: schema.assignments.courierName,
-        deliveryFee: schema.trips.deliveryFee,
-        deliveredAt: schema.assignments.deliveredAt,
-      })
-      .from(schema.assignments)
-      .innerJoin(schema.trips, eq(schema.trips.id, schema.assignments.tripId))
-      .where(
-        and(
-          eq(schema.trips.status, "delivered"),
-          gte(schema.assignments.deliveredAt, sql`date_trunc('day', now() at time zone 'America/Bogota') at time zone 'America/Bogota'`),
-        ),
-      );
-    return summarize(rows.flatMap((r) => (r.deliveredAt ? [{ ...r, deliveredAt: r.deliveredAt }] : [])));
+    return summarize(await chargedBetween(sql`date_trunc('day', now() at time zone 'America/Bogota') at time zone 'America/Bogota'`));
   }
 
   const anchor = filter.dia ?? filter.semana ?? bogotaDate(Date.now());
   const week = weekRange(filter.semana ?? anchor);
-  const rows = await deliveredBetween(week.from, week.to);
+  const rows = await chargedBetween(week.from, week.to);
   const day = filter.dia ?? null;
   return {
     ...summarize(day ? onDay(rows, day) : rows),

@@ -1,6 +1,7 @@
 /**
  * El ciclo de vida del viaje: asignarlo a una moto (la que eligió el engine o la
- * central), devolverlo a despacho, entregarlo o cerrarlo sin entregar. Quién
+ * central), devolverlo a despacho, entregarlo, cerrarlo sin entregar o
+ * cancelarlo. Quién
  * elige la moto en automático es el engine (`apps/bot/src/dispatch/engine.ts`);
  * aquí solo viven las mutaciones.
  *
@@ -8,11 +9,12 @@
  * el portal. Los "reclamos" son `UPDATE … WHERE estado = X RETURNING`: si dos
  * procesos intentan lo mismo a la vez, solo uno gana la fila.
  */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, like, sql } from "drizzle-orm";
 
+import { CANCEL_REQUEST_REASON_PREFIX } from "../domain/cancel-request";
 import type { DeliveryPlace, RouteStop } from "../domain/phase";
 import { db } from "./client";
-import { assignments, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
+import { assignments, conversations, courierRoutes, couriers, engineEvaluations, trips } from "./schema";
 import { assignableByHand, dispatchableCourier } from "./simulator-flag";
 
 /** Para una consulta con `trips`: lo que el motorizado todavía tiene encima.
@@ -150,18 +152,82 @@ export async function returnUnpickedTrips(courierId: number): Promise<number[]> 
   return returned;
 }
 
-/** El cliente nunca contestó y el pedido ya está de vuelta: el viaje se cancela. */
+/** El cliente nunca contestó y el pedido ya está de vuelta: el viaje se cancela.
+ *  La moto ya había salido con el pedido, así que se cobra el domicilio
+ *  (`domain/trip-cancel.ts`). */
 export async function closeUndeliveredTrip(tripId: number): Promise<boolean> {
   const now = new Date();
   const [trip] = await db
     .update(trips)
-    .set({ status: "cancelled", updatedAt: now })
+    .set({ status: "cancelled", cancelledAt: now, cancelReason: "El cliente no contestó", cancelFee: sql`nullif(${trips.deliveryFee}, 0)`, updatedAt: now })
     .where(and(eq(trips.id, tripId), eq(trips.status, "en_route")))
     .returning({ id: trips.id });
   if (!trip) return false;
   const [assignment] = await db.update(assignments).set({ finishedAt: now }).where(eq(assignments.tripId, tripId)).returning({ courierId: assignments.courierId });
   if (assignment?.courierId) await releaseCourier(assignment.courierId);
   return true;
+}
+
+export type CancelledTrip = {
+  code: string;
+  kind: "delivery" | "errand";
+  /** La moto que lo llevaba, para avisarle; nula si seguía sin moto. */
+  courierId: number | null;
+  pickedUp: boolean;
+  /** Lo que se cobra del domicilio; nulo si no se cobra. */
+  charged: number | null;
+};
+
+/**
+ * La central cancela un viaje que sigue abierto (sin moto, asignado o en la
+ * calle). Queda el motivo, la hora y lo que se cobra: con `charge` se cobra el
+ * domicilio completo, pero solo si alguna moto lo llevaba (sin moto no hay quién
+ * lo cobre). La moto queda libre y, si no lo había recogido, ese viaje no le
+ * cuenta en el turno. Si el restaurante había pedido cancelarlo por el chat, el
+ * chat vuelve al bot. `null` si ya no estaba abierto (otro lo entregó o lo
+ * canceló antes).
+ */
+export async function cancelTrip(tripId: number, { reason, charge }: { reason: string; charge: boolean }): Promise<CancelledTrip | null> {
+  const now = new Date();
+  const [assignment] = await db.select().from(assignments).where(eq(assignments.tripId, tripId)).limit(1);
+  const fee = charge && assignment?.courierId ? sql`nullif(${trips.deliveryFee}, 0)` : null;
+  const [trip] = await db
+    .update(trips)
+    .set({ status: "cancelled", cancelledAt: now, cancelReason: reason.trim() || null, cancelFee: fee, updatedAt: now })
+    .where(and(eq(trips.id, tripId), inArray(trips.status, ["pending", "assigned", "en_route"])))
+    .returning({ code: trips.code, kind: trips.kind, cancelFee: trips.cancelFee, conversationId: trips.conversationId });
+  if (!trip) return null;
+
+  await db.delete(engineEvaluations).where(eq(engineEvaluations.tripId, tripId));
+  const courierId = assignment?.courierId ?? null;
+  const pickedUp = !!assignment?.pickedUpAt;
+  if (assignment) {
+    await db.update(assignments).set({ finishedAt: now }).where(eq(assignments.tripId, tripId));
+    if (courierId && !pickedUp) {
+      await db
+        .update(couriers)
+        .set({ deliveriesThisShift: sql`greatest(${couriers.deliveriesThisShift} - 1, 0)` })
+        .where(eq(couriers.id, courierId));
+    }
+    if (courierId) await releaseCourier(courierId);
+  }
+
+  // Ya se hizo lo que pidió: el chat no se queda esperando a la central.
+  if (trip.conversationId) {
+    await db
+      .update(conversations)
+      .set({ botPaused: false, escalationReason: null, failedAttempts: 0 })
+      .where(
+        and(
+          eq(conversations.id, trip.conversationId),
+          eq(conversations.botPaused, true),
+          like(conversations.escalationReason, `${CANCEL_REQUEST_REASON_PREFIX}%`),
+          like(conversations.escalationReason, `%${trip.code}%`),
+        ),
+      );
+  }
+
+  return { code: trip.code, kind: trip.kind, courierId, pickedUp, charged: trip.cancelFee };
 }
 
 /** Queda libre, salvo que todavía lleve algo o esté en emergencia. */

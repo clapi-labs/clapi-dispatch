@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 
 import { eq } from "drizzle-orm";
 
-import { db, declareReturnDebt, deliverTrip, getReturnDebt, openDebtClaims, openReturnDebts, recordDebtClaim, schema } from "@dispatch/shared/db";
+import { cancelTrip, db, declareReturnDebt, deliverTrip, getReturnDebt, openDebtClaims, openReturnDebts, recordDebtClaim, schema } from "@dispatch/shared/db";
 import { closeTestDatabase, createCourier, createRestaurant, integrationSkip, resetDatabase } from "@dispatch/shared/db/test-db";
 
 import {
@@ -1183,6 +1183,40 @@ describe("notify.ts: avisos y tick (Postgres)", { skip: integrationSkip }, () =>
       assert.deepEqual(await notify.notifyCourierGpsConfig(w.courier.id, "https://x/api/gps"), { ok: false, reason: "outside_window" });
       whatsapp.failSends(true, { error: { code: 100 } });
       assert.deepEqual(await notify.notifyCourierGpsConfig(w.courier.id, "https://x/api/gps"), { ok: false, reason: "send_failed" });
+    });
+  });
+
+  describe("la central canceló el viaje (notifyCancelled)", () => {
+    it("sin recoger: a la moto, que no vaya a recogerlo (citando su ficha); al restaurante, que quedó cancelado", async () => {
+      const w = await world();
+      const { trip: t } = await ticketed(w);
+      const ticket = (await db.select().from(schema.messages).where(eq(schema.messages.tripId, t.id))).find((m) => m.role === "bot");
+      await cancelTrip(t.id, { reason: "Lo pidió el restaurante", charge: false });
+      await notify.notifyCancelled(t.id, w.courier.id);
+      assert.equal(toCourier(w)[0].text, `❌ La central canceló el ${t.code}: ya no lo llevas, no vayas a recogerlo 🙏`);
+      assert.equal(toCourier(w)[0].replyTo, ticket?.waMessageId ?? null);
+      assert.deepEqual(toRestaurant(w).map((m) => m.text), [`❌ Tu pedido ${t.code} quedó cancelado.`]);
+    });
+
+    it("ya recogido y cobrado: a la moto, que la central le dice qué hacer; al restaurante, cuánto se cobra", async () => {
+      const w = await world();
+      const { trip: t } = await ticketed(w, { deliveryFee: 8_000 });
+      await setAssignment(t.id, { pickedUpAt: new Date() });
+      await cancelTrip(t.id, { reason: "El cliente canceló", charge: true });
+      await notify.notifyCancelled(t.id, w.courier.id);
+      assert.match(toCourier(w)[0].text, /Si tienes el pedido contigo, la central te dice qué hacer con él/);
+      assert.match(plain(toRestaurant(w)[0].text), new RegExp(`Tu pedido ${t.code} quedó cancelado\\. Como el domiciliario ya había salido, se cobra el domicilio: \\$ 8\\.000\\.`));
+    });
+
+    it("con la casilla desmarcada no le escribe al restaurante, y un viaje que no se canceló no avisa a nadie", async () => {
+      const w = await world();
+      const { trip: open } = await ticketed(w);
+      await notify.notifyCancelled(open.id, w.courier.id);
+      assert.equal(outbox.length, 0);
+      await cancelTrip(open.id, { reason: "x", charge: false });
+      await notify.notifyCancelled(open.id, w.courier.id, { toRestaurant: false });
+      assert.equal(toRestaurant(w).length, 0);
+      assert.equal(toCourier(w).length, 1);
     });
   });
 
