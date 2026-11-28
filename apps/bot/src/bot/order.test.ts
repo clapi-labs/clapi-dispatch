@@ -4,10 +4,11 @@ import { after, before, beforeEach, describe, it, mock } from "node:test";
 import { eq } from "drizzle-orm";
 
 import { ERRAND_RECEIVED_MESSAGE, ESCALATION_MESSAGE, MAX_CLARIFICATION_ATTEMPTS, normalizeDraft, type Interpretation, type OrderDraft } from "@dispatch/shared";
-import { db, schema, saveFareRanges, createServiceZone, type Restaurant } from "@dispatch/shared/db";
+import { assignTripTo, db, schema, saveFareRanges, createServiceZone, type Restaurant } from "@dispatch/shared/db";
 import {
   closeTestDatabase,
   createConversation,
+  createCourier,
   createRestaurant,
   createTrip,
   integrationSkip,
@@ -1357,6 +1358,56 @@ describe("order.ts: máquina de estados del restaurante (Postgres)", { skip: int
   // -------------------------------------------------------------------------
   // docs/CONVERSACIONES-REALES.md: cada conversación, un caso
   // -------------------------------------------------------------------------
+  describe("¿en qué va el pedido? y reclamos por demora", () => {
+    /** Un pedido confirmado y asignado a Jhon; `patch` marca en qué va. */
+    async function onTheWay(c: ReturnType<typeof chat>, patch: Partial<typeof schema.assignments.$inferInsert> = {}) {
+      const trip = await placeOrder(c);
+      const courier = await createCourier({ name: "Jhon", status: "available" });
+      assert.ok(await assignTripTo(trip.id, courier.id), "se asigna");
+      if (Object.keys(patch).length) await db.update(schema.assignments).set(patch).where(eq(schema.assignments.tripId, trip.id));
+      return trip;
+    }
+
+    it("va a recoger: lo dice con el tiempo estimado, no un «confirmado» fijo", async () => {
+      await registered();
+      const c = chat();
+      const trip = await onTheWay(c, { seenAt: new Date() });
+      await c.say("ya viene en camino ?", understood([], { query: "estado" }));
+      assert.match(c.reply, new RegExp(`^🛵 ${trip.code}: Jhon va en camino a recogerlo\\. Estará ahí en unos \\d+ minutos\\.$`));
+      await assertNotEscalated(c);
+    });
+
+    it("ya recogió: va camino al cliente; ya entregó: a qué hora", async () => {
+      await registered();
+      const c = chat();
+      const trip = await onTheWay(c, { seenAt: new Date(), pickedUpAt: new Date() });
+      await c.say("dime el estado del pedido", understood([], { query: "estado" }));
+      assert.equal(c.reply, `📦 ${trip.code}: Jhon ya lo recogió y va camino al cliente.`);
+      await db.update(schema.trips).set({ status: "delivered" }).where(eq(schema.trips.id, trip.id));
+      await db.update(schema.assignments).set({ deliveredAt: new Date(), deliveryPlace: "customer" }).where(eq(schema.assignments.tripId, trip.id));
+      await c.say("ya se entregó?", understood([], { query: "estado" }));
+      assert.match(c.reply, new RegExp(`^✅ ${trip.code}: entregado a las`));
+    });
+
+    it("«el domiciliario no viene por el pedido aún»: el estado y pasa a la central, aunque el modelo no lo marque como consulta", async () => {
+      await registered();
+      const c = chat();
+      const trip = await onTheWay(c);
+      await c.say("el domiciliario no viene por el pedido aun", understood([]));
+      assert.match(c.reply, new RegExp(`^🛵 ${trip.code}: Jhon ya tiene el pedido y va para allá\\. Estará ahí en unos \\d+ minutos\\. Ya le aviso a la central para que lo llame y te confirmamos 🙏$`));
+      await assertEscalated(c, `Reclama demora: el domiciliario del ${trip.code} no ha llegado. Llámalo y confírmale al restaurante.`, "cleared");
+    });
+
+    it("si ya lo recogió, «ya se demoró mucho» solo responde en qué va: no hay a quién llamar por la recogida", async () => {
+      await registered();
+      const c = chat();
+      await onTheWay(c, { seenAt: new Date(), pickedUpAt: new Date() });
+      await c.say("ya se demoró mucho", understood([], { query: "estado" }));
+      assert.match(c.reply, /ya lo recogió y va camino al cliente/);
+      await assertNotEscalated(c);
+    });
+  });
+
   describe("casos del simulacro: cobertura, correcciones, datos que faltan y tickets", () => {
     it("«¿llegan a Jamundí?»: sí llegamos y pide la dirección, sin preguntarle a la central ni ubicar nada", async () => {
       await registered();

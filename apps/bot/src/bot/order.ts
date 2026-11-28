@@ -62,7 +62,7 @@ import { dispatchTrip } from "@/dispatch/engine";
 import { handleRestaurantDebtClaim, notifyAssigned } from "@/bot/notify";
 import { recognizeRestaurant } from "@/bot/restaurant-identity";
 import { pinAddress } from "@/bot/turns";
-import { answerStatus, confirmedText, estimatePickup } from "@/bot/status";
+import { answerStatus, confirmedText, estimatePickup, looksLikeDelayComplaint } from "@/bot/status";
 import { PICK_TRIP_PREFIX, applyTripUpdate, pickTrip, routeTripUpdate, tripUpdateFrom } from "@/bot/trip-updates";
 import { updateConversation, type Conversation } from "@/db/queries/conversation";
 import { createTrip, openTrips, tripFromCodeInText, tripFromQuote, type Trip } from "@/db/queries/trips";
@@ -703,9 +703,16 @@ async function respond(ctx: Context) {
       if (!hasOrderContent && !extraction.query) return;
     }
 
-    // Consultas: no cambian el pedido en curso, solo se responden.
-    if (extraction.query === "estado") {
-      await answerStatus(conversation, message.phone, quoted);
+    // Consultas: no cambian el pedido en curso, solo se responden. «El
+    // domiciliario no llega», «ya se demoró» es además un reclamo: con el
+    // estado, pasa a la central si la moto no ha recogido (bot/status.ts).
+    // Cuenta aunque el modelo no lo marque, si no trae una dirección nueva.
+    // Si trae un tiempo («se demora 5 más») es el restaurante avisando de su comida, no un reclamo.
+    const complaint =
+      looksLikeDelayComplaint(text) &&
+      !extraction.fields.entregas.some((e) => e.listoEnMinutos != null || (e.direccionEntrega && !before.entregas.some((k) => k.direccionEntrega === e.direccionEntrega)));
+    if (extraction.query === "estado" || complaint) {
+      await answerStatus(conversation, message.phone, quoted, { complaint });
       return;
     }
     const asksAddress =
