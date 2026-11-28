@@ -860,7 +860,7 @@ export default function ConversacionesPage() {
 
               {selected.botPaused && !businessPaused && isErrandReason(selected.escalationReason) ? (
                 <ErrandPanel
-                  key={selected.id}
+                  key={`encargo-${selected.id}`}
                   conversationId={selected.id}
                   onDone={(created) => {
                     if (created) setNotice(created.code ? `Encargo ${created.code} creado` : "Encargo creado");
@@ -874,7 +874,7 @@ export default function ConversacionesPage() {
 
               {selected.botPaused && selected.advisorQuery?.length ? (
                 <AdvisorQueryPanel
-                  key={selected.id}
+                  key={`consulta-${selected.id}`}
                   conversationId={selected.id}
                   items={selected.advisorQuery}
                   onDone={() => {
@@ -912,7 +912,7 @@ export default function ConversacionesPage() {
 
               {selected.botPaused || businessPaused ? (
                 <Composer
-                  key={selected.id}
+                  key={`composer-${selected.id}`}
                   conversationId={selected.id}
                   inputRef={inputRef}
                   onSent={afterSend}
